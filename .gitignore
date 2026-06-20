@@ -1,9 +1,25 @@
+# Python
+backend/.venv/
 __pycache__/
 *.pyc
+
+# Secrets / local config — NEVER commit real tokens
 .env
-.venv/
-venv/
+backend/.env
+
+# SQLite persistence (regenerated at runtime)
+backend/diginyaya.db
+backend/diginyaya.db-wal
+backend/diginyaya.db-shm
+
+# Cached raw judgments pulled from the Indian Kanoon API (paid; re-fetchable)
+backend/data_cache/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Editor / OS
+.DS_Store
 .vscode/
-.streamlit/secrets.toml
-logs/
-*.db
+*.log
