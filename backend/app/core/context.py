@@ -132,6 +132,15 @@ class CaseContext(BaseModel):
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     respondent_submission: Optional[dict[str, Any]] = None
 
+    # Language Gateway metadata -- pure passthrough, no agent reads these.
+    # `description` above is always guaranteed English by the time
+    # from_case() runs; translation happens in main.py, before the case
+    # dict is ever built/updated, never here. These two fields exist solely
+    # so the API layer can localize its response back to the language the
+    # case was actually filed in, without touching agent logic.
+    source_language: str = "en-IN"
+    original_description: Optional[str] = None
+
     # Orchestration state
     tier: int = 1
     tier_label: str = "Tier 1 — Fully Autonomous AI Resolution"
@@ -160,4 +169,6 @@ class CaseContext(BaseModel):
             respondent_submission=case.get("respondent_submission"),
             tier=case.get("tier", 1),
             tier_label=case.get("tier_label", "Tier 1 — Fully Autonomous AI Resolution"),
+            source_language=case.get("source_language", "en-IN"),
+            original_description=case.get("original_description"),
         )

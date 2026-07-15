@@ -6,7 +6,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from .language.config import is_pipeline_language, is_supported_language, normalize_language_code
 
 
 class DisputeType(str, Enum):
@@ -38,6 +40,23 @@ class Evidence(BaseModel):
     note: Optional[str] = None
 
 
+def _validate_optional_language(value: str | None) -> str | None:
+    """Shared validator for the optional BCP-47 language hint on inbound
+    submissions. ``None`` means "auto-detect" -- the Language Gateway will
+    run LID on the text itself. A non-None value must normalize to either a
+    gateway-supported user language or the pipeline language (en-IN);
+    anything else is almost certainly a stale/typo'd frontend selector
+    value, and is worth rejecting at the API boundary rather than letting
+    it silently fall back to detection deep inside the gateway.
+    """
+    if value is None:
+        return None
+    normalized = normalize_language_code(value)
+    if not (is_supported_language(normalized) or is_pipeline_language(normalized)):
+        raise ValueError(f"Unsupported language code: {value!r}")
+    return normalized
+
+
 class LoginRequest(BaseModel):
     aadhaar_last4: str = Field(..., min_length=4, max_length=4)
     name: str
@@ -57,12 +76,24 @@ class ClaimSubmission(BaseModel):
     claim_amount: float
     description: str
     evidence: list[Evidence] = Field(default_factory=list)
+    # BCP-47 hint from the frontend's language selector; None = auto-detect
+    # via the Language Gateway's LID call.
+    language: Optional[str] = None
+
+    _validate_language = field_validator("language")(_validate_optional_language)
 
 
 class RespondentSubmission(BaseModel):
     statement: str
     accepts_liability: bool = False
     counter_offer: Optional[float] = None
+    language: Optional[str] = None
+    # Server-populated only: the Language Gateway fills this in with the
+    # untranslated original statement once `statement` has been normalized
+    # to English. Any value sent by the client here is ignored/overwritten.
+    original_statement: Optional[str] = None
+
+    _validate_language = field_validator("language")(_validate_optional_language)
 
 
 class CaseCreateResponse(BaseModel):
@@ -88,6 +119,18 @@ class AgentStep(BaseModel):
     finished_at: Optional[datetime] = None
 
 
+class LanguageOption(BaseModel):
+    code: str
+    label: str
+    native: str
+
+
+class SupportedLanguagesResponse(BaseModel):
+    languages: list[LanguageOption]
+    default: str
+    pipeline: str
+
+
 class CaseView(BaseModel):
     case_id: str
     status: CaseStatus
@@ -98,6 +141,13 @@ class CaseView(BaseModel):
     respondent: Party
     claim_amount: float
     description: str
+    # Language Gateway metadata: the language the case was actually filed in,
+    # and the claimant's untranslated original text. `description` above is
+    # always the English pipeline copy; these two exist so the API layer can
+    # localize the response back to the filer's language without a second
+    # (lossier) round-trip through the translator.
+    source_language: str = "en-IN"
+    original_description: Optional[str] = None
     evidence: list[Evidence]
     respondent_submission: Optional[RespondentSubmission] = None
     steps: list[AgentStep] = Field(default_factory=list)
