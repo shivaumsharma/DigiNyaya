@@ -35,7 +35,14 @@ def _ensure_embeddings() -> bool:
             return _doc_vectors is not None
         _doc_built = True
         precedents = load_precedents()
-        vecs = llm.embed([_doc_text(p) for p in precedents])
+        try:
+            vecs = llm.embed([_doc_text(p) for p in precedents])
+        except Exception:
+            # Ollama was reachable (is_available() passed) but the actual
+            # embed call failed anyway -- e.g. the embedding model isn't
+            # pulled, returning a 500. Don't let that crash the agent;
+            # fall back to keyword search just like the "unreachable" case.
+            vecs = None
         _doc_vectors = vecs
         return _doc_vectors is not None
 
@@ -71,7 +78,10 @@ def retrieve(query: str, signals: list[str], *, k: int = 5, min_results: int = 3
     scored: list[tuple[float, dict]] = []
 
     if _ensure_embeddings() and _doc_vectors is not None:
-        qvec = llm.embed([query])
+        try:
+            qvec = llm.embed([query])
+        except Exception:
+            qvec = None
         if qvec:
             method = "semantic"
             qv = qvec[0]

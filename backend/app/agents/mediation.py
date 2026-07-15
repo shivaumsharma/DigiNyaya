@@ -56,7 +56,7 @@ def run(ctx: CaseContext) -> AgentResult:
         "relief_ratio is the fraction of the claim to be refunded (1.0 = full). "
         "Base it on the precedent ratios and the claimant's strength. Do not exceed the claim."
     )
-    data = llm.generate_json(llm.SYSTEM_PROMPT, prompt, max_tokens=220)
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=220)
     if data:
         engine = "llm"
         try:

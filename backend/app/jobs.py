@@ -74,6 +74,12 @@ def _run_pipeline(case_id: str) -> None:
         ev = make_event("error", detail=f"Pipeline error: {exc}")
         db.append_event(case_id, ev)
         bus.publish(case_id, ev)
+        # Without this, case.status stays "processing" forever: the /run
+        # endpoint's guard only allows (re)starting from "awaiting_response"
+        # or "ready", so a crashed case could never be retried and the UI
+        # would show it "running" indefinitely even though this thread has
+        # already exited.
+        db.update_case(case_id, status="error")
     finally:
         _release(case_id)
 
@@ -103,6 +109,7 @@ def _run_resolution(case_id: str, via_mediation: bool) -> None:
         ev = make_event("error", detail=f"Resolution error: {exc}")
         db.append_event(case_id, ev)
         bus.publish(case_id, ev)
+        db.update_case(case_id, status="error")
     finally:
         _release(case_id)
 

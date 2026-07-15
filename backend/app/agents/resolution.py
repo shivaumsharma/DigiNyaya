@@ -82,7 +82,7 @@ def _select_citations(ctx: CaseContext, precedents: list) -> tuple[list[str], st
         f"Claim amount: {nlp.inr(ctx.claim_amount)}\n\n"
         f"Candidates:\n{candidates_text}"
     )
-    data = llm.generate_json(llm.SYSTEM_PROMPT, prompt, max_tokens=160)
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=160)
     if not data or not isinstance(data.get("cited_ids"), list):
         return deterministic, "scripted"
 
@@ -92,7 +92,7 @@ def _select_citations(ctx: CaseContext, precedents: list) -> tuple[list[str], st
 
 def run(ctx: CaseContext) -> AgentResult:
     """Non-streaming path: generate findings then finalize."""
-    out = llm.generate(llm.SYSTEM_PROMPT, findings_prompt(ctx), max_tokens=260)
+    out = llm.generate(findings_prompt(ctx), system=llm.SYSTEM_PROMPT, max_tokens=260)
     return finalize(ctx, out)
 
 

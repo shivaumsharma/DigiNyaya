@@ -118,7 +118,7 @@ def resolve_node(ctx: CaseContext) -> Iterator[dict]:
     yield _running("resolution", "Drafting the binding resolution order…")
     # Stream the findings token-by-token for a live "watch it write" effect.
     acc = ""
-    for delta in llm.generate_stream(llm.SYSTEM_PROMPT, resolution.findings_prompt(ctx), max_tokens=260):
+    for delta in llm.generate_stream(resolution.findings_prompt(ctx), system=llm.SYSTEM_PROMPT, max_tokens=260):
         acc += delta
         yield make_event("token", agent="resolution", payload={"delta": delta})
     res = resolution.finalize(ctx, acc or None)
@@ -185,9 +185,11 @@ def run_pipeline(ctx: CaseContext) -> Iterator[dict]:
     """Agents 1-4 with routing + loop, ending at the mediation pause."""
     yield make_event("orchestrator", agent="orchestrator", title=TITLES["orchestrator"], status="running",
                      detail="Initialising multi-agent workflow…")
+    llm_status = llm.status()
+    engine = llm_status.get("engine", llm_status.get("provider", "unknown"))
     yield make_event("orchestrator", agent="orchestrator", title=TITLES["orchestrator"], status="done",
-                     detail=f"Engaging agents · {llm.status()['engine']}.",
-                     payload={"engine": llm.status()["engine"], "llm": llm.is_available()})
+                     detail=f"Engaging agents · {engine}.",
+                     payload={"engine": engine, "llm": llm.is_available()})
     yield from _run(ctx, "ingest")
 
 

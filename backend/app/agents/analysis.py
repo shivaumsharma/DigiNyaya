@@ -99,7 +99,7 @@ def run(ctx: CaseContext) -> AgentResult:
         f"{wrap_untrusted('RESPONDENT_STATEMENT', r_text)}\n"
         f"Evidence on record: {ev} item(s). Assessed strength — claimant: {c_label}, respondent: {r_label}."
     )
-    out = llm.generate(llm.SYSTEM_PROMPT, prompt, max_tokens=160)
+    out = llm.generate(prompt, system=llm.SYSTEM_PROMPT, max_tokens=160)
     if out:
         neutral = out
         engine = "llm"
