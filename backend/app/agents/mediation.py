@@ -38,7 +38,19 @@ _NON_MONETARY_KINDS = {
     "declaration": "a declaration in the claimant's favour on the matter in dispute",
     "replacement": "replacement of the goods/services in question",
     "possession": "an order restoring possession of the property to the claimant",
+    "arbitration_referral": (
+        "an order referring the parties to arbitration in accordance with the "
+        "arbitration clause, with no adjudication of the merits by this forum"
+    ),
 }
+
+# Unlike the other non-monetary kinds (which can legitimately carry an
+# "in addition, pay incidental compensation" secondary clause -- e.g. an
+# injunction PLUS damages is common in practice), an arbitration referral
+# never can: a forum that has just recognised "this dispute isn't ours to
+# decide" cannot, in the same breath, award damages on the merits. See
+# _relief_phrase() and the interest-rate computation below.
+_NO_INCIDENTAL_AMOUNT_KINDS = {"arbitration_referral"}
 
 
 def run(ctx: CaseContext) -> AgentResult:
@@ -135,8 +147,25 @@ def run(ctx: CaseContext) -> AgentResult:
     # non-monetary primary ask (e.g. injunction + damages), so it still
     # feeds a secondary monetary line in resolution.py's order.
     requested_relief = ctx.ingestion.relief_type_requested if ctx.ingestion else "monetary"
-    if relief_kind != "dismissed" and requested_relief != "monetary":
+    if requested_relief != "monetary" and (relief_kind != "dismissed" or requested_relief == "arbitration_referral"):
+        # Arbitration referral is the one non-monetary kind that overrides
+        # even an outright "dismissed" ratio: unlike injunction/declaration/
+        # replacement/possession (genuinely merits-based asks -- nothing to
+        # grant if the claimant's case was too weak), a referral to
+        # arbitration is a THRESHOLD/jurisdictional question that doesn't
+        # depend on how strong either side's merits case is at all. Found
+        # via a synthetic test: a weak claimant + an arbitration-clause
+        # defense pushed net_strength negative, so `_ratio_to_type()`
+        # returned "dismissed" before this override could ever run --
+        # incorrectly treating "send this to arbitration" as "the claimant
+        # lost on the merits", which misrepresents what actually happened.
         relief_kind = requested_relief
+    if relief_kind in _NO_INCIDENTAL_AMOUNT_KINDS:
+        # An arbitration referral means this forum isn't deciding the
+        # merits at all -- it cannot simultaneously award incidental
+        # damages, unlike injunction/declaration/replacement/possession
+        # which legitimately can carry one alongside the primary relief.
+        recommended_amount = 0.0
     n_prec = len(precedents)
     full_relief = sum(1 for r in ratios if r >= 0.99)
     pct_full = round(100 * full_relief / len(ratios))
@@ -154,7 +183,7 @@ def run(ctx: CaseContext) -> AgentResult:
             if recommended_amount > 0:
                 return f"{base}, plus incidental compensation of {nlp.inr(recommended_amount)}"
             return base
-        return f"{relief_kind.replace('_', ' ')} of {nlp.inr(recommended_amount)}"
+        return f"{nlp.monetary_relief_phrase(relief_kind, ctx.dispute_type)} of {nlp.inr(recommended_amount)}"
 
     # Report only what we can actually source: the percentage is computed over the
     # precedents that were genuinely retrieved for THIS case (no fabricated cohort).

@@ -134,6 +134,36 @@ class SupportedLanguagesResponse(BaseModel):
     pipeline: str
 
 
+class DocumentOut(BaseModel):
+    id: str
+    original_filename: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_size: Optional[int] = None
+    is_scanned: bool = False
+    extraction_status: str = "pending"
+    ocr_confidence: Optional[float] = None
+    ocr_engine: Optional[str] = None
+    error_message: Optional[str] = None
+    uploaded_at: Optional[str] = None
+
+
+class DocumentDetailOut(DocumentOut):
+    raw_ocr_text: Optional[str] = None
+    cleaned_text: Optional[str] = None
+
+
+class DiscrepancyOut(BaseModel):
+    id: str
+    document_ids: list[str]
+    discrepancy_type: str
+    severity: str
+    confidence_score: float
+    explanation: Optional[str] = None
+    source_location: Optional[str] = None
+    flagged_for_review: bool
+    created_at: Optional[str] = None
+
+
 class CaseView(BaseModel):
     case_id: str
     status: CaseStatus

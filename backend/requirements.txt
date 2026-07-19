@@ -4,3 +4,10 @@ pydantic==2.10.4
 python-multipart==0.0.20
 python-dotenv==1.2.2
 requests>=2.32.0
+
+# Document ingestion / OCR (see README's "Document upload, OCR & discrepancy
+# detection" section -- Tesseract itself is a separate system binary, not
+# pip-installable)
+pymupdf==1.28.0
+pytesseract==0.3.13
+pillow==12.1.1

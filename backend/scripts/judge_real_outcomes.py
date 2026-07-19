@@ -109,6 +109,10 @@ def judge(case: dict, ai: dict) -> dict | None:
     )
     prompt = (
         "Compare an AI's dispute decision to what a REAL Indian court actually decided. "
+        "'AI DECIDED' always describes the AI's own generic roles: 'the claimant' is whichever party "
+        "brought the claim (the plaintiff in the real judgment below, even if that's a bank or company, "
+        "not a consumer), and 'the respondent' is the defendant. Map roles by WHO SUED WHOM, not by "
+        "which vocabulary sounds like a refund. "
         "match=same side wins, similar relief. partial=same side wins, different relief. "
         "mismatch=opposite side wins, or one side got relief while the real case was dismissed "
         "(or vice versa). A non-monetary relief type (injunction/declaration/replacement/possession) "

@@ -29,6 +29,10 @@ _NON_MONETARY_ACTIONS = {
     ),
     "replacement": "provide the claimant a replacement of like kind and quality for the goods/services in dispute",
     "possession": "hand over vacant possession of the property in dispute to the claimant",
+    "arbitration_referral": (
+        "refer the parties to arbitration in accordance with the arbitration clause between them, without "
+        "adjudication of the merits of this dispute by this forum"
+    ),
 }
 
 
@@ -166,7 +170,7 @@ def finalize(ctx: CaseContext, findings_text: str | None) -> AgentResult:
 
     # Only a consensual (mediated) settlement carries binding, enforceable language.
     binding = via_mediation and not requires_signoff
-    relief_for = med.type.replace("_", " ") if med else "relief"
+    relief_for = nlp.monetary_relief_phrase(med.type, ctx.dispute_type) if med else "relief"
     interest_rate = med.interest_rate_pct if med else 0.0
     interest_clause = (
         f" plus simple interest at {interest_rate:g}% per annum on that sum from the date of this "

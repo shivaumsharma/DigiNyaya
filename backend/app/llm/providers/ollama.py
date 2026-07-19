@@ -33,6 +33,8 @@ class OllamaProvider(BaseLLMProvider):
 
         self.timeout = config.timeout
 
+        self.embed_timeout = config.embed_timeout
+
     # ---------------------------------------------------------
 
     def _chat(
@@ -207,7 +209,7 @@ class OllamaProvider(BaseLLMProvider):
                 "model": self.embedding_model,
                 "prompt": text,
             },
-            timeout=self.timeout,
+            timeout=self.embed_timeout,
         )
 
         response.raise_for_status()

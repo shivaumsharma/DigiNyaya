@@ -29,6 +29,7 @@ from fastapi.responses import StreamingResponse
 
 from . import db, jobs, llm
 from .core.events import TERMINAL, bus, stream_from_queue
+from .routers.documents import router as documents_router
 from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
 from .language.config import (
     SUPPORTED_LANGUAGES,
@@ -66,6 +67,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(documents_router)
 
 
 SAMPLE_CLAIM = {

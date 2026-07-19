@@ -118,6 +118,50 @@ ollama pull nomic-embed-text
 > `set DIGINYAYA_LLM_MODEL=qwen2.5:1.5b` (Windows) before launching uvicorn. The backend
 > pre-warms the model on startup so the first demo call is fast.
 
+### Document upload, OCR & discrepancy detection
+
+Citizens can attach real PDF/JPEG/PNG evidence at filing time (`POST /api/cases/{id}/documents`,
+multipart, up to `DIGINYAYA_MAX_UPLOAD_MB` per file — default 15MB). Extraction and a
+discrepancy-check across a case's documents (conflicting dates/amounts, inconsistent names,
+missing signatures) run as background jobs, the same decoupled-from-the-HTTP-request pattern
+as the 5-agent pipeline (see `app/jobs.py`).
+
+**Tesseract OCR setup (needed for scanned PDFs and photographed documents — native-text PDFs
+extract directly via PyMuPDF and need no OCR engine at all):**
+
+```bash
+# Windows: install the UB-Mannheim Tesseract build from
+# https://github.com/UB-Mannheim/tesseract/wiki, then confirm it's on PATH:
+tesseract --version
+
+# macOS
+brew install tesseract tesseract-lang
+
+# Linux (Debian/Ubuntu)
+sudo apt install tesseract-ocr tesseract-ocr-hin tesseract-ocr-ben  # + other Indic packs as needed
+```
+
+Without Tesseract installed, native-text PDF uploads still work fully; scanned PDFs and
+image uploads fail extraction gracefully (`extraction_status: failed` with an `error_message`,
+never a crash) — matching how every other external dependency in this app degrades (see the
+_AI engine_ section above).
+
+| Variable                     | Default          | Purpose                                                                                          |
+| ----------------------------- | ---------------- | ------------------------------------------------------------------------------------------------ |
+| `TESSERACT_LANG`             | `eng`             | Tesseract language pack(s), e.g. `eng+hin+ben` — only packs actually installed can be listed here |
+| `DIGINYAYA_STORAGE_PROVIDER` | `local`           | `local` is the only implemented backend today; `s3`/`gcs` raise `NotImplementedError` from `app/storage/factory.py` until implemented |
+| `DIGINYAYA_STORAGE_ROOT`     | `backend/uploads` | Local filesystem root for uploaded files (dev-only; not committed — see `.gitignore`)             |
+| `DIGINYAYA_MAX_UPLOAD_MB`    | `15`              | Per-file upload size cap                                                                          |
+
+**Sarvam OCR/vision evaluation note:** Sarvam's own documentation references a "Sarvam
+Vision"/Document Intelligence product ("turn PDFs, scans, and handwritten documents into
+structured, searchable data"), which could plausibly replace Tesseract with better Indic-script
+coverage. It is **not** implemented in `app/llm/providers/sarvam.py` today — the detailed API
+reference (endpoint shape, pricing, exact Indic-language coverage) wasn't reachable during this
+evaluation. This is a real, worth-revisiting follow-up, not a blocker: Tesseract is a fully
+working default, and swapping it in later only requires a new implementation behind
+`app/documents/extraction.py`'s `ocr_image()` contract, not a redesign.
+
 ---
 
 ## Running it locally

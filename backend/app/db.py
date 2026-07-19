@@ -55,6 +55,41 @@ def init_db() -> None:
             )"""
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_case ON events(case_id, seq)")
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                original_filename TEXT,
+                storage_path TEXT,
+                mime_type TEXT,
+                file_size INTEGER,
+                is_scanned INTEGER,
+                raw_ocr_text TEXT,
+                cleaned_text TEXT,
+                extraction_status TEXT DEFAULT 'pending',
+                ocr_confidence REAL,
+                ocr_engine TEXT,
+                error_message TEXT,
+                uploaded_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )"""
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_case ON documents(case_id)")
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS discrepancies (
+                id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                document_ids TEXT NOT NULL,
+                discrepancy_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                confidence_score REAL NOT NULL,
+                explanation TEXT,
+                source_location TEXT,
+                flagged_for_review INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )"""
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_discrepancies_case ON discrepancies(case_id)")
         conn.commit()
 
 
@@ -123,6 +158,118 @@ def append_event(case_id: str, event: dict) -> int:
         )
         conn.commit()
         return cur.lastrowid
+
+
+# ----------------------------- documents ----------------------------- #
+def insert_document(doc: dict) -> None:
+    with _lock:
+        conn = _connect()
+        conn.execute(
+            """INSERT INTO documents(
+                id, case_id, original_filename, storage_path, mime_type, file_size,
+                is_scanned, raw_ocr_text, cleaned_text, extraction_status,
+                ocr_confidence, ocr_engine, error_message
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                doc["id"],
+                doc["case_id"],
+                doc.get("original_filename"),
+                doc.get("storage_path"),
+                doc.get("mime_type"),
+                doc.get("file_size"),
+                int(bool(doc.get("is_scanned", False))),
+                doc.get("raw_ocr_text"),
+                doc.get("cleaned_text"),
+                doc.get("extraction_status", "pending"),
+                doc.get("ocr_confidence"),
+                doc.get("ocr_engine"),
+                doc.get("error_message"),
+            ),
+        )
+        conn.commit()
+
+
+def _row_to_document(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    d["is_scanned"] = bool(d["is_scanned"])
+    return d
+
+
+def get_document(document_id: str) -> Optional[dict]:
+    with _lock:
+        row = _connect().execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
+    return _row_to_document(row) if row else None
+
+
+def list_documents(case_id: str) -> list[dict]:
+    with _lock:
+        rows = _connect().execute(
+            "SELECT * FROM documents WHERE case_id=? ORDER BY uploaded_at", (case_id,)
+        ).fetchall()
+    return [_row_to_document(r) for r in rows]
+
+
+_DOCUMENT_COLUMNS = {
+    "original_filename", "storage_path", "mime_type", "file_size", "is_scanned",
+    "raw_ocr_text", "cleaned_text", "extraction_status", "ocr_confidence",
+    "ocr_engine", "error_message",
+}
+
+
+def update_document(document_id: str, **fields) -> Optional[dict]:
+    unknown = set(fields) - _DOCUMENT_COLUMNS
+    if unknown:
+        raise ValueError(f"update_document got unknown field(s): {unknown}")
+    if not fields:
+        return get_document(document_id)
+    with _lock:
+        conn = _connect()
+        set_clause = ", ".join(f"{k}=?" for k in fields) + ", updated_at=datetime('now')"
+        values = list(fields.values())
+        if "is_scanned" in fields:
+            idx = list(fields).index("is_scanned")
+            values[idx] = int(bool(values[idx]))
+        conn.execute(f"UPDATE documents SET {set_clause} WHERE id=?", (*values, document_id))
+        conn.commit()
+    return get_document(document_id)
+
+
+# ----------------------------- discrepancies ----------------------------- #
+def insert_discrepancy(disc: dict) -> None:
+    with _lock:
+        conn = _connect()
+        conn.execute(
+            """INSERT INTO discrepancies(
+                id, case_id, document_ids, discrepancy_type, severity,
+                confidence_score, explanation, source_location, flagged_for_review
+            ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                disc["id"],
+                disc["case_id"],
+                json.dumps(disc.get("document_ids", [])),
+                disc["discrepancy_type"],
+                disc["severity"],
+                disc["confidence_score"],
+                disc.get("explanation"),
+                disc.get("source_location"),
+                int(bool(disc.get("flagged_for_review", False))),
+            ),
+        )
+        conn.commit()
+
+
+def list_discrepancies(case_id: str) -> list[dict]:
+    with _lock:
+        rows = _connect().execute(
+            "SELECT * FROM discrepancies WHERE case_id=? ORDER BY created_at", (case_id,)
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["document_ids"] = json.loads(d["document_ids"] or "[]")
+        d["flagged_for_review"] = bool(d["flagged_for_review"])
+        out.append(d)
+    return out
 
 
 def get_events(case_id: str, after_seq: int = 0) -> list[dict]:
