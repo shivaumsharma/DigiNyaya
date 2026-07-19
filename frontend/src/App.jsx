@@ -3,9 +3,11 @@ import { Outlet, Link, useNavigate } from 'react-router-dom'
 import { useSession } from './session.jsx'
 import { api } from './api.js'
 import { Scales, Cpu } from './icons.jsx'
+import { useLanguage, SUPPORTED_UI_LANGUAGES } from './i18n/LanguageContext.jsx'
 
 export default function App() {
   const { user, logout } = useSession()
+  const { lang, setLang, t } = useLanguage()
   const navigate = useNavigate()
   const [ai, setAi] = useState(null)
 
@@ -23,41 +25,55 @@ export default function App() {
                 <Scales />
               </span>
               Digi<span className="nya">Nyaya</span>
-              <span className="pill">AI-Native ODR</span>
+              <span className="pill">{t('app.pill')}</span>
             </Link>
             {ai && (
               <span className={`engine-badge ${ai.available ? 'live' : 'scripted'}`} title={ai.engine}>
                 <Cpu width={14} height={14} />
-                {ai.available ? `Live LLM · ${ai.model}` : 'Scripted engine'}
+                {ai.available ? t('app.engineLive', { model: ai.model }) : t('app.engineScripted')}
               </span>
             )}
           </div>
-          {user ? (
-            <div className="flex gap" style={{ alignItems: 'center' }}>
-              <div className="user-chip">
-                <span className="avatar">{user.name?.[0]?.toUpperCase() || 'C'}</span>
-                <span>
-                  {user.name}
-                  <br />
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>
-                    {user.masked_aadhaar}
+          <div className="flex gap" style={{ alignItems: 'center' }}>
+            <select
+              className="lang-select"
+              aria-label="Language"
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+            >
+              {SUPPORTED_UI_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+            {user ? (
+              <div className="flex gap" style={{ alignItems: 'center' }}>
+                <div className="user-chip">
+                  <span className="avatar">{user.name?.[0]?.toUpperCase() || 'C'}</span>
+                  <span>
+                    {user.name}
+                    <br />
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>
+                      {user.masked_aadhaar}
+                    </span>
                   </span>
-                </span>
+                </div>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '8px 14px' }}
+                  onClick={() => {
+                    logout()
+                    navigate('/')
+                  }}
+                >
+                  {t('app.signOut')}
+                </button>
               </div>
-              <button
-                className="btn btn-ghost"
-                style={{ padding: '8px 14px' }}
-                onClick={() => {
-                  logout()
-                  navigate('/')
-                }}
-              >
-                Sign out
-              </button>
-            </div>
-          ) : (
-            <span className="user-chip">Aadhaar-secured</span>
-          )}
+            ) : (
+              <span className="user-chip">{t('app.aadhaarSecured')}</span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -67,8 +83,8 @@ export default function App() {
 
       <footer className="footer">
         <div className="container between flex">
-          <span>DigiNyaya · Hackathon MVP · Tier 1 Autonomous Resolution</span>
-          <span>Demo prototype — not a real court order</span>
+          <span>{t('app.footerLeft')}</span>
+          <span>{t('app.footerRight')}</span>
         </div>
       </footer>
     </div>

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api.js'
+import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { Clock, ArrowRight, Bot } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
 
 export default function Respondent() {
   const { id } = useParams()
+  const { lang, t } = useLanguage()
   const navigate = useNavigate()
   const [caseData, setCaseData] = useState(null)
   const [statement, setStatement] = useState('')
@@ -14,8 +16,8 @@ export default function Respondent() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api.getCase(id).then(setCaseData).catch(() => {})
-  }, [id])
+    api.getCase(id, lang).then(setCaseData).catch(() => {})
+  }, [id, lang])
 
   async function loadSampleResponse() {
     const { response } = await api.sampleClaim()
@@ -52,67 +54,56 @@ export default function Respondent() {
     <section className="page fade-in">
       <Stepper current={2} />
       <div className="page-head">
-        <h2>Respondent notified</h2>
-        <p>
-          {caseData ? (
-            <>
-              <strong>{caseData.respondent?.name}</strong> has been served digitally for case{' '}
-              <strong>{id}</strong> and has <strong>72 hours</strong> to respond. For the demo, act
-              as the respondent below — or let the window lapse.
-            </>
-          ) : (
-            'Loading case…'
-          )}
-        </p>
+        <h2>{t('respondent.title')}</h2>
+        <p>{caseData ? t('respondent.notice', { name: caseData.respondent?.name, id }) : t('respondent.loading')}</p>
       </div>
 
       <div className="flex gap" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div className="card card-pad" style={{ flex: 1, minWidth: 340, maxWidth: 560 }}>
           <div className="flex between" style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: '1.1rem' }}>Respondent's reply</h3>
+            <h3 style={{ fontSize: '1.1rem' }}>{t('respondent.replyTitle')}</h3>
             <button className="btn btn-ghost" style={{ padding: '7px 13px' }} onClick={loadSampleResponse} type="button">
-              Load demo reply
+              {t('respondent.loadDemoReply')}
             </button>
           </div>
           <div className="field">
-            <label>Statement</label>
+            <label>{t('respondent.fieldStatement')}</label>
             <textarea
               className="textarea"
               style={{ minHeight: 110 }}
               value={statement}
               onChange={(e) => setStatement(e.target.value)}
-              placeholder="The respondent's side of the story…"
+              placeholder={t('respondent.placeholderStatement')}
             />
           </div>
           <div className="field-row">
             <div className="field">
-              <label>Counter-offer (₹, optional)</label>
+              <label>{t('respondent.fieldCounter')}</label>
               <input className="input" type="number" value={counter} onChange={(e) => setCounter(e.target.value)} placeholder="e.g. 20000" />
             </div>
             <div className="field">
-              <label>Liability</label>
+              <label>{t('respondent.fieldLiability')}</label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: '0.9rem', color: 'var(--text)', marginTop: 10 }}>
                 <input type="checkbox" checked={accepts} onChange={(e) => setAccepts(e.target.checked)} />
-                Respondent accepts liability
+                {t('respondent.acceptsLiability')}
               </label>
             </div>
           </div>
           <button className="btn btn-primary btn-block" disabled={busy} onClick={submitResponse}>
-            Submit response & start AI resolution <ArrowRight />
+            {t('respondent.submit')} <ArrowRight />
           </button>
         </div>
 
         <div className="card card-pad" style={{ width: 320 }}>
           <div className="flex gap" style={{ alignItems: 'center', marginBottom: 8 }}>
             <Clock width={20} height={20} />
-            <h3 style={{ fontSize: '1.05rem' }}>No response?</h3>
+            <h3 style={{ fontSize: '1.05rem' }}>{t('respondent.noResponseTitle')}</h3>
           </div>
           <p className="muted" style={{ fontSize: '0.88rem', marginBottom: 18 }}>
-            If the respondent ignores the notice, the case proceeds uncontested. The agents will
-            treat the allegations as substantially admitted.
+            {t('respondent.noResponseText')}
           </p>
           <button className="btn btn-block" disabled={busy} onClick={skip}>
-            <Bot width={16} height={16} /> Skip — proceed uncontested
+            <Bot width={16} height={16} /> {t('respondent.skip')}
           </button>
         </div>
       </div>

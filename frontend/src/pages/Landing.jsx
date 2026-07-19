@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { useSession } from '../session.jsx'
+import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { Shield, ArrowRight, Scales } from '../icons.jsx'
 
 export default function Landing() {
   const { user, login } = useSession()
+  const { t } = useLanguage()
   const navigate = useNavigate()
   const [name, setName] = useState('Ananya Sharma')
   const [aadhaar, setAadhaar] = useState('4821')
@@ -32,55 +34,51 @@ export default function Landing() {
       <div className="hero-grid">
         <div>
           <span className="eyebrow">
-            <Scales width={15} height={15} /> Resolving India's 50 million pending cases
+            <Scales width={15} height={15} /> {t('landing.eyebrow')}
           </span>
           <h1>
-            Justice in <span className="grad">30 minutes</span>,
-            <br /> not <span className="grad">7 years</span>.
+            {t('landing.heroPre')} <span className="grad">{t('landing.heroHighlight1')}</span>,
+            <br /> {t('landing.heroMid')} <span className="grad">{t('landing.heroHighlight2')}</span>.
           </h1>
-          <p className="lede">
-            DigiNyaya is an AI-native digital court. Five specialised agents parse your
-            claim, research precedent, mediate and issue a binding resolution — end to end,
-            with a human only where one is truly needed.
-          </p>
+          <p className="lede">{t('landing.lede')}</p>
 
           <div className="stat-row">
             <div className="stat">
-              <div className="num">5 agents</div>
-              <div className="lbl">Coordinated by an orchestrator</div>
+              <div className="num">{t('landing.stat1Num')}</div>
+              <div className="lbl">{t('landing.stat1Lbl')}</div>
             </div>
             <div className="stat">
-              <div className="num">~4 min</div>
-              <div className="lbl">vs 18 months in Consumer Forum</div>
+              <div className="num">{t('landing.stat2Num')}</div>
+              <div className="lbl">{t('landing.stat2Lbl')}</div>
             </div>
             <div className="stat">
-              <div className="num">Tier 1</div>
-              <div className="lbl">Fully autonomous resolution</div>
+              <div className="num">{t('landing.stat3Num')}</div>
+              <div className="lbl">{t('landing.stat3Lbl')}</div>
             </div>
           </div>
         </div>
 
         <div className="card login-card fade-in">
-          <h3>Log in to file a dispute</h3>
-          <p className="sub">Secure citizen access via Aadhaar (simulated for demo).</p>
+          <h3>{t('landing.loginTitle')}</h3>
+          <p className="sub">{t('landing.loginSub')}</p>
           {user ? (
             <button className="btn btn-primary btn-block btn-lg" onClick={() => navigate('/disputes')}>
-              Continue as {user.name} <ArrowRight />
+              {t('landing.continueAs', { name: user.name })} <ArrowRight />
             </button>
           ) : (
             <form onSubmit={handleLogin}>
               <div className="field">
-                <label>Full name</label>
+                <label>{t('landing.fieldName')}</label>
                 <input
                   className="input"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="As per Aadhaar"
+                  placeholder={t('landing.placeholderName')}
                   required
                 />
               </div>
               <div className="field">
-                <label>Aadhaar — last 4 digits</label>
+                <label>{t('landing.fieldAadhaar')}</label>
                 <input
                   className="input"
                   value={aadhaar}
@@ -92,10 +90,10 @@ export default function Landing() {
               </div>
               {err && <p style={{ color: 'var(--red)', fontSize: '0.85rem', marginBottom: 12 }}>{err}</p>}
               <button className="btn btn-primary btn-block btn-lg" disabled={loading || aadhaar.length !== 4}>
-                {loading ? 'Verifying…' : 'Verify & continue'} <ArrowRight />
+                {loading ? t('landing.verifying') : t('landing.verifyContinue')} <ArrowRight />
               </button>
               <div className="aadhaar-badge">
-                <Shield width={16} height={16} /> OTP-verified identity · zero documents to carry
+                <Shield width={16} height={16} /> {t('landing.otpBadge')}
               </div>
             </form>
           )}

@@ -68,6 +68,15 @@ def _run_pipeline(case_id: str) -> None:
                     mediation=ctx.mediation.model_dump() if ctx.mediation else None,
                     _ctx=ctx.model_dump(mode="json"),
                 )
+            elif ev.get("type") == "escalated_terminal":
+                # Safety Gate CHECKPOINT A blocked the case before any agent
+                # ran -- persist the escalation, not a pipeline result.
+                db.update_case(
+                    case_id,
+                    status="escalated",
+                    escalation=ctx.escalation,
+                    _ctx=ctx.model_dump(mode="json"),
+                )
 
         _pump(case_id, graph.run_pipeline(ctx), on_event=on_event)
     except Exception as exc:  # surface failures as an event instead of dying silently
@@ -100,6 +109,17 @@ def _run_resolution(case_id: str, via_mediation: bool) -> None:
                     case_id,
                     status="resolved",
                     resolution=ctx.resolution.model_dump() if ctx.resolution else None,
+                    mediation_accepted=via_mediation,
+                    _ctx=ctx.model_dump(mode="json"),
+                )
+            elif ev.get("type") == "escalated_terminal":
+                # Safety Gate CHECKPOINT B discarded the drafted resolution --
+                # persist the escalation instead; the resolution the agents
+                # produced is never written to the case record at all.
+                db.update_case(
+                    case_id,
+                    status="escalated",
+                    escalation=ctx.escalation,
                     mediation_accepted=via_mediation,
                     _ctx=ctx.model_dump(mode="json"),
                 )

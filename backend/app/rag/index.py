@@ -68,10 +68,17 @@ def _keyword_score(p: dict, signals: set[str]) -> float:
     return (0.8 * base + 0.2) * _recency(p.get("year", _CURRENT_YEAR))
 
 
-def retrieve(query: str, signals: list[str], *, k: int = 5, min_results: int = 3) -> dict:
-    """Return ranked precedents + coverage + method."""
+def retrieve(
+    query: str,
+    signals: list[str],
+    *,
+    category: str = "consumer_dispute",
+    k: int = 5,
+    min_results: int = 3,
+) -> dict:
+    """Return ranked precedents + coverage + method, scoped to *category*."""
     precedents = load_precedents()
-    consumer = [p for p in precedents if p.get("category") == "consumer_dispute"]
+    in_category = [p for p in precedents if p.get("category") == category]
     sigset = set(signals)
 
     method = "keyword"
@@ -85,16 +92,16 @@ def retrieve(query: str, signals: list[str], *, k: int = 5, min_results: int = 3
         if qvec:
             method = "semantic"
             qv = qvec[0]
-            # Map corpus index -> vector (consumer subset preserves order).
+            # Map corpus index -> vector (full corpus preserves order).
             idx_by_id = {p["id"]: i for i, p in enumerate(precedents)}
-            for p in consumer:
+            for p in in_category:
                 sim = _cosine(qv, _doc_vectors[idx_by_id[p["id"]]])
                 # Blend semantic similarity with a mild recency prior.
                 scored.append((sim * 0.85 + _recency(p["year"]) * 0.15, p))
 
     if not scored:  # keyword fallback
         method = "keyword"
-        for p in consumer:
+        for p in in_category:
             scored.append((_keyword_score(p, sigset), p))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -150,8 +157,8 @@ def verify_citations(cited_ids: list[str], retrieved_ids: list[str]) -> list[str
     return [c for c in cited_ids if c in allowed]
 
 
-def decoy_candidates(retrieved_ids: list[str], *, k: int = 2) -> list[dict]:
-    """Sample consumer-dispute precedents that were NOT retrieved for this case.
+def decoy_candidates(retrieved_ids: list[str], category: str = "consumer_dispute", *, k: int = 2) -> list[dict]:
+    """Sample same-category precedents that were NOT retrieved for this case.
 
     Used to build a mixed candidate pool (real matches + decoys) so the
     Resolution agent's citation-selection step is a genuine test rather than a
@@ -161,6 +168,6 @@ def decoy_candidates(retrieved_ids: list[str], *, k: int = 2) -> list[dict]:
     import random
 
     precedents = load_precedents()
-    pool = [p for p in precedents if p.get("category") == "consumer_dispute" and p["id"] not in set(retrieved_ids)]
+    pool = [p for p in precedents if p.get("category") == category and p["id"] not in set(retrieved_ids)]
     random.shuffle(pool)
     return pool[:k]

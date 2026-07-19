@@ -17,24 +17,45 @@ from ..core.context import CaseContext, ResolutionDoc
 from . import nlp
 from .base import AgentResult
 
+# Action phrase for each non-monetary relief kind mediation.py may set
+# (see app.agents.nlp.detect_relief_type / mediation._NON_MONETARY_KINDS).
+# Filled in as the object of "The respondent shall ___" / "It is recommended
+# that the respondent ___" -- see finalize() below.
+_NON_MONETARY_ACTIONS = {
+    "injunction": "cease and/or reverse the conduct complained of by the claimant, as detailed in the findings above",
+    "declaration": (
+        "treat the claimant's position as set out in the findings above as upheld, and any contrary "
+        "instrument or action asserted by the respondent as of no legal effect"
+    ),
+    "replacement": "provide the claimant a replacement of like kind and quality for the goods/services in dispute",
+    "possession": "hand over vacant possession of the property in dispute to the claimant",
+}
+
 
 def findings_prompt(ctx: CaseContext) -> str:
     precedents = ctx.research.precedents if ctx.research else []
     med = ctx.mediation
     amount = med.amount if med else ctx.claim_amount
     compliance_days = med.compliance_days if med else 30
-    subtype = ctx.ingestion.dispute_subtype if ctx.ingestion else "consumer grievance"
+    subtype = ctx.ingestion.dispute_subtype if ctx.ingestion else nlp.dispute_label(ctx.dispute_type)
     lead = precedents[0].citation if precedents else "the cited authorities"
+    dismissed = bool(med and med.type == "dismissed")
+    outcome_line = (
+        "Outcome: the claimant's case is DISMISSED -- no relief awarded, the respondent's position "
+        "prevails on the record."
+        if dismissed
+        else f"Outcome: relief of {nlp.inr(amount)} payable within {compliance_days} days."
+    )
     return (
-        "Draft the 'Findings' section of a consumer dispute resolution order as 3 to 4 numbered "
-        "sentences. Neutral, formal, quasi-judicial tone. Use ONLY these facts; do not invent "
+        f"Draft the 'Findings' section of a {nlp.dispute_label(ctx.dispute_type)} resolution order as 3 to 4 "
+        "numbered sentences. Neutral, formal, quasi-judicial tone. Use ONLY these facts; do not invent "
         "amounts, dates or citations.\n\n"
         f"Claimant: {ctx.claimant_name}\nRespondent: {ctx.respondent_name}\nGrievance: {subtype}\n"
         f"Claim amount: {nlp.inr(ctx.claim_amount)}\n"
         f"Evidence items: {len(ctx.evidence)}\n"
         f"Respondent responded: {'no, uncontested' if ctx.respondent_submission is None else 'yes'}\n"
         f"Leading precedent: {lead}\n"
-        f"Outcome: relief of {nlp.inr(amount)} payable within {compliance_days} days."
+        f"{outcome_line}"
     )
 
 
@@ -59,7 +80,7 @@ def _select_citations(ctx: CaseContext, precedents: list) -> tuple[list[str], st
     if not llm.is_available():
         return deterministic, "scripted"
 
-    decoys = rag.decoy_candidates([p.id for p in precedents], k=2)
+    decoys = rag.decoy_candidates([p.id for p in precedents], ctx.dispute_type, k=2)
     pool = list(precedents[:5]) + [
         type(precedents[0])(
             id=d["id"], title=d["title"], court=d["court"], year=d["year"], citation=d["citation"],
@@ -78,7 +99,7 @@ def _select_citations(ctx: CaseContext, precedents: list) -> tuple[list[str], st
         "Below is a pool of precedent candidates. Some were retrieved as relevant to this case; "
         "others were not and should NOT be cited. Select ONLY the id(s) (at most 3) that genuinely "
         f"support the outcome for this dispute. Return JSON only, matching this schema: {schema}\n\n"
-        f"Dispute subtype: {ctx.ingestion.dispute_subtype if ctx.ingestion else 'consumer grievance'}\n"
+        f"Dispute subtype: {ctx.ingestion.dispute_subtype if ctx.ingestion else nlp.dispute_label(ctx.dispute_type)}\n"
         f"Claim amount: {nlp.inr(ctx.claim_amount)}\n\n"
         f"Candidates:\n{candidates_text}"
     )
@@ -126,15 +147,18 @@ def finalize(ctx: CaseContext, findings_text: str | None) -> AgentResult:
         citation_engine=citation_engine,
     )
 
-    subtype = ctx.ingestion.dispute_subtype if ctx.ingestion else "consumer grievance"
+    subtype = ctx.ingestion.dispute_subtype if ctx.ingestion else nlp.dispute_label(ctx.dispute_type)
+    dismissed = bool(med and med.type == "dismissed")
     basis = (
-        "by mutual consent following AI-facilitated mediation"
+        "the claimant not having established, on the record, an entitlement to relief"
+        if dismissed
+        else "by mutual consent following AI-facilitated mediation"
         if via_mediation
         else "as a non-binding AI recommendation, mediation having been declined"
     )
 
     engine = "scripted"
-    findings = _scripted_findings(ctx, subtype, amount, compliance_days)
+    findings = _scripted_findings(ctx, subtype, amount, compliance_days, dismissed=dismissed)
     if findings_text:
         parsed = _split(findings_text)
         if parsed:
@@ -143,16 +167,60 @@ def finalize(ctx: CaseContext, findings_text: str | None) -> AgentResult:
     # Only a consensual (mediated) settlement carries binding, enforceable language.
     binding = via_mediation and not requires_signoff
     relief_for = med.type.replace("_", " ") if med else "relief"
-    if binding:
+    interest_rate = med.interest_rate_pct if med else 0.0
+    interest_clause = (
+        f" plus simple interest at {interest_rate:g}% per annum on that sum from the date of this "
+        "order until payment is made in full"
+        if interest_rate
+        else ""
+    )
+    non_monetary_action = _NON_MONETARY_ACTIONS.get(med.type) if med else None
+    if dismissed:
         order = [
-            f"The respondent shall pay the claimant {nlp.inr(amount)} towards {relief_for}.",
+            "The claimant's case is dismissed for want of a stronger showing than the respondent's "
+            "position on the record.",
+            "No payment is ordered. Either party may bring fresh evidence for a renewed hearing.",
+        ]
+    elif non_monetary_action:
+        # The real ask (and what a real court would order) here is NOT
+        # primarily money -- e.g. an injunction, a declaration, a
+        # replacement in kind, or restoring possession. Forcing every
+        # outcome into "pay the claimant Rs. X" was confirmed, against real
+        # judgments, to misrepresent the actual relief in ~1 of every 4
+        # non-dismissed cases. `amount` (if > 0) is drafted as a SEPARATE,
+        # incidental line -- claims routinely seek both (e.g. injunction +
+        # damages), never as a substitute for the primary non-monetary order.
+        order = [
+            f"The respondent shall {non_monetary_action}."
+            if binding
+            else f"It is recommended that the respondent {non_monetary_action}.",
+            f"Compliance is due on or before {deadline.isoformat()} ({compliance_days} days).",
+        ]
+        if amount > 0:
+            order.append(
+                f"In addition, the respondent shall pay the claimant {nlp.inr(amount)} towards incidental "
+                f"compensation{interest_clause}."
+                if binding
+                else f"In addition, it is recommended that the respondent pay the claimant {nlp.inr(amount)} "
+                f"towards incidental compensation{interest_clause}."
+            )
+        order.append(
+            "Compliance shall be reported through the DigiNyaya portal; non-compliance will trigger "
+            "an automatic escalation notice and enforcement reference."
+            if binding
+            else "This recommendation becomes enforceable only upon the parties' written consent or, where "
+            "applicable, after human adjudication."
+        )
+    elif binding:
+        order = [
+            f"The respondent shall pay the claimant {nlp.inr(amount)} towards {relief_for}{interest_clause}.",
             f"Payment shall be completed on or before {deadline.isoformat()} ({compliance_days} days from this agreement).",
             "Compliance shall be reported through the DigiNyaya portal; non-compliance will trigger "
             "an automatic escalation notice and enforcement reference.",
         ]
     else:
         order = [
-            f"It is recommended that the respondent pay the claimant {nlp.inr(amount)} towards {relief_for}.",
+            f"It is recommended that the respondent pay the claimant {nlp.inr(amount)} towards {relief_for}{interest_clause}.",
             f"The suggested compliance window is on or before {deadline.isoformat()} ({compliance_days} days).",
             "This recommendation becomes enforceable only upon the parties' written consent or, where "
             "applicable, after human adjudication.",
@@ -165,6 +233,8 @@ def finalize(ctx: CaseContext, findings_text: str | None) -> AgentResult:
         subheader=(
             "Provisional Resolution Order (Tier 2 — AI-Assisted, Human Sign-off Pending)"
             if requires_signoff
+            else "Resolution — Claim Dismissed (Tier 1)"
+            if dismissed
             else "Settlement Agreement (Tier 1 — binding on the parties' consent under the Mediation Act, 2023)"
             if via_mediation
             else "Recommended Resolution (Tier 1 — non-binding, pending the parties' consent)"
@@ -186,24 +256,45 @@ def finalize(ctx: CaseContext, findings_text: str | None) -> AgentResult:
         engine=engine,
         composite_confidence=composite,
         footer=(
-            "Issued under the Online Dispute Resolution framework. This is a demonstration "
-            "order generated by DigiNyaya for a hackathon prototype and does not constitute a "
-            "court order or legal advice."
+            "Issued under the Online Dispute Resolution framework. This resolution is generated "
+            "by DigiNyaya's AI pipeline and does not constitute a court order or independent "
+            "legal advice."
         ),
     )
 
-    kind = "provisional (Tier 2)" if requires_signoff else "binding consent settlement" if binding else "non-binding recommendation"
+    kind = (
+        "provisional (Tier 2)" if requires_signoff
+        else "dismissal" if dismissed
+        else "binding consent settlement" if binding
+        else "non-binding recommendation"
+    )
     rejected = composite["citations_rejected"]
     detail = (
-        f"Drafted {kind}: {nlp.inr(amount)} within {compliance_days} days, "
-        f"citing {len(cited)} verified precedent(s)"
+        f"Drafted {kind}: "
+        + ("no relief awarded" if dismissed else f"{nlp.inr(amount)} within {compliance_days} days")
+        + f", citing {len(cited)} verified precedent(s)"
         + (f" ({rejected} proposed citation(s) rejected as unretrieved)" if rejected else "")
-        + f". Composite confidence {int(composite['score'] * 100)}%. Deadline {deadline.isoformat()}."
+        + f". Composite confidence {int(composite['score'] * 100)}%."
+        + ("" if dismissed else f" Deadline {deadline.isoformat()}.")
     )
     return AgentResult(output=doc, detail=detail, confidence=composite["score"], citations=cite_ids, engine=engine)
 
 
-def _scripted_findings(ctx: CaseContext, subtype: str, amount: float, days: int) -> list[str]:
+def _scripted_findings(ctx: CaseContext, subtype: str, amount: float, days: int, *, dismissed: bool = False) -> list[str]:
+    if dismissed:
+        return [
+            f"The claimant, {ctx.claimant_name}, asserted a case of '{subtype}' "
+            f"supported by {len(ctx.evidence)} item(s) of evidence.",
+            f"The respondent, {ctx.respondent_name}, "
+            + (
+                "did not respond, but the claimant's own record does not establish the claim on the "
+                "balance of the facts presented."
+                if ctx.respondent_submission is None
+                else "disputed the claim, and the response is at least as well-supported as the claimant's case."
+            ),
+            "On the facts and evidence presented, the claimant has not shown an entitlement to relief; "
+            "the case is dismissed without prejudice to fresh evidence.",
+        ]
     return [
         f"The claimant, {ctx.claimant_name}, established a prima facie case of '{subtype}' "
         f"supported by {len(ctx.evidence)} item(s) of evidence.",

@@ -43,7 +43,7 @@ export const api = {
   sampleClaim: () => jsonFetch('/sample-claim'),
   precedents: () => jsonFetch('/precedents'),
   createCase: (claim) => jsonFetch('/cases', { method: 'POST', body: JSON.stringify(claim) }),
-  getCase: (id) => jsonFetch(`/cases/${id}`),
+  getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${lang}` : ''}`),
   respond: (id, submission) =>
     jsonFetch(`/cases/${id}/respond`, { method: 'POST', body: JSON.stringify(submission) }),
   skipResponse: (id) => jsonFetch(`/cases/${id}/skip-response`, { method: 'POST' }),

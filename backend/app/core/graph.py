@@ -18,6 +18,7 @@ from typing import Callable, Iterator
 
 from .. import llm
 from ..agents import analysis, ingestion, mediation, research, resolution
+from . import safety_gate
 from .context import CaseContext, RouteDecision
 from .events import make_event
 
@@ -36,6 +37,21 @@ _TIER1_LABEL = "Tier 1 — Fully Autonomous AI Resolution"
 
 def _running(agent: str, detail: str) -> dict:
     return make_event("agent", agent=agent, title=TITLES[agent], status="running", detail=detail)
+
+
+def _escalated_event(ctx: CaseContext, result: safety_gate.EscalationResult) -> dict:
+    """Build the terminal event for a safety-gate block. ``ctx.escalation`` is
+    set by the caller before this is yielded so it survives persistence
+    (see jobs.py's on_event handlers)."""
+    ctx.escalation = result.to_dict()
+    return make_event(
+        "escalated_terminal",
+        detail=(
+            f"Escalated to human legal authority ({result.checkpoint}): "
+            f"{', '.join(result.triggered_conditions)}."
+        ),
+        payload=result.to_dict(),
+    )
 
 
 def _done(agent: str, result) -> dict:
@@ -123,6 +139,17 @@ def resolve_node(ctx: CaseContext) -> Iterator[dict]:
         yield make_event("token", agent="resolution", payload={"delta": delta})
     res = resolution.finalize(ctx, acc or None)
     ctx.resolution = res.output
+
+    # Safety Gate CHECKPOINT B -- runs on the finished output of all five
+    # agents, before the resolution is ever yielded (and therefore before
+    # jobs.py persists or streams it). A trigger here discards the drafted
+    # resolution entirely: neither this event nor the "done"/"resolved"
+    # events below are emitted, so the AI's answer never reaches the user.
+    escalation = safety_gate.check_escalation(ctx, ctx)
+    if escalation is not None:
+        yield _escalated_event(ctx, escalation)
+        return
+
     yield _done("resolution", res)
     yield make_event(
         "resolved",
@@ -183,6 +210,17 @@ def _run(ctx: CaseContext, start: str) -> Iterator[dict]:
 
 def run_pipeline(ctx: CaseContext) -> Iterator[dict]:
     """Agents 1-4 with routing + loop, ending at the mediation pause."""
+    # Safety Gate CHECKPOINT A -- runs on the raw case input before any agent
+    # sees it. A trigger here means the pipeline never executes at all.
+    escalation = safety_gate.check_escalation(ctx)
+    if escalation is not None:
+        yield make_event("orchestrator", agent="orchestrator", title=TITLES["orchestrator"], status="running",
+                         detail="Initialising multi-agent workflow…")
+        yield make_event("orchestrator", agent="orchestrator", title=TITLES["orchestrator"], status="done",
+                         detail="Safety gate check failed before agents were engaged.")
+        yield _escalated_event(ctx, escalation)
+        return
+
     yield make_event("orchestrator", agent="orchestrator", title=TITLES["orchestrator"], status="running",
                      detail="Initialising multi-agent workflow…")
     llm_status = llm.status()

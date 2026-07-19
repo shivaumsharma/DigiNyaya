@@ -1,30 +1,33 @@
 import { Scales, Download, Check } from '../icons.jsx'
+import { useLanguage } from '../i18n/LanguageContext.jsx'
 
 export default function ResolutionDoc({ doc }) {
+  const { t } = useLanguage()
+
   function download() {
     const lines = []
     lines.push(doc.header)
     lines.push(doc.subheader)
     lines.push('='.repeat(60))
-    lines.push(`Case ID: ${doc.case_id}`)
-    lines.push(`Date: ${doc.date}`)
-    lines.push(`Claimant: ${doc.parties.claimant}`)
-    lines.push(`Respondent: ${doc.parties.respondent}`)
-    lines.push(`Basis: Resolution ${doc.basis}`)
+    lines.push(`${t('resolutionDoc.case')} ${doc.case_id}`)
+    lines.push(`${t('resolutionDoc.date')} ${doc.date}`)
+    lines.push(`${t('resolutionDoc.claimant')} ${doc.parties.claimant}`)
+    lines.push(`${t('resolutionDoc.respondent')} ${doc.parties.respondent}`)
+    lines.push(`${t('resolutionDoc.txtBasisPrefix')} ${doc.basis}`)
     lines.push('')
-    lines.push('FINDINGS')
+    lines.push(t('resolutionDoc.txtFindings'))
     doc.findings.forEach((f, i) => lines.push(`  ${i + 1}. ${f}`))
     lines.push('')
-    lines.push('CITED PRECEDENTS')
+    lines.push(t('resolutionDoc.txtCitedPrecedents'))
     doc.cited_precedents.forEach((c) => {
       lines.push(`  - ${c.citation}`)
       lines.push(`    ${c.principle}`)
     })
     lines.push('')
-    lines.push('ORDER')
+    lines.push(t('resolutionDoc.txtOrder'))
     doc.order.forEach((o, i) => lines.push(`  ${i + 1}. ${o}`))
     lines.push('')
-    lines.push(`Compliance deadline: ${doc.compliance_deadline} (${doc.compliance_days} days)`)
+    lines.push(`${t('resolutionDoc.txtComplianceDeadline')} ${doc.compliance_deadline} (${doc.compliance_days} days)`)
     lines.push('')
     lines.push(doc.footer)
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
@@ -52,19 +55,19 @@ export default function ResolutionDoc({ doc }) {
         </div>
         <div className="doc-body">
           <div className="doc-meta">
-            <span><strong>Case:</strong> {doc.case_id}</span>
-            <span><strong>Date:</strong> {doc.date}</span>
-            <span><strong>Claimant:</strong> {doc.parties.claimant}</span>
-            <span><strong>Respondent:</strong> {doc.parties.respondent}</span>
+            <span><strong>{t('resolutionDoc.case')}</strong> {doc.case_id}</span>
+            <span><strong>{t('resolutionDoc.date')}</strong> {doc.date}</span>
+            <span><strong>{t('resolutionDoc.claimant')}</strong> {doc.parties.claimant}</span>
+            <span><strong>{t('resolutionDoc.respondent')}</strong> {doc.parties.respondent}</span>
           </div>
 
           <div className="doc-section">
-            <h4>Basis of Resolution</h4>
-            <p>This order is passed {doc.basis}, in the matter concerning a claim of {doc.claim_amount_display}.</p>
+            <h4>{t('resolutionDoc.basisTitle')}</h4>
+            <p>{t('resolutionDoc.basisText', { basis: doc.basis, amount: doc.claim_amount_display })}</p>
           </div>
 
           <div className="doc-section">
-            <h4>Findings</h4>
+            <h4>{t('resolutionDoc.findingsTitle')}</h4>
             <ol>
               {doc.findings.map((f, i) => (
                 <li key={i}>{f}</li>
@@ -73,7 +76,7 @@ export default function ResolutionDoc({ doc }) {
           </div>
 
           <div className="doc-section">
-            <h4>Precedents Relied Upon</h4>
+            <h4>{t('resolutionDoc.precedentsTitle')}</h4>
             {doc.cited_precedents.map((c, i) => (
               <div className="doc-cite" key={i}>
                 <div className="cc">{c.citation}</div>
@@ -83,7 +86,7 @@ export default function ResolutionDoc({ doc }) {
           </div>
 
           <div className="doc-section">
-            <h4>Operative Order</h4>
+            <h4>{t('resolutionDoc.orderTitle')}</h4>
             <div className="doc-order">
               <ol>
                 {doc.order.map((o, i) => (
@@ -99,10 +102,10 @@ export default function ResolutionDoc({ doc }) {
 
       <div className="flex gap mt">
         <button className="btn btn-primary" onClick={download}>
-          <Download width={16} height={16} /> Download resolution order
+          <Download width={16} height={16} /> {t('resolutionDoc.download')}
         </button>
         <span className="resolved-badge">
-          <Check width={16} height={16} /> Binding · {doc.via_mediation ? 'by mediation' : 'autonomous'}
+          <Check width={16} height={16} /> {t('resolutionDoc.binding')} · {doc.via_mediation ? t('resolutionDoc.byMediation') : t('resolutionDoc.autonomous')}
         </span>
       </div>
     </div>

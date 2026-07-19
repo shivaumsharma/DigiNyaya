@@ -22,7 +22,19 @@ SUBTYPE_LABELS = {
     "unauthorized_transaction": "Unauthorized transaction",
     "subscription": "Unwanted auto-renewal / subscription",
     "repair_delay": "Warranty repair delay",
+    "loan_default": "Non-repayment of a loan / money lent",
+    "unpaid_dues": "Unpaid dues / outstanding payment",
+    "cheque_dishonour": "Cheque dishonoured (bounced)",
+    "breach_of_agreement": "Breach of a written agreement",
 }
+
+# Categories allowed to be resolved fully autonomously (Tier 1) once confidence
+# clears the bar below. Money recovery, contract breach and cheque bounce
+# launch Tier-2-only (always AI-assisted, human sign-off required) — cheque
+# bounce in particular can carry criminal exposure under Section 138 of the
+# Negotiable Instruments Act, so these stay human-reviewed until precedent
+# coverage and eval results justify promoting a category into this set.
+TIER1_ELIGIBLE_TYPES = {"consumer_dispute"}
 
 
 def run(ctx: CaseContext) -> AgentResult:
@@ -37,9 +49,10 @@ def run(ctx: CaseContext) -> AgentResult:
     signals = nlp.extract_signals(combined)
     amounts = nlp.extract_amounts(claim_text)
     dates = nlp.extract_dates(claim_text)
+    relief_type_requested = nlp.detect_relief_type(combined)
 
     subtype_key = next((s for s in signals if s in SUBTYPE_LABELS), None)
-    subtype = SUBTYPE_LABELS.get(subtype_key, "General consumer grievance")
+    subtype = SUBTYPE_LABELS.get(subtype_key) or f"General {nlp.dispute_label(ctx.dispute_type)}"
     evidence_kinds = sorted({e.get("kind", "document") for e in evidence})
 
     # Confidence: driven by how clearly the case presents (recognised subtype,
@@ -58,16 +71,22 @@ def run(ctx: CaseContext) -> AgentResult:
     confidence = round(min(conf, 0.98), 2)
 
     eligible = (
-        ctx.dispute_type == "consumer_dispute"
+        ctx.dispute_type in TIER1_ELIGIBLE_TYPES
         and ctx.claim_amount > 0
         and len(evidence) >= 1
         and subtype_key is not None
+        # A non-monetary ask (injunction/declaration/replacement/possession)
+        # carries different, often larger real-world consequences than a
+        # refund -- ordering someone to vacate a property or undo an action
+        # is not something to auto-grant the same way a routine monetary
+        # refund is. Stays Tier 2 regardless of confidence.
+        and relief_type_requested == "monetary"
     )
     recommended_tier = 1 if (eligible and confidence >= 0.6) else 2
 
     reason = (
-        "Document-based consumer dispute with a quantified monetary claim, supporting "
-        "evidence and a clearly classified grievance — qualifies for fully autonomous "
+        f"Document-based {nlp.dispute_label(ctx.dispute_type)} with a quantified monetary claim, "
+        "supporting evidence and a clearly classified grievance — qualifies for fully autonomous "
         "Tier 1 resolution."
         if recommended_tier == 1
         else "Classification confidence or evidence is insufficient for full autonomy — "
@@ -88,11 +107,14 @@ def run(ctx: CaseContext) -> AgentResult:
         recommended_tier=recommended_tier,
         confidence=confidence,
         reasoning=reason,
+        relief_type_requested=relief_type_requested,
     )
 
     detail = (
         f"Parsed {len(evidence)} evidence item(s) and the claim narrative. "
         f"Classified as '{subtype}' with {int(confidence * 100)}% confidence. "
-        f"Detected {len(signals)} legal signal(s). Recommends Tier {recommended_tier}."
+        f"Detected {len(signals)} legal signal(s)."
+        + (f" Relief sought: {relief_type_requested}." if relief_type_requested != "monetary" else "")
+        + f" Recommends Tier {recommended_tier}."
     )
     return AgentResult(output=result, detail=detail, confidence=confidence, engine="scripted")

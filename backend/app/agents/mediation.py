@@ -18,6 +18,28 @@ from .base import AgentResult
 
 _ALLOWED_DAYS = [15, 21, 30, 45, 60]
 
+# Simple interest rate applied to any non-dismissed award, per annum from the
+# date of the order until payment. 6% is the rate most commonly seen across
+# the precedent corpus's own money-decree outcomes (and is the reasonable
+# default courts fall back to under Section 34 CPC absent a contractual
+# rate) -- a flat default, not case-by-case computed, since we don't
+# reliably have the transaction date needed to compute a precise historical
+# interest amount. Real courts routinely award interest as an ONGOING RATE
+# rather than a single precomputed lump sum, so expressing it as a rate +
+# order clause (see resolution.py) matches how the relief is actually
+# phrased in practice, rather than requiring exact date math.
+_DEFAULT_INTEREST_RATE_PCT = 6.0
+
+# Human-readable phrase for each non-monetary relief kind (app.agents.nlp's
+# detect_relief_type values), used in place of the "<kind> of Rs. X" phrasing
+# that only makes sense for a monetary outcome.
+_NON_MONETARY_KINDS = {
+    "injunction": "an injunction directing the respondent to stop/undo the conduct complained of",
+    "declaration": "a declaration in the claimant's favour on the matter in dispute",
+    "replacement": "replacement of the goods/services in question",
+    "possession": "an order restoring possession of the property to the claimant",
+}
+
 
 def run(ctx: CaseContext) -> AgentResult:
     precedents = ctx.research.precedents if ctx.research else []
@@ -30,31 +52,44 @@ def run(ctx: CaseContext) -> AgentResult:
     prec_min, prec_max = min(ratios), max(ratios)
     median_days = int(round(statistics.median(comp_days)))
     c_strength = analysis.strength_score.get("claimant", 0.7) if analysis else 0.7
+    r_strength = analysis.strength_score.get("respondent", 0.3) if analysis else 0.3
 
     # --- LLM structured reasoning ---
     engine = "scripted"
     validator_notes: list[str] = []
-    proposed_ratio = round(prec_mean * (0.7 + 0.3 * c_strength), 3)  # scripted default
+    # Scripted default: relief should track how much stronger the claimant's
+    # case is than the respondent's, not the claimant's score in isolation.
+    # The old formula (`prec_mean * (0.7 + 0.3*c_strength)`) compressed the
+    # multiplier into 0.7..1.0 regardless of the respondent's position, so
+    # even a claimant analysis.py rated barely-stronger-than-weak still got
+    # ~70%+ of the precedent mean -- structurally never near zero. Net
+    # strength lets a respondent whose position matches or beats the
+    # claimant's genuinely win no relief.
+    net_strength = c_strength - r_strength  # -1..+1, positive favors claimant
+    proposed_ratio = round(prec_mean * min(max(net_strength, 0.0) * 1.4, 1.0), 3)
     outcome_type = _ratio_to_type(proposed_ratio)
     compliance_days = median_days
     explanation = ""
 
     schema = (
-        '{"outcome_type": "full_refund|partial_refund|replacement|compensation", '
+        '{"outcome_type": "dismissed|full_refund|partial_refund|replacement|compensation", '
         '"relief_ratio": <number 0..1>, "compliance_days": <int>, '
         '"rationale": "<<=40 word neutral justification>"}'
     )
     prompt = (
-        "You are mediating a consumer dispute. Decide a fair settlement and return JSON only, "
+        f"You are mediating a {nlp.dispute_label(ctx.dispute_type)}. Decide a fair settlement and return JSON only, "
         f"matching this schema: {schema}\n\n"
         f"Claim amount: {nlp.inr(claim)}\n"
         f"Claimant case strength (0-1): {c_strength}\n"
+        f"Respondent case strength (0-1): {r_strength}\n"
         f"Respondent responded: {'no (uncontested)' if ctx.respondent_submission is None else 'yes'}\n"
         f"Precedent relief ratios observed: min {prec_min}, mean {round(prec_mean,2)}, max {prec_max}\n"
         f"Median precedent compliance window: {median_days} days\n"
         f"Leading authority: {precedents[0].citation if precedents else 'n/a'}\n"
-        "relief_ratio is the fraction of the claim to be refunded (1.0 = full). "
-        "Base it on the precedent ratios and the claimant's strength. Do not exceed the claim."
+        "relief_ratio is the fraction of the claim to be refunded (1.0 = full, 0.0 = no relief at all). "
+        "Base it on the precedent ratios and the RELATIVE strength of both sides -- if the respondent's "
+        "case is as strong as or stronger than the claimant's, use outcome_type 'dismissed' and "
+        "relief_ratio 0.0. Do not exceed the claim."
     )
     data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=220)
     if data:
@@ -71,9 +106,15 @@ def run(ctx: CaseContext) -> AgentResult:
         explanation = str(data.get("rationale") or "").strip()
 
     # --- Deterministic validator: clamp the numbers to a defensible band ---
-    lo, hi = max(prec_min * 0.4, 0.0), min(prec_max, 1.0)
+    # The floor is 0.0, NOT a fraction of prec_min. A floor derived from
+    # prec_min (e.g. `prec_min * 0.4`) forces SOME relief onto the claimant
+    # whenever the retrieved precedents themselves ever won anything, which
+    # is most of the time -- meaning the system could never actually agree
+    # with a respondent, no matter how weak the claimant's case was. The
+    # ceiling still caps relief at what precedent supports (never award more
+    # than the best comparable case did).
+    lo, hi = 0.0, min(prec_max, 1.0)
     clamped_ratio = min(max(proposed_ratio, lo), hi)
-    clamped_ratio = min(max(clamped_ratio, 0.0), 1.0)
     if abs(clamped_ratio - proposed_ratio) > 1e-6:
         validator_notes.append(
             f"Relief ratio adjusted from {round(proposed_ratio,2)} to {round(clamped_ratio,2)} to stay within the precedent band."
@@ -86,29 +127,76 @@ def run(ctx: CaseContext) -> AgentResult:
         compliance_days = nearest
 
     relief_kind = _ratio_to_type(clamped_ratio)
+    # A non-monetary ask (injunction/declaration/replacement/possession)
+    # overrides the ratio-derived monetary bucket -- UNLESS the case was
+    # dismissed outright, in which case there's nothing to grant regardless
+    # of what kind of relief was sought. `recommended_amount` is left as
+    # computed: real claims routinely seek incidental damages ALONGSIDE a
+    # non-monetary primary ask (e.g. injunction + damages), so it still
+    # feeds a secondary monetary line in resolution.py's order.
+    requested_relief = ctx.ingestion.relief_type_requested if ctx.ingestion else "monetary"
+    if relief_kind != "dismissed" and requested_relief != "monetary":
+        relief_kind = requested_relief
     n_prec = len(precedents)
     full_relief = sum(1 for r in ratios if r >= 0.99)
     pct_full = round(100 * full_relief / len(ratios))
+    interest_rate_pct = _DEFAULT_INTEREST_RATE_PCT if (relief_kind != "dismissed" and recommended_amount > 0) else 0.0
+
+    non_monetary = relief_kind in _NON_MONETARY_KINDS
+
+    def _relief_phrase() -> str:
+        # "injunction of Rs. X" reads wrong -- a non-monetary kind is the
+        # relief itself, with any recommended_amount being a SEPARATE,
+        # incidental monetary component alongside it (e.g. injunction +
+        # damages), not "X worth of injunction".
+        if non_monetary:
+            base = _NON_MONETARY_KINDS[relief_kind]
+            if recommended_amount > 0:
+                return f"{base}, plus incidental compensation of {nlp.inr(recommended_amount)}"
+            return base
+        return f"{relief_kind.replace('_', ' ')} of {nlp.inr(recommended_amount)}"
 
     # Report only what we can actually source: the percentage is computed over the
     # precedents that were genuinely retrieved for THIS case (no fabricated cohort).
-    headline = (
-        f"Across {n_prec} closely-matched precedent{'s' if n_prec != 1 else ''}, "
-        f"{pct_full}% awarded full relief. Recommended resolution: "
-        f"{relief_kind.replace('_', ' ')} of {nlp.inr(recommended_amount)} within {compliance_days} days."
-    )
+    dismissed = relief_kind == "dismissed"
+    if dismissed:
+        headline = (
+            f"Across {n_prec} closely-matched precedent{'s' if n_prec != 1 else ''}, "
+            f"{pct_full}% awarded full relief. On the record here, the respondent's position is at "
+            "least as strong as the claimant's -- no relief is recommended."
+        )
+    else:
+        interest_phrase = f" plus {interest_rate_pct:g}% p.a. interest" if interest_rate_pct else ""
+        headline = (
+            f"Across {n_prec} closely-matched precedent{'s' if n_prec != 1 else ''}, "
+            f"{pct_full}% awarded full relief. Recommended resolution: "
+            f"{_relief_phrase()}{interest_phrase}, within {compliance_days} days."
+        )
     if not explanation:
         explanation = (
-            f"A {relief_kind.replace('_', ' ')} of {nlp.inr(recommended_amount)} within "
-            f"{compliance_days} days is consistent with how comparable disputes were resolved."
+            "The claimant has not shown a case stronger than the respondent's on the record; no "
+            "relief is recommended."
+            if dismissed
+            else (
+                f"{_relief_phrase()[0].upper()}{_relief_phrase()[1:]}"
+                + (f" (plus {interest_rate_pct:g}% per annum simple interest until payment)" if interest_rate_pct else "")
+                + f" within {compliance_days} days is consistent with how comparable disputes were resolved."
+            )
         )
 
     rationale = [
         f"{len(precedents)} closely-matched precedents analysed ({ctx.research.method if ctx.research else 'n/a'} retrieval).",
-        f"Claimant case strength assessed at {int(c_strength * 100)}%.",
-        f"Relief set at {int(clamped_ratio * 100)}% of the claim, within the {int(prec_min*100)}–{int(prec_max*100)}% precedent band.",
+        f"Claimant case strength assessed at {int(c_strength * 100)}%, respondent at {int(r_strength * 100)}%.",
+        (
+            "No relief recommended: the respondent's position is at least as strong as the claimant's."
+            if dismissed
+            else f"Relief set at {int(clamped_ratio * 100)}% of the claim, within the "
+            f"{int(prec_min*100)}–{int(prec_max*100)}% precedent band."
+        ),
         f"Median compliance window in precedent: {median_days} days.",
     ]
+    if interest_rate_pct:
+        rationale.append(f"Simple interest at {interest_rate_pct:g}% per annum from the date of this order until payment.")
     if precedents:
         rationale.append(f"Leading authority: {precedents[0].citation}.")
 
@@ -117,6 +205,7 @@ def run(ctx: CaseContext) -> AgentResult:
         amount=recommended_amount,
         amount_display=nlp.inr(recommended_amount),
         compliance_days=compliance_days,
+        interest_rate_pct=interest_rate_pct,
         headline=headline,
         explanation=explanation,
         rationale=rationale,
@@ -130,13 +219,17 @@ def run(ctx: CaseContext) -> AgentResult:
 
     detail = (
         f"Proposed {relief_kind.replace('_', ' ')} of {nlp.inr(recommended_amount)} "
-        f"({int(clamped_ratio*100)}% of claim) within {compliance_days} days. "
+        f"({int(clamped_ratio*100)}% of claim)"
+        + (f" plus {interest_rate_pct:g}% p.a. interest" if interest_rate_pct else "")
+        + f" within {compliance_days} days. "
         + (f"{len(validator_notes)} validator adjustment(s)." if validator_notes else "Within precedent band.")
     )
     return AgentResult(output=proposal, detail=detail, confidence=proposal.confidence, citations=proposal.based_on, engine=engine)
 
 
 def _ratio_to_type(ratio: float) -> str:
+    if ratio < 0.05:
+        return "dismissed"
     if ratio >= 0.99:
         return "full_refund"
     if ratio >= 0.5:

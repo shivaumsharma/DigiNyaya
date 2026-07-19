@@ -226,6 +226,20 @@ class LanguageGateway:
             source_lang=source_lang,
             target_lang=pipeline_lang,
         )
+        if result.used_fallback:
+            # Don't cache untranslated text as a real translation, and don't
+            # tell the caller a translation happened -- mirrors the same
+            # guard in to_user_language().
+            return InboundResult(
+                original_text=text,
+                pipeline_text=result.translated_text,
+                source_language=source_lang,
+                detection=detection,
+                was_translated=False,
+                used_cache=False,
+                provider=result.provider,
+                request_id=result.request_id,
+            )
         self._cache.set(
             source_lang,
             pipeline_lang,
@@ -331,6 +345,19 @@ class LanguageGateway:
             source_lang=pipeline_lang,
             target_lang=normalized_target,
         )
+        if result.used_fallback:
+            # translator.py already logged why (API error, no key, etc.) --
+            # don't cache untranslated text as if it were a real translation,
+            # and don't tell the caller a translation happened.
+            return OutboundResult(
+                pipeline_text=text,
+                localized_text=result.translated_text,
+                target_language=normalized_target,
+                was_translated=False,
+                used_cache=False,
+                provider=result.provider,
+                request_id=result.request_id,
+            )
         self._cache.set(
             pipeline_lang,
             normalized_target,

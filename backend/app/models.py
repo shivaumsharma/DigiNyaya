@@ -26,6 +26,9 @@ class CaseStatus(str, Enum):
     mediation_proposed = "mediation_proposed"
     mediation_accepted = "mediation_accepted"
     resolved = "resolved"
+    # Blocked by app.core.safety_gate at either checkpoint -- routed to human
+    # legal review instead of an AI-generated answer. See `escalation` below.
+    escalated = "escalated"
 
 
 class Party(BaseModel):
@@ -153,4 +156,6 @@ class CaseView(BaseModel):
     steps: list[AgentStep] = Field(default_factory=list)
     mediation: Optional[dict[str, Any]] = None
     resolution: Optional[dict[str, Any]] = None
+    # Set when app.core.safety_gate blocked this case -- see EscalationResult.to_dict().
+    escalation: Optional[dict[str, Any]] = None
     created_at: datetime

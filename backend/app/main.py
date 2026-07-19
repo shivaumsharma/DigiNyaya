@@ -30,7 +30,13 @@ from fastapi.responses import StreamingResponse
 from . import db, jobs, llm
 from .core.events import TERMINAL, bus, stream_from_queue
 from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
-from .language.config import SUPPORTED_LANGUAGES, config as language_config, is_pipeline_language
+from .language.config import (
+    SUPPORTED_LANGUAGES,
+    config as language_config,
+    is_pipeline_language,
+    is_supported_language,
+    normalize_language_code,
+)
 from .language.gateway import UnsupportedLanguageError, get_language_gateway
 from .language.logging import configure_language_logging
 from .models import (
@@ -147,33 +153,54 @@ def _localize_payload_dict(payload: dict, target_language: str, gw) -> dict:
     return localized
 
 
-def _localize_case_response(case: dict) -> dict:
-    """Build the outgoing response for a case: strip internal ``_``-prefixed
-    keys (unchanged from before), then localize human-readable fields back
-    to the case's stored ``source_language`` -- without mutating ``case``
-    itself, which stays the English canonical record in the DB.
+def _resolve_target_language(case: dict, lang: str | None) -> str:
+    """Pick the language to localize a response into: an explicit ``lang``
+    override from the request (the frontend's current UI language selection)
+    when it's a recognized code, otherwise the case's stored
+    ``source_language`` -- today's behavior, unchanged for callers that don't
+    pass an override.
+    """
+    if lang:
+        normalized = normalize_language_code(lang)
+        if is_supported_language(normalized) or is_pipeline_language(normalized):
+            return normalized
+    return case.get("source_language", language_config.pipeline_language)
 
-    No-op passthrough when the gateway is disabled or the case's source
+
+def _localize_case_response(case: dict, lang: str | None = None) -> dict:
+    """Build the outgoing response for a case: strip internal ``_``-prefixed
+    keys (unchanged from before), then localize human-readable fields back to
+    ``lang`` if given and recognized, else the case's stored
+    ``source_language`` -- without mutating ``case`` itself, which stays the
+    English canonical record in the DB.
+
+    No-op passthrough when the gateway is disabled or the resolved target
     language already *is* the pipeline language (nothing to translate back),
     so this has zero behavior change for existing/English-only cases.
     """
     response = {k: v for k, v in case.items() if not k.startswith("_")}
 
     gw = get_language_gateway()
-    source_language = case.get("source_language", language_config.pipeline_language)
+    source_language = _resolve_target_language(case, lang)
     if not gw.enabled or is_pipeline_language(source_language):
         return response
 
+    # The claimant's/respondent's own original text is only usable verbatim
+    # when displaying in the case's actual filing language; an explicit
+    # override to a *different* language still needs a real translation of
+    # the English pipeline copy below.
+    viewing_in_filing_language = source_language == case.get("source_language")
+
     try:
-        # The claimant's/respondent's original text is already in their own
-        # language -- prefer it over re-translating the English pipeline
-        # copy, which would be lossier and cost an extra Sarvam call for no
-        # benefit.
-        if case.get("original_description"):
+        if viewing_in_filing_language and case.get("original_description"):
             response["description"] = case["original_description"]
 
         respondent_submission = response.get("respondent_submission")
-        if isinstance(respondent_submission, dict) and respondent_submission.get("original_statement"):
+        if (
+            viewing_in_filing_language
+            and isinstance(respondent_submission, dict)
+            and respondent_submission.get("original_statement")
+        ):
             respondent_submission = dict(respondent_submission)
             respondent_submission["statement"] = respondent_submission["original_statement"]
             response["respondent_submission"] = respondent_submission
@@ -327,9 +354,9 @@ def _load_owned(case_id: str, citizen_id: str) -> dict:
 
 
 @app.get("/api/cases/{case_id}")
-def get_case(case_id: str, citizen_id: str = Depends(current_citizen)):
+def get_case(case_id: str, lang: str | None = None, citizen_id: str = Depends(current_citizen)):
     case = _load_owned(case_id, citizen_id)
-    return _localize_case_response(case)
+    return _localize_case_response(case, lang)
 
 
 @app.post("/api/cases/{case_id}/respond")
@@ -376,16 +403,18 @@ def mediation_decision(case_id: str, decision: MediationDecision, citizen_id: st
         raise HTTPException(status_code=409, detail="Run the resolution pipeline before deciding mediation")
     if case.get("status") == "resolved":
         return {"status": "resolved", "accepted": case.get("mediation_accepted"), "started": False}
+    if case.get("status") == "escalated":
+        return {"status": "escalated", "accepted": case.get("mediation_accepted"), "started": False}
     db.update_case(case_id, status="mediation_accepted" if decision.accept else "processing")
     started = jobs.start_resolution(case_id, decision.accept)
     return {"status": "ok", "accepted": decision.accept, "started": started}
 
 
 @app.get("/api/cases/{case_id}/events")
-def events(case_id: str, after: int = 0, citizen_id: str = Depends(current_citizen)):
+def events(case_id: str, after: int = 0, lang: str | None = None, citizen_id: str = Depends(current_citizen)):
     case = _load_owned(case_id, citizen_id)
     gw = get_language_gateway()
-    source_language = case.get("source_language", language_config.pipeline_language)
+    source_language = _resolve_target_language(case, lang)
     should_localize = gw.enabled and not is_pipeline_language(source_language)
 
     def sse(ev: dict) -> str:

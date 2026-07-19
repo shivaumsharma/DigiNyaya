@@ -1,0 +1,182 @@
+{
+  "app": {
+    "pill": "મૂળ AI",
+    "engineLive": "લાઇવ એલએલએમ · {{model}}",
+    "engineScripted": "સ્ક્રિપ્ટેડ એન્જિન",
+    "aadhaarSecured": "आधार-સુરક્ષિત",
+    "signOut": "સાઈન આઉટ",
+    "footerLeft": "DigiNyaya · પ્રથમ સ્તરનું સ્વાયત્ત ઠરાવ",
+    "footerRight": ""
+  },
+  "landing": {
+    "eyebrow": "ભારતના 5 કરોડ બાકી કેસોનું નિરાકરણ",
+    "heroPre": "ન્યાય",
+    "heroHighlight1": "ત્રીસ મિનિટ",
+    "heroMid": "અશિષ્ટ",
+    "heroHighlight2": "સાત વર્ષ",
+    "lede": "DigiNyaya એ AI-મૂળ ડિજિટલ કોર્ટ છે. પાંચ વિશિષ્ટ એજન્ટો તમારા દાવાને પાર્સ કરે છે, પૂર્વવર્તી સંશોધન કરે છે, મધ્યસ્થી કરે છે અને એક બાંયધરીકૃત ઠરાવ બહાર પાડે છે - જ્યાં એક ખરેખર જરૂરી હોય ત્યાં જ માનવ સાથે અંત સુધી.",
+    "stat1Num": "પાંચ એજન્ટ્સ",
+    "stat1Lbl": "એક ઓર્કેસ્ટ્રેટર દ્વારા સંકલિત",
+    "stat2Num": "4 મિનિટ",
+    "stat2Lbl": "ગ્રાહક ફોરમમાં 18 મહિના",
+    "stat3Num": "પ્રથમ શ્રેણી",
+    "stat3Lbl": "સંપૂર્ણ સ્વાયત્ત संकल्प",
+    "loginTitle": "વિવાદ નોંધાવવા માટે લૉગ ઇન કરો.",
+    "loginSub": "આધાર (પ્રદર્શન માટે અનુકરણ) દ્વારા સુરક્ષિત નાગરિક પ્રવેશ.",
+    "continueAs": "{{name}} ચાલુ રાખો",
+    "fieldName": "સંપૂર્ણ નામ",
+    "placeholderName": "આધાર મુજબ",
+    "fieldAadhaar": "આધાર-છેલ્લા ચાર અંક",
+    "verifying": "ચકાસણી કરી રહ્યાં છીએ.",
+    "verifyContinue": "લખાણ ચકાસો અને ચાલુ રાખો.",
+    "otpBadge": "OTP-verified ઓળખ · શૂન્ય દસ્તાવેજો લઈ જવાની જરૂર નથી"
+  },
+  "disputes": {
+    "title": "આપનો વિવાદ શું છે?",
+    "subtitle": "શ્રેણી પસંદ કરો. પ્રથમ સ્તર (Tier 1) ના કેસો AI એજન્ટ્સ દ્વારા અંતથી અંત સુધી ઉકેલવામાં આવે છે. તબક્કાવાર રોડમેપમાં વધુ શ્રેણીઓ બહાર પાડવામાં આવશે.",
+    "roadmap": "માર્ગ-રૂપરેખા",
+    "tier": "ટાયર {{n}}"
+  },
+  "newCase": {
+    "backLink": "શ્રેણીઓ પર પાછા ફરો.",
+    "title": "તમારો ગ્રાહક વિવાદ નોંધાવો.",
+    "subtitle": "શું થયું તેનું વર્ણન કરો અને તમારા પુરાવા જોડાવો. AI બાકીનું બધું કરે છે.",
+    "loadDemo": "ડેમો કેસ લોડ કરો",
+    "fieldClaimant": "તમારું નામ (દાવેદાર)",
+    "fieldRespondent": "વિરોધ પક્ષ (પ્રતિવાદી)",
+    "placeholderRespondent": "વિક્રેતા/વ્યવસાયનું નામ",
+    "fieldAmount": "દાવાની રકમ (₹)",
+    "fieldDescription": "તમારો વિવાદ વર્ણવો.",
+    "placeholderDescription": "તમે શું ખરીદ્યું, શું ખોટું થયું, તમને શું પરિણામ જોઈએ છે?",
+    "fieldEvidence": "પુરાવા",
+    "placeholderEvidence": "ઉદાહરણ તરીકે, order_invoice.પીડીએફ",
+    "addEvidence": "ઉમેરવું",
+    "filing": "ફાઇલિંગ...",
+    "fileClaim": "જવાબદાતાને દસ્તાવેજ બતાવવા અને જાણ કરવા માટે સૂચના",
+    "kind": {
+      "invoice": "બિલ",
+      "receipt": "રસીદ",
+      "screenshot": "સ્ક્રીનશોટ",
+      "contract": "કરાર",
+      "photo": "ફોટો",
+      "other": "અન્ય"
+    }
+  },
+  "respondent": {
+    "title": "પ્રતિવાદીએ જાણ કરી",
+    "notice": "કેસ {{id}} માટે {{name}}ને ડિજિટલ રીતે મોકલવામાં આવ્યો છે અને 72 કલાકનો સમય છે તેનો જવાબ આપવા માટે. ડેમો માટે, નીચે દર્શાવેલા પ્રતિવાદીની જેમ વર્તો અથવા વિંડોની અવધિ સમાપ્ત થવા દો.",
+    "loading": "કેસ લોડ થઈ રહ્યો છે...",
+    "replyTitle": "પ્રતિવાદીનો જવાબ",
+    "loadDemoReply": "ડેમો પ્રતિભાવ લોડ કરો",
+    "fieldStatement": "નિવેદ",
+    "placeholderStatement": "પ્રતિવાદીની બાજુની વાર્તા…",
+    "fieldCounter": "પ્રતિ-ઑફર (₹, વૈકલ્પિક)",
+    "placeholderCounter": "એંશી હજાર",
+    "fieldLiability": "જવાબદારી",
+    "acceptsLiability": "પ્રતિવાદી જવાબદારી સ્વીકારે છે",
+    "submit": "પ્રતિભાવ સુપરત કરો અને AI સમાધાન શરૂ કરો.",
+    "noResponseTitle": "કોઈ પ્રતિભાવ નથી?",
+    "noResponseText": "જો પ્રતિવાદી નોટિસની અવગણના કરે છે, તો કેસ અનિર્ણિત રહે છે. એજન્ટો આ આરોપો પર નોંધપાત્ર રીતે સ્વીકાર કરવામાં આવ્યો હોવાનું માનશે.",
+    "skip": "skip - અનિર્ણિતપણે આગળ વધો"
+  },
+  "resolve": {
+    "title": "AI સમાધાન પર કામ ચાલી રહ્યું છે.",
+    "subtitle": "એક ઓર્કેસ્ટ્રેટર દ્વારા સંકલિત પાંચ વિશિષ્ટ એજન્ટો વાસ્તવિક સમયમાં કેસ {{id}} ને ઉકેલતા હોય છે.",
+    "resolvedBadge": "કેસ ઉકેલવામાં આવ્યો.",
+    "errorTitle": "કાર્યપ્રવાહમાં કંઈક વિક્ષેપ પડ્યો છે.",
+    "reconnect": "પુનઃજોડાણ",
+    "draftingLive": "✦ જીવંત મુસદ્દો તૈયાર કરવો....",
+    "notice": {
+      "routing": "ઓર્કેસ્ટ્રેટર",
+      "escalated": "ઓર્કેસ્ટ્રેટર",
+      "loop": "ઓર્કેસ્ટ્રેટર",
+      "default": "વાદક"
+    },
+    "ingestion": {
+      "evidenceItems": "{{n}} evidence items",
+      "confidence": "{{pct}}% આત્મવિશ્વાસ",
+      "tier1Eligible": "પ્રથમ શ્રેણી માટે પાત્ર ✓",
+      "tier2Review": "બીજા સ્તરની સમીક્ષા કરવાની ભલામણ કરવામાં આવે છે."
+    },
+    "research": {
+      "summary": "{{count}} પૂર્વનિર્ધારણ · {{method}} · કવરેજ {{label}}",
+      "semantic": "શાબ્દિક વેક્ટર શોધ",
+      "keyword": "કીવર્ડ શોધ"
+    },
+    "analysis": {
+      "aiSummaryTag": "✦ નિષ્પક્ષ સારાંશ",
+      "summaryTag": "સંક્ષિપ્ત વર્ણન",
+      "claimantLabel": "દાવેદાર:",
+      "respondentLabel": "પ્રતિવાદી:",
+      "contradictions": "વિરોધાભાસો દર્શાવતા"
+    },
+    "mediation": {
+      "validatorLabel": "માન્યતાકર્તા:",
+      "panelTitle": "એજન્ટ 4 · મધ્યસ્થી દરખાસ્ત",
+      "aiRecommendation": "✦ કૃત્રિમ બુદ્ધિમત્તા સૂચન",
+      "recommendation": "ભલામણ",
+      "recommendedSettlement": "નિવાસની ભલામણ",
+      "withinDays": "{{days}} દિવસોમાં",
+      "fullReliefRate": "{{pct}}% ફુલ-રિલીફ દર",
+      "accept": "મધ્યસ્થી",
+      "decline": "અસ્વીકાર - AI સમસ્યાનું સમાધાન"
+    },
+    "status": {
+      "loading": "લોડિંગ",
+      "pipeline": "કાર્યરત",
+      "mediation": "નિર્ણયની રાહ જોઇ રહી છે.",
+      "resolving": "ડ્રાફ્ટિંગ ઓર્ડર",
+      "resolved": "સમાધાન થયેલ"
+    },
+    "side": {
+      "caseFile": "કેસ",
+      "caseId": "કેસ ID",
+      "status": "સ્થિતિ",
+      "tierLabel": "શ્રેણી",
+      "tier": "ટાયર {{n}}",
+      "claimant": "દાવેદાર",
+      "respondent": "પ્રતિવાદી",
+      "claimAmount": "દાવાની રકમ",
+      "evidence": "પુરાવા",
+      "itemsCount": "{{n}} વસ્તુઓ",
+      "response": "પ્રતિભાવ",
+      "filed": "અપાયેલ",
+      "uncontested": "અવિનિયોગી",
+      "complianceMonitor": "અનુપાલન નિરીક્ષક",
+      "complianceDays": "{{n}} દિવસ",
+      "deadline": "સમય મર્યાદા {{date}}",
+      "tier2Notice": "બીજો સ્તર - ઓર્ડર માનવ હસ્તાક્ષરની રાહ જોતા કામચલાઉ છે.",
+      "autoEscalation": "પ્રતિવાદી સમયમર્યાદામાં પાલન કરવામાં નિષ્ફળ જાય તો સ્વયં-ઉન્નતીકરણની સૂચના જનરેટ થાય છે.",
+      "timeSaved": "સાચવેલ સમય",
+      "timeSavedHere": "~4 મિનિટ",
+      "timeSavedVs": "છથી બાર મહિના",
+      "timeSavedTemplate": "આજે એક કન્ઝ્યુમર ફોરમમાં ટેક્સ્ટ: {{here}} વિરુદ્ધ {{vs}}."
+    }
+  },
+  "stepper": {
+    "dispute": "વિવાદ",
+    "fileClaim": "ફાઇલ દાવો",
+    "response": "પ્રતિભાવ",
+    "resolution": "કૃત્રિમ બુદ્ધिमત્તા ઉકેલ"
+  },
+  "resolutionDoc": {
+    "basisTitle": "ઠરાવ",
+    "basisText": "આ આદેશ {{amount}}ના દાવાના મુદ્દે {{basis}} પર પસાર કરવામાં આવ્યો છે.",
+    "findingsTitle": "તારણો",
+    "precedentsTitle": "પૂર્વનિર્ધારિત",
+    "orderTitle": "આદેશ",
+    "download": "રિઝોલ્યુશન ઓર્ડર ડાઉનલોડ કરો.",
+    "binding": "બંધન",
+    "byMediation": "મધ્યસ્થતા",
+    "autonomous": "સ્વાયત્ત",
+    "case": "કેસ:",
+    "date": "તારીખ:",
+    "claimant": "દાવેદાર:",
+    "respondent": "પ્રતિવાદી:",
+    "txtBasisPrefix": "આધાર: संकल्प",
+    "txtFindings": "તારણો",
+    "txtCitedPrecedents": "સંદર્ભિત પૂર્વનિર્ધારણો",
+    "txtOrder": "આદેશ",
+    "txtComplianceDeadline": "અનુપાલન સમયમર્યાદા:"
+  }
+}

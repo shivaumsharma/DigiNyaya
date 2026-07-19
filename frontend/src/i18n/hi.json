@@ -1,0 +1,182 @@
+{
+  "app": {
+    "pill": "एआई-नेटिव ओडीआर",
+    "engineLive": "लाइव एलएलएम · {{model}}",
+    "engineScripted": "स्क्रिप्टेड इंजन",
+    "aadhaarSecured": "आधार-सुरक्षित",
+    "signOut": "साइन आउट",
+    "footerLeft": "DigiNyaya · श्रेणी 1 स्वायत्त समाधान",
+    "footerRight": ""
+  },
+  "landing": {
+    "eyebrow": "भारत के 5 करोड़ लंबित मामलों का समाधान",
+    "heroPre": "न्याय",
+    "heroHighlight1": "30 मिनट में",
+    "heroMid": "ना कि",
+    "heroHighlight2": "7 वर्ष में",
+    "lede": "DigiNyaya एक एआई-नेटिव डिजिटल न्यायालय है। पाँच विशेषीकृत एजेंट आपके दावे को समझते हैं, पूर्व उदाहरणों की खोज करते हैं, मध्यस्थता करते हैं, और अंत से अंत तक एक बाध्यकारी समाधान जारी करते हैं — मानव हस्तक्षेप केवल वहीं होता है जहाँ वास्तव में इसकी आवश्यकता हो।",
+    "stat1Num": "5 एजेंट",
+    "stat1Lbl": "एक संचालक द्वारा समन्वित",
+    "stat2Num": "~4 मिनट",
+    "stat2Lbl": "बनाम उपभोक्ता फोरम में 18 महीने",
+    "stat3Num": "श्रेणी 1",
+    "stat3Lbl": "पूर्ण स्वायत्त समाधान",
+    "loginTitle": "विवाद दर्ज करने के लिए लॉग इन करें",
+    "loginSub": "आधार के माध्यम से सुरक्षित नागरिक पहुँच (डेमो हेतु अनुकरण किया गया)।",
+    "continueAs": "{{name}} के रूप में जारी रखें",
+    "fieldName": "पूरा नाम",
+    "placeholderName": "आधार के अनुसार",
+    "fieldAadhaar": "आधार — अंतिम 4 अंक",
+    "verifying": "सत्यापन हो रहा है…",
+    "verifyContinue": "सत्यापित करें और जारी रखें",
+    "otpBadge": "ओटीपी-सत्यापित पहचान · कोई दस्तावेज़ साथ लाने की ज़रूरत नहीं"
+  },
+  "disputes": {
+    "title": "आपका विवाद किस बारे में है?",
+    "subtitle": "श्रेणी चुनें। श्रेणी 1 के मामले AI एजेंटों द्वारा पूरी तरह से हल किए जाते हैं। चरणबद्ध रोडमैप के साथ और श्रेणियाँ जल्द जुड़ेंगी।",
+    "roadmap": "जल्द आ रहा है",
+    "tier": "श्रेणी {{n}}"
+  },
+  "newCase": {
+    "backLink": "श्रेणियों पर वापस जाएँ",
+    "title": "अपना उपभोक्ता विवाद दर्ज करें",
+    "subtitle": "क्या हुआ, यह बताएं और अपने साक्ष्य संलग्न करें। बाकी काम AI करेगा।",
+    "loadDemo": "डेमो केस लोड करें",
+    "fieldClaimant": "आपका नाम (दावेदार)",
+    "fieldRespondent": "विपक्षी पक्ष (प्रतिवादी)",
+    "placeholderRespondent": "विक्रेता/व्यवसाय का नाम",
+    "fieldAmount": "दावा राशि (₹)",
+    "fieldDescription": "अपने विवाद का वर्णन करें",
+    "placeholderDescription": "आपने क्या खरीदा, क्या गलत हुआ, आप क्या परिणाम चाहते हैं?",
+    "fieldEvidence": "साक्ष्य",
+    "placeholderEvidence": "उदाहरण के लिए, order_invoice.pdf",
+    "addEvidence": "जोड़ें",
+    "filing": "फ़ाइल की जा रही है…",
+    "fileClaim": "दावा दर्ज करें और प्रतिवादी को सूचित करें",
+    "kind": {
+      "invoice": "चालान",
+      "receipt": "रसीद",
+      "screenshot": "स्क्रीनशॉट",
+      "contract": "अनुबंध",
+      "photo": "फ़ोटो",
+      "other": "अन्य"
+    }
+  },
+  "respondent": {
+    "title": "प्रतिवादी को सूचित किया गया",
+    "notice": "{{name}} को मामला {{id}} के लिए डिजिटल रूप से सूचना भेजी गई है और जवाब देने के लिए 72 घंटे का समय दिया गया है। डेमो के लिए, नीचे प्रतिवादी की भूमिका निभाएं — या समय सीमा समाप्त होने दें।",
+    "loading": "केस लोड हो रहा है…",
+    "replyTitle": "प्रतिवादी का उत्तर",
+    "loadDemoReply": "डेमो उत्तर लोड करें",
+    "fieldStatement": "कथन",
+    "placeholderStatement": "प्रतिवादी का पक्ष…",
+    "fieldCounter": "प्रति-प्रस्ताव (₹, वैकल्पिक)",
+    "placeholderCounter": "जैसे 20000",
+    "fieldLiability": "देयता",
+    "acceptsLiability": "प्रतिवादी देयता स्वीकार करता है",
+    "submit": "उत्तर जमा करें और AI समाधान शुरू करें",
+    "noResponseTitle": "कोई जवाब नहीं?",
+    "noResponseText": "यदि प्रतिवादी सूचना को अनदेखा करता है, तो मामला बिना विरोध के आगे बढ़ता है। एजेंट आरोपों को काफ़ी हद तक स्वीकृत मानेंगे।",
+    "skip": "छोड़ें — निर्विरोध आगे बढ़ें"
+  },
+  "resolve": {
+    "title": "AI समाधान प्रगति पर है",
+    "subtitle": "एक संचालक द्वारा समन्वित पाँच विशेषीकृत एजेंट, मामला {{id}} को वास्तविक समय में हल कर रहे हैं।",
+    "resolvedBadge": "मामला सुलझ गया",
+    "errorTitle": "कार्यप्रवाह में कोई बाधा आई।",
+    "reconnect": "फिर से जुड़ें",
+    "draftingLive": "✦ लाइव ड्राफ़्ट हो रहा है…",
+    "notice": {
+      "routing": "संचालक · रूटिंग",
+      "escalated": "संचालक · एस्केलेशन",
+      "loop": "संचालक · लूप-बैक",
+      "default": "संचालक"
+    },
+    "ingestion": {
+      "evidenceItems": "{{n}} साक्ष्य",
+      "confidence": "{{pct}}% विश्वास",
+      "tier1Eligible": "श्रेणी 1 के योग्य ✓",
+      "tier2Review": "श्रेणी 2 समीक्षा की सिफ़ारिश"
+    },
+    "research": {
+      "summary": "{{count}} पूर्व उदाहरण · {{method}} · कवरेज {{label}}",
+      "semantic": "सिमेंटिक वेक्टर खोज",
+      "keyword": "कीवर्ड खोज"
+    },
+    "analysis": {
+      "aiSummaryTag": "✦ AI तटस्थ सारांश",
+      "summaryTag": "तटस्थ सारांश",
+      "claimantLabel": "दावेदार:",
+      "respondentLabel": "प्रतिवादी:",
+      "contradictions": "विसंगतियाँ चिह्नित"
+    },
+    "mediation": {
+      "validatorLabel": "सत्यापनकर्ता:",
+      "panelTitle": "एजेंट 4 · मध्यस्थता प्रस्ताव",
+      "aiRecommendation": "✦ AI सुझाव",
+      "recommendation": "अनुशंसा",
+      "recommendedSettlement": "अनुशंसित निपटान राशि",
+      "withinDays": "{{days}} दिनों के भीतर",
+      "fullReliefRate": "{{pct}}% पूर्ण-राहत दर",
+      "accept": "मध्यस्थता स्वीकारें",
+      "decline": "अस्वीकार करें — AI समाधान जारी करें"
+    },
+    "status": {
+      "loading": "लोड हो रहा है",
+      "pipeline": "एजेंट कार्यरत हैं",
+      "mediation": "निर्णय की प्रतीक्षा",
+      "resolving": "आदेश तैयार हो रहा है",
+      "resolved": "समाधान हो गया"
+    },
+    "side": {
+      "caseFile": "केस फ़ाइल",
+      "caseId": "केस आईडी",
+      "status": "स्थिति",
+      "tierLabel": "श्रेणी",
+      "tier": "श्रेणी {{n}}",
+      "claimant": "दावेदार",
+      "respondent": "प्रतिवादी",
+      "claimAmount": "दावा राशि",
+      "evidence": "साक्ष्य",
+      "itemsCount": "{{n}} वस्तुएँ",
+      "response": "उत्तर",
+      "filed": "दर्ज",
+      "uncontested": "निर्विरोध",
+      "complianceMonitor": "अनुपालन निगरानी",
+      "complianceDays": "{{n}} दिन",
+      "deadline": "समय सीमा {{date}}",
+      "tier2Notice": "श्रेणी 2 — आदेश मानव हस्ताक्षर की प्रतीक्षा में अनंतिम है।",
+      "autoEscalation": "यदि प्रतिवादी समय सीमा के भीतर अनुपालन नहीं करता, तो स्वचालित एस्केलेशन सूचना जारी होती है।",
+      "timeSaved": "समय की बचत",
+      "timeSavedHere": "~4 मिनट",
+      "timeSavedVs": "6–24 महीने",
+      "timeSavedTemplate": "यहाँ {{here}}, बनाम आज उपभोक्ता फोरम में {{vs}}।"
+    }
+  },
+  "stepper": {
+    "dispute": "विवाद",
+    "fileClaim": "दावा दर्ज",
+    "response": "उत्तर",
+    "resolution": "AI समाधान"
+  },
+  "resolutionDoc": {
+    "basisTitle": "समाधान का आधार",
+    "basisText": "यह आदेश {{amount}} के दावे से संबंधित मामले में, {{basis}} के आधार पर पारित किया गया है।",
+    "findingsTitle": "निष्कर्ष",
+    "precedentsTitle": "आधारित पूर्व उदाहरण",
+    "orderTitle": "आदेश",
+    "download": "समाधान आदेश डाउनलोड करें",
+    "binding": "बाध्यकारी",
+    "byMediation": "मध्यस्थता से",
+    "autonomous": "स्वतः",
+    "case": "मामला:",
+    "date": "दिनांक:",
+    "claimant": "दावेदार:",
+    "respondent": "प्रतिवादी:",
+    "txtBasisPrefix": "आधार: समाधान",
+    "txtFindings": "निष्कर्ष",
+    "txtCitedPrecedents": "उद्धृत पूर्व उदाहरण",
+    "txtOrder": "आदेश",
+    "txtComplianceDeadline": "अनुपालन समय सीमा:"
+  }
+}

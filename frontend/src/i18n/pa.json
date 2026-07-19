@@ -1,0 +1,182 @@
+{
+  "app": {
+    "pill": "ਮੂਲ ਏ ਆਈ",
+    "engineLive": "ਲਾਈਵ ਐੱਲ.ਐੱਲ.ਐੱਮ. {{model}}",
+    "engineScripted": "ਲਿਖਤ ਇੰਜਣ",
+    "aadhaarSecured": "ਆਧਾਰ-ਸੁਰੱਖਿਅਤ",
+    "signOut": "ਸਾਈਨ ਆਊਟ",
+    "footerLeft": "DigiNyaya · ਟਾਇਰ 1 ਸਵੈ-ਨਿਰਭਰ ਰੈਜ਼ੋਲੂਸ਼ਨ",
+    "footerRight": ""
+  },
+  "landing": {
+    "eyebrow": "ਭਾਰਤ ਦੇ 5 ਕਰੋੜ ਬਕਾਇਆ ਕੇਸਾਂ ਦਾ ਨਿਪਟਾਰਾ ਕਰਨਾ।",
+    "heroPre": "ਨਿਆਂ",
+    "heroHighlight1": "30 ਮਿੰਟ",
+    "heroMid": "ਨਾਂਹ",
+    "heroHighlight2": "ਸੱਤ ਸਾਲ",
+    "lede": "DigiNyaya ਇੱਕ AI-native ਡਿਜੀਟਲ ਅਦਾਲਤ ਹੈ। ਪੰਜ ਵਿਸ਼ੇਸ਼ ਏਜੰਟ ਤੁਹਾਡੇ ਕਲੇਮ ਨੂੰ ਪਾਰਸ ਕਰਦੇ ਹਨ, ਪੂਰਵ-ਅਨੁਭਵ ਦੀ ਖੋਜ ਕਰਦੇ ਹਨ, ਵਿਚੋਲਗੀ ਕਰਦੇ ਹਨ ਅਤੇ ਇੱਕ ਬੰਧਨ ਵਾਲਾ ਹੱਲ ਜਾਰੀ ਕਰਦੇ ਹਨ - ਅੰਤ ਤੋਂ ਅੰਤ ਤੱਕ, ਜਿੱਥੇ ਇੱਕ ਦੀ ਅਸਲ ਲੋੜ ਹੋਵੇ ਉੱਥੇ ਹੀ ਮਨੁੱਖ ਨਾਲ।",
+    "stat1Num": "ਪੰਜ ਏਜੰਟ",
+    "stat1Lbl": "ਇੱਕ ਆਰਕੈਸਟਰਾ ਦੁਆਰਾ",
+    "stat2Num": "~4 ਮਿੰਟ",
+    "stat2Lbl": "ਖਪਤਕਾਰ ਫੋਰਮ ਵਿੱਚ 18 ਮਹੀਨੇ",
+    "stat3Num": "ਪਹਿਲਾ ਪੱਧਰ",
+    "stat3Lbl": "ਪੂਰੀ ਤਰ੍ਹਾਂ ਸਵੈ-ਸਰਵਉੱਚ ਫੈਸਲਾ",
+    "loginTitle": "ਵਿਵਾਦ ਦਰਜ ਕਰਨ ਲਈ ਲਾਗਇਨ ਕਰੋ।",
+    "loginSub": "ਆਧਾਰ (ਪ੍ਰਦਰਜ਼ ਲਈ ਸਿਮੂਲੇਟਿਡ) ਰਾਹੀਂ ਸੁਰੱਖਿਅਤ ਨਾਗਰਿਕ ਪਹੁੰਚ।",
+    "continueAs": "{{name}} ਜਾਰੀ ਰੱਖੋ।",
+    "fieldName": "ਪੂਰਾ ਨਾਮ",
+    "placeholderName": "ਆਧਾਰ ਕਾਰਡ ਅਨੁਸਾਰ",
+    "fieldAadhaar": "ਆਧਾਰ-ਆਖਰੀ ਚਾਰ ਅੰਕ",
+    "verifying": "ਪੁਸ਼ਟੀकरण किया जा रहा है।",
+    "verifyContinue": "ਪਾਠ ਦੀ ਪੁਸ਼ਟੀ ਕਰਕੇ ਅੱਗੇ ਵਧੋ।",
+    "otpBadge": "OTP-ਪ੍ਰਮਾਣਿਤ ਪਛਾਣ · ਜ਼ੀਰੋ ਦਸਤਾਵੇਜ਼ ਲਿਜਾਣੇ ਜ਼ਰੂਰੀ ਨਹੀਂ ਹਨ।"
+  },
+  "disputes": {
+    "title": "ਤੁਹਾਡਾ ਵਿਵਾਦ ਕਿਸ ਬਾਰੇ ਹੈ?",
+    "subtitle": "ਇੱਕ ਸ਼੍ਰੇਣੀ ਚੁਣੋ। ਟਾਇਰ-1 ਦੇ ਕੇਸ ਏਆਈ ਏਜੰਟਾਂ ਦੁਆਰਾ ਅੰਤ ਤੋਂ ਅੰਤ ਤੱਕ ਹੱਲ ਕੀਤੇ ਜਾਂਦੇ ਹਨ। ਪੜਾਅਵਾਰ ਰੋਡਮੈਪ ਵਿੱਚ ਹੋਰ ਸ਼੍ਰੇਣੀਆਂ ਜਾਰੀ ਕੀਤੀਆਂ ਜਾਣਗੀਆਂ।",
+    "roadmap": "ਰੋਡਮੈਪ",
+    "tier": "ਟਾਇਰ {{n}}"
+  },
+  "newCase": {
+    "backLink": "श्रेणियों पर वापस",
+    "title": "ਆਪਣੀ ਖਪਤਕਾਰ ਸ਼ਿਕਾਇਤ ਦਰਜ ਕਰਵਾਓ।",
+    "subtitle": "ਕੀ ਹੋਇਆ ਹੈ, ਇਸ ਦਾ ਵਰਣਨ ਕਰੋ ਅਤੇ ਆਪਣੇ ਸਬੂਤ ਜੋੜੋ। ਏ ਆਈ ਬਾਕੀ ਸਭ ਕੁਝ ਕਰ ਦਿੰਦੀ ਹੈ।",
+    "loadDemo": "ਡੈਮੋ ਕੇਸ ਲੋਡ ਕਰੋ",
+    "fieldClaimant": "ਤੁਹਾਡਾ ਨਾਮ (ਦਾਵੇਦਾਰ)",
+    "fieldRespondent": "ਵਿਰੋਧੀ ਧਿਰ (ਜਵਾਬ ਦੇਣ ਵਾਲਾ)",
+    "placeholderRespondent": "ਵਿਕਰੇਤਾ/ਕਾਰੋਬਾਰ ਦਾ ਨਾਮ",
+    "fieldAmount": "ਦਾਅਵੇ ਦੀ ਰਕਮ (₹)",
+    "fieldDescription": "ਤੁਸੀਂ ਆਪਣਾ ਵਿਵਾਦ ਦੱਸੋ।",
+    "placeholderDescription": "ਤੁਸੀਂ ਕੀ ਖਰੀਦਿਆ, ਕੀ ਗਲਤ ਹੋਇਆ, ਤੁਸੀਂ ਕਿਸ ਨਤੀਜੇ ਦੀ ਇੱਛਾ ਰੱਖਦੇ ਹੋ?",
+    "fieldEvidence": "ਸਬੂਤ",
+    "placeholderEvidence": "ਉਦਾਹਰਨ ਲਈ, order_invoice।ਪੀਡੀਐਫ਼",
+    "addEvidence": "ਸ਼ਾਮਲ ਕਰੋ",
+    "filing": "ਫਾਈਲਿੰਗ...",
+    "fileClaim": "ਜਵਾਬ ਦੇਣ ਵਾਲੇ ਨੂੰ ਫਾਈਲ ਦਾ ਦਾਅਵਾ ਅਤੇ ਸੂਚਿਤ ਕਰੋ।",
+    "kind": {
+      "invoice": "ਇਨਵੌਇਸ",
+      "receipt": "ਰਸੀਦ",
+      "screenshot": "ਸਕਰੀਨਸ਼ਾਟ",
+      "contract": "ਇਕਰਾਰਨਾਮਾ",
+      "photo": "ਫੋਟੋ",
+      "other": "ਹੋਰ"
+    }
+  },
+  "respondent": {
+    "title": "ਉੱਤਰਦਾਤਾ ਸੂਚਿਤ ਕੀਤਾ",
+    "notice": "ਕੇਸ {{id}} ਲਈ {{name}} ਨੂੰ ਡਿਜੀਟਲ ਰੂਪ ਵਿੱਚ ਸੇਵਾ ਦਿੱਤੀ ਗਈ ਹੈ ਅਤੇ ਜਵਾਬ ਦੇਣ ਲਈ 72 ਘੰਟੇ ਹਨ। ਡੈਮੋ ਲਈ, ਹੇਠਾਂ ਦਿੱਤੇ ਜਵਾਬਦਾਤਾ ਵਾਂਗ ਕੰਮ ਕਰੋ - ਜਾਂ ਵਿੰਡੋ ਨੂੰ ਖ਼ਤਮ ਹੋਣ ਦਿਓ।",
+    "loading": "ਕੇਸ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ...",
+    "replyTitle": "ਉੱਤਰਦਾਤਾ ਦਾ ਜਵਾਬ",
+    "loadDemoReply": "ਡੈਮੋ ਜਵਾਬ ਲੋਡ ਕਰੋ।",
+    "fieldStatement": "ਬਿਆਨ",
+    "placeholderStatement": "ਜਵਾਬ ਦੇਣ ਵਾਲੇ ਦੀ ਕਹਾਣੀ...",
+    "fieldCounter": "ਜਵਾਬ-ਪੇਸ਼ਗੀ (₹, ਵਿਕਲਪਿਕ)",
+    "placeholderCounter": "ਦੋ ਹਜ਼ਾਰ",
+    "fieldLiability": "ਦੇਣਦਾਰੀ",
+    "acceptsLiability": "ਉੱਤਰਦਾਤਾ ਜ਼ਿੰਮੇਵਾਰੀ ਸਵੀਕਾਰ ਕਰਦਾ ਹੈ।",
+    "submit": "ਜਵਾਬ ਜਮ੍ਹਾਂ ਕਰੋ ਅਤੇ ਏ ਆਈ ਹੱਲ ਸ਼ੁਰੂ ਕਰੋ।",
+    "noResponseTitle": "ਕੋਈ ਜਵਾਬ ਨਹੀਂ?",
+    "noResponseText": "ਜੇਕਰ ਜਵਾਬਦਾਤਾ ਨੋਟਿਸ ਦੀ ਅਣਦੇਖੀ ਕਰਦਾ ਹੈ, ਤਾਂ ਕੇਸ ਬਿਨਾਂ ਕਿਸੇ ਵਿਰੋਧ ਦੇ ਅੱਗੇ ਵਧਦਾ ਹੈ। ਏਜੰਟ ਦੋਸ਼ਾਂ ਨੂੰ ਕਾਫ਼ੀ ਹੱਦ ਤੱਕ ਸਵੀਕਾਰ ਕੀਤੇ ਜਾਣ ਵਜੋਂ ਵਿਚਾਰਨਗੇ।",
+    "skip": "ਖੁੰਦ - ਬਿਨਾਂ ਮੁਕਾਬਲੇ ਅੱਗੇ ਵਧੋ।"
+  },
+  "resolve": {
+    "title": "ਆਰਟੀਫ਼ੀਸ਼ੀਅਲ ਇੰਟੈਲੀਜੈਂਸ ਦਾ ਹੱਲ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ।",
+    "subtitle": "ਇੱਕ ਆਰਕੈਸਟਰਾ ਦੁਆਰਾ ਤਾਲਮੇਲ ਕੀਤੇ ਗਏ ਪੰਜ ਵਿਸ਼ੇਸ਼ ਏਜੰਟ, ਅਸਲ ਸਮੇਂ ਵਿੱਚ ਕੇਸ {{id}} ਨੂੰ ਹੱਲ ਕਰ ਰਹੇ ਹਨ।",
+    "resolvedBadge": "ਮਾਮਲਾ ਹੱਲ ਹੋ ਗਿਆ ਹੈ।",
+    "errorTitle": "ਕਾਰਜ-ਪ੍ਰਵਾਹ ਵਿੱਚ ਕੁਝ ਰੁਕਾਵਟ ਆਈ ਹੈ।",
+    "reconnect": "ਮੁੜ ਜੁੜਨਾ",
+    "draftingLive": "✦ ਲਾਈਵ ਡਰਾਫਟਿੰਗ",
+    "notice": {
+      "routing": "ਆਰਕੈਸਟਰਾ",
+      "escalated": "ਆਰਕੈਸਟਰਾ",
+      "loop": "ਆਰਕੈਸਟਰਾ",
+      "default": "ਵਾਜ-ਸੰਗੀਤਕਾਰ"
+    },
+    "ingestion": {
+      "evidenceItems": "{{n}} evidence items",
+      "confidence": "{{pct}}% ਭਰੋਸੇਯੋਗਤਾ",
+      "tier1Eligible": "ਪਹਿਲੀ ਸ਼੍ਰੇਣੀ ਦੇ ਯੋਗ ✓",
+      "tier2Review": "ਦੂਜੀ ਸ਼੍ਰੇਣੀ ਦੀ ਸਮੀਖਿਆ ਦੀ ਸਿਫ਼ਾਰਸ਼ ਕੀਤੀ ਜਾਂਦੀ ਹੈ।"
+    },
+    "research": {
+      "summary": "{{count}} ਪੂਰਵ-ਦ੍ਰਸ਼ਟਾਂਤ · {{method}} · ਕਵਰੇਜ {{label}}",
+      "semantic": "ਅਰਥ ਸੰਬੰਧੀ ਵੈਕਟਰ ਖੋਜ",
+      "keyword": "ਕੀਵਰਡ ਖੋਜ"
+    },
+    "analysis": {
+      "aiSummaryTag": "✦ ਨਿਰਪੱਖ AI ਸੰਖੇਪ",
+      "summaryTag": "ਸੰਖੇਪ",
+      "claimantLabel": "ਦਾਅਵੇਦਾਰ:",
+      "respondentLabel": "ਉੱਤਰਦਾਤਾ:",
+      "contradictions": "ਵਿਪਰੀਤ"
+    },
+    "mediation": {
+      "validatorLabel": "ਵੈਧੀਕਰਣਕਰਤਾ:",
+      "panelTitle": "ਏਜੰਟ 4 · ਵਿਚੋਲੇ ਦਾ ਪ੍ਰਸਤਾਵ",
+      "aiRecommendation": "✦ ਆਰਟੀਫ਼ੀਸ਼ੀਅਲ ਇੰਟੈਲੀਜੈਂਸ ਸਿਫ਼ਾਰਸ਼",
+      "recommendation": "ਸਿਫ਼ਾਰਸ਼",
+      "recommendedSettlement": "ਸਿਫ਼ਾਰਸ਼ਿਤ ਬਸਤੀ",
+      "withinDays": "{{days}} ਦਿਨਾਂ ਦੇ ਅੰਦਰ",
+      "fullReliefRate": "{{pct}}% ਫੁੱਲ-ਰਿਲੀਫ਼ ਦਰ",
+      "accept": "ਵਿਚੋਲਗੀ",
+      "decline": "ਅਸਵੀਕਾਰਨ - ਸਮੱਸਿਆ ਦਾ ਏ ਆਈ ਹੱਲ"
+    },
+    "status": {
+      "loading": "ਲੋਡ",
+      "pipeline": "ਏਜੰਟ",
+      "mediation": "ਫੈਸਲੇ ਦੀ ਉਡੀਕ",
+      "resolving": "ਖਰੜਾ ਆਦੇਸ਼",
+      "resolved": "ਹੱਲ ਹੋ ਗਿਆ"
+    },
+    "side": {
+      "caseFile": "ਕੇਸ",
+      "caseId": "ਕੇਸ ਆਈਡੀ",
+      "status": "ਸਥਿਤੀ",
+      "tierLabel": "ਪੱਧਰ",
+      "tier": "ਟਾਇਰ {{n}}",
+      "claimant": "ਦਾਅਵੇਦਾਰ",
+      "respondent": "ਉੱਤਰਦਾਤਾ",
+      "claimAmount": "ਦਾਅਵੇ ਦੀ ਰਕਮ",
+      "evidence": "ਸਬੂਤ",
+      "itemsCount": "{{n}} ਵਸਤਾਂ",
+      "response": "ਉੱਤਰ",
+      "filed": "ਦਰਜ",
+      "uncontested": "ਬੇਨਾਮ",
+      "complianceMonitor": "ਪਾਲਣਾ ਨਿਗਰਾਨ",
+      "complianceDays": "{{n}} ਦਿਨ",
+      "deadline": "ਸਮਾਂ ਸੀਮਾ {{date}}",
+      "tier2Notice": "ਦੂਜੀ ਸ਼੍ਰੇਣੀ - ਆਰਡਰ ਅਸਥਾਈ ਹੈ ਅਤੇ ਮਨੁੱਖੀ ਦਸਤਖਤ ਦੀ ਉਡੀਕ ਹੈ।",
+      "autoEscalation": "ਆਟੋ-ਐਸਕਲੇਸ਼ਨ ਨੋਟਿਸ, ਜੇਕਰ ਪ੍ਰਤੀਵਾਦੀ ਸਮਾਂ ਸੀਮਾ ਦੇ ਅੰਦਰ ਪਾਲਣਾ ਕਰਨ ਵਿੱਚ ਅਸਫਲ ਰਹਿੰਦਾ ਹੈ, ਤਾਂ ਤਿਆਰ ਕੀਤਾ ਜਾਂਦਾ ਹੈ।",
+      "timeSaved": "ਬਚਿਆ ਹੋਇਆ ਸਮਾਂ",
+      "timeSavedHere": "~4 ਮਿੰਟ",
+      "timeSavedVs": "ਛੇ ਤੋਂ ਚੌਵੀ ਮਹੀਨੇ",
+      "timeSavedTemplate": "ਅੱਜ ਇੱਕ ਖਪਤਕਾਰ ਫੋਰਮ ਵਿੱਚ ਇੱਥੇ {{here}} ਬਨਾਮ {{vs}}।"
+    }
+  },
+  "stepper": {
+    "dispute": "ਵਿਵਾਦ",
+    "fileClaim": "ਫਾਈਲ ਦਾਅਵਾ",
+    "response": "ਉੱਤਰ",
+    "resolution": "ਏ ਆਈ ਦਾ ਹੱਲ"
+  },
+  "resolutionDoc": {
+    "basisTitle": "ਮਤਾ",
+    "basisText": "ਇਹ ਆਦੇਸ਼ {{amount}} ਦੇ ਦਾਅਵੇ ਦੇ ਮਾਮਲੇ ਵਿੱਚ {{basis}} 'ਤੇ ਪਾਸ ਕੀਤਾ ਗਿਆ ਹੈ।",
+    "findingsTitle": "ਖੋਜਾਂ",
+    "precedentsTitle": "ਮਿਸਾਲ",
+    "orderTitle": "ਹੁਕਮਨਾਮਾ",
+    "download": "ਰੈਜ਼ੋਲਿਊਸ਼ਨ ਆਰਡਰ ਡਾਊਨਲੋਡ ਕਰੋ।",
+    "binding": "ਬੰਧਨ",
+    "byMediation": "ਮਧੋਲਣ ਦੁਆਰਾ",
+    "autonomous": "ਸਵੈ-ਸਰਵਣ",
+    "case": "ਕੇਸ:",
+    "date": "ਮਿਤੀ:",
+    "claimant": "ਦਾਅਵੇਦਾਰ:",
+    "respondent": "ਉੱਤਰਦਾਤਾ:",
+    "txtBasisPrefix": "ਆਧਾਰ: ਹੱਲ",
+    "txtFindings": "ਨਤੀਜੇ",
+    "txtCitedPrecedents": "ਅਦਾਲਤੀ ਫੈਸਲੇ",
+    "txtOrder": "ਆਰਡਰ",
+    "txtComplianceDeadline": "ਪਾਲਣਾ ਦੀ ਆਖਰੀ ਮਿਤੀ:"
+  }
+}

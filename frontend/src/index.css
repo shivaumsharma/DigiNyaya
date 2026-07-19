@@ -72,6 +72,13 @@ button { font-family: var(--font-body); cursor: pointer; border: none; }
 .engine-badge.live { background: var(--green-soft); color: var(--green); border: 1px solid rgba(74,222,128,0.3); }
 .engine-badge.scripted { background: var(--panel-2); color: var(--text-faint); border: 1px solid var(--border); }
 
+.lang-select { font-size: 0.78rem; font-weight: 600; padding: 7px 30px 7px 14px; border-radius: 999px;
+  background: var(--panel-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b779a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--text); border: 1px solid var(--border); cursor: pointer; appearance: none; -webkit-appearance: none; }
+.lang-select:hover { border-color: var(--border-strong); }
+.lang-select:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.lang-select option { background: var(--bg-2); color: var(--text); }
+
 .llm-quote { margin-top: 12px; padding: 13px 15px; border-radius: 10px; background: rgba(109,139,255,0.08);
   border: 1px solid rgba(109,139,255,0.2); border-left: 3px solid var(--indigo); font-size: 0.88rem;
   line-height: 1.6; color: var(--text); font-style: italic; }
@@ -256,6 +263,13 @@ button { font-family: var(--font-body); cursor: pointer; border: none; }
 .doc-footer { font-size: 0.74rem; color: #8a8f9e; border-top: 1px dashed #d6d3c8; padding-top: 14px; margin-top: 8px; }
 .resolved-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--green-soft); color: var(--green);
   border: 1px solid rgba(74,222,128,0.3); padding: 7px 16px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
+.escalated-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--gold-soft); color: var(--gold);
+  border: 1px solid rgba(244,183,64,0.4); padding: 7px 16px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
+.escalation-banner { display: flex; flex-direction: column; gap: 4px; margin-bottom: 18px; padding: 14px 16px;
+  border-radius: 12px; background: var(--gold-soft); border: 1px solid rgba(244,183,64,0.4); color: var(--text);
+  font-size: 0.9rem; }
+.escalation-banner strong { color: var(--gold); }
+.escalation-banner p { margin: 0; color: var(--text-dim); }
 
 /* compliance strip */
 .compliance { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 12px; margin-top: 18px;
