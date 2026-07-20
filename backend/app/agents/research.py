@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from .. import rag
 from ..core.context import CaseContext, ResearchResult, RetrievedPrecedent
+from . import nlp
 from .base import AgentResult
 
 
 def run(ctx: CaseContext) -> AgentResult:
     ing = ctx.ingestion
     signals = list(ing.signals) if ing else []
+    label = nlp.dispute_label(ctx.dispute_type)
 
     # Build the retrieval query. On a retry, broaden it with the subtype words
     # and drop the most specific tokens to widen recall.
@@ -22,11 +24,11 @@ def run(ctx: CaseContext) -> AgentResult:
         query = f"{ing.dispute_subtype}. {ctx.description}" if ing else ctx.description
         k = 5
     else:
-        subtype = ing.dispute_subtype if ing else "consumer dispute"
-        query = f"consumer dispute {subtype} {' '.join(signals)} refund deficiency of service"
+        subtype = ing.dispute_subtype if ing else label
+        query = f"{label} {subtype} {' '.join(signals)}"
         k = 7
 
-    res = rag.retrieve(query, signals, k=k)
+    res = rag.retrieve(query, signals, category=ctx.dispute_type, k=k)
 
     precedents = [RetrievedPrecedent(**p) for p in res["precedents"]]
     result = ResearchResult(

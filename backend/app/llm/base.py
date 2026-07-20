@@ -26,6 +26,7 @@ class BaseLLMProvider(ABC):
         temperature: float = 0.2,
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> str:
         """
         Generate a text response.
@@ -42,6 +43,7 @@ class BaseLLMProvider(ABC):
         temperature: float = 0.0,
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Generate structured JSON output. Returns None (not a raised exception)
@@ -59,6 +61,7 @@ class BaseLLMProvider(ABC):
         temperature: float = 0.2,
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> Generator[str, None, None]:
         """
         Stream generated text incrementally.

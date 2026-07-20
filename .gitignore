@@ -15,6 +15,13 @@ backend/diginyaya.db-shm
 # Cached raw judgments pulled from the Indian Kanoon API (paid; re-fetchable)
 backend/data_cache/
 
+# Citizen-uploaded case documents (local storage backend's default root)
+backend/uploads/
+
+# Precomputed precedent embeddings (regenerated automatically when the
+# corpus content changes -- see app/rag/index.py's _corpus_hash)
+backend/app/data/precedent_vectors_cache.json
+
 # Node / frontend
 frontend/node_modules/
 frontend/dist/

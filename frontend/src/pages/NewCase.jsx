@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { api } from '../api.js'
-import { useSession } from '../session.jsx'
+import { useAuth } from '../auth/AuthContext.jsx'
+import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { ArrowLeft, ArrowRight, FileText, Receipt } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
 
@@ -9,11 +10,12 @@ const EV_KINDS = ['invoice', 'receipt', 'screenshot', 'contract', 'photo', 'othe
 
 export default function NewCase() {
   const { type } = useParams()
-  const { user } = useSession()
+  const { user } = useAuth()
+  const { t } = useLanguage()
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
-    claimant_name: user?.name || '',
+    claimant_name: user?.full_name || '',
     respondent_name: '',
     claim_amount: '',
     description: '',
@@ -23,10 +25,6 @@ export default function NewCase() {
   const [evKind, setEvKind] = useState('invoice')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
-
-  useEffect(() => {
-    if (!user) navigate('/')
-  }, [user, navigate])
 
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -72,41 +70,41 @@ export default function NewCase() {
   }
 
   return (
-    <section className="page fade-in">
+    <section className="page fade-in container" style={{ maxWidth: 760, margin: '0 auto' }}>
       <Stepper current={1} />
       <Link to="/disputes" className="back-link">
-        <ArrowLeft width={14} height={14} /> Back to categories
+        <ArrowLeft width={14} height={14} /> {t('newCase.backLink')}
       </Link>
       <div className="page-head between flex">
         <div>
-          <h2>File your consumer dispute</h2>
-          <p>Describe what happened and attach your evidence. The AI does the rest.</p>
+          <h1 style={{ fontWeight: 400, marginBottom: 8 }}>{t('newCase.title')}</h1>
+          <p style={{ fontSize: '0.95rem', margin: 0 }}>{t('newCase.subtitle')}</p>
         </div>
         <button className="btn btn-ghost" onClick={loadSample} type="button">
-          <Receipt width={16} height={16} /> Load demo case
+          <Receipt width={16} height={16} /> {t('newCase.loadDemo')}
         </button>
       </div>
 
-      <form onSubmit={submit} className="card card-pad" style={{ maxWidth: 760 }}>
+      <form onSubmit={submit} className="card elev-sm card-pad">
         <div className="field-row">
           <div className="field">
-            <label>Your name (Claimant)</label>
+            <label>{t('newCase.fieldClaimant')}</label>
             <input className="input" value={form.claimant_name} onChange={(e) => set('claimant_name', e.target.value)} required />
           </div>
           <div className="field">
-            <label>Opposing party (Respondent)</label>
+            <label>{t('newCase.fieldRespondent')}</label>
             <input
               className="input"
               value={form.respondent_name}
               onChange={(e) => set('respondent_name', e.target.value)}
-              placeholder="Seller / business name"
+              placeholder={t('newCase.placeholderRespondent')}
               required
             />
           </div>
         </div>
 
         <div className="field" style={{ maxWidth: 260 }}>
-          <label>Claim amount (₹)</label>
+          <label>{t('newCase.fieldAmount')}</label>
           <input
             className="input"
             type="number"
@@ -118,24 +116,24 @@ export default function NewCase() {
         </div>
 
         <div className="field">
-          <label>Describe your dispute</label>
+          <label>{t('newCase.fieldDescription')}</label>
           <textarea
             className="textarea"
             value={form.description}
             onChange={(e) => set('description', e.target.value)}
-            placeholder="What did you buy, what went wrong, what outcome do you want?"
+            placeholder={t('newCase.placeholderDescription')}
             required
           />
         </div>
 
         <div className="field">
-          <label>Evidence</label>
+          <label>{t('newCase.fieldEvidence')}</label>
           <div className="flex gap">
             <input
               className="input"
               value={evName}
               onChange={(e) => setEvName(e.target.value)}
-              placeholder="e.g. order_invoice.pdf"
+              placeholder={t('newCase.placeholderEvidence')}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
@@ -145,10 +143,10 @@ export default function NewCase() {
             />
             <select className="select" style={{ width: 150 }} value={evKind} onChange={(e) => setEvKind(e.target.value)}>
               {EV_KINDS.map((k) => (
-                <option key={k} value={k}>{k}</option>
+                <option key={k} value={k}>{t(`newCase.kind.${k}`)}</option>
               ))}
             </select>
-            <button type="button" className="btn" onClick={addEvidence}>Add</button>
+            <button type="button" className="btn" onClick={addEvidence}>{t('newCase.addEvidence')}</button>
           </div>
           {evidence.length > 0 && (
             <div className="ev-list">
@@ -156,7 +154,7 @@ export default function NewCase() {
                 <div className="ev-row" key={i}>
                   <FileText width={16} height={16} />
                   {ev.filename}
-                  <span className="ev-kind">{ev.kind}</span>
+                  <span className="ev-kind">{t(`newCase.kind.${ev.kind}`)}</span>
                   <span className="x" onClick={() => setEvidence((e) => e.filter((_, j) => j !== i))}>✕</span>
                 </div>
               ))}
@@ -167,7 +165,7 @@ export default function NewCase() {
         {err && <p style={{ color: 'var(--red)', fontSize: '0.85rem', marginBottom: 12 }}>{err}</p>}
 
         <button className="btn btn-primary btn-lg" disabled={submitting}>
-          {submitting ? 'Filing…' : 'File claim & notify respondent'} <ArrowRight />
+          {submitting ? t('newCase.filing') : t('newCase.fileClaim')} <ArrowRight />
         </button>
       </form>
     </section>

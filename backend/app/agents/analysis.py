@@ -24,6 +24,10 @@ _POSITION_LABELS = {
     "subscription": "Alleges an unwanted auto-renewal charge.",
     "repair_delay": "Alleges unreasonable delay in warranty repair.",
     "refund": "Seeks a refund of the amount paid.",
+    "loan_default": "Alleges non-repayment of a loan / money lent.",
+    "unpaid_dues": "Alleges non-payment of outstanding dues.",
+    "cheque_dishonour": "Alleges the cheque issued towards repayment was dishonoured.",
+    "breach_of_agreement": "Alleges breach of a written agreement's terms.",
 }
 
 
@@ -34,7 +38,7 @@ def run(ctx: CaseContext) -> AgentResult:
 
     claimant_points = [_POSITION_LABELS[s] for s in (ing.signals if ing else []) if s in _POSITION_LABELS]
     if not claimant_points:
-        claimant_points = ["Asserts a consumer grievance seeking redress."]
+        claimant_points = ["Asserts a grievance seeking redress."]
 
     contradictions: list[str] = []
     respondent_points: list[str] = []
@@ -57,21 +61,45 @@ def run(ctx: CaseContext) -> AgentResult:
         )
 
     # Strength scoring (0..1) — drives mediation quantum.
+    #
+    # IMPORTANT: claimant strength must NOT have a fixed floor. A previous
+    # version started every case at 0.5 regardless of evidence or contest,
+    # which meant a genuinely weak, contested, thinly-evidenced claim scored
+    # exactly the same "at least moderate" as a strong one — the downstream
+    # mediation validator then clamped relief to a nonzero floor no matter
+    # what, so the system could structurally never recommend "the claimant
+    # is not entitled to relief". Verified against 46 real court judgments:
+    # the AI matched the real court's result in 0/36 scored cases, and the
+    # dominant failure mode was exactly this — awarding relief the real
+    # court had refused entirely. See scripts/judge_real_outcomes.py.
     ev = ing.evidence_count if ing else 0
-    c_score = 0.5 + min(ev, 3) * 0.13
-    if respondent is None:
-        c_score += 0.15  # uncontested
-    elif respondent.get("accepts_liability"):
-        c_score += 0.1
-    c_score = round(min(c_score, 0.97), 2)
 
     if respondent is None:
-        r_score = 0.2
+        # Uncontested: claimant's version stands unopposed.
+        c_score = round(min(0.55 + min(ev, 3) * 0.13, 0.97), 2)
+        r_score = 0.15
     elif respondent.get("accepts_liability"):
+        # Respondent concedes -- claimant's case is essentially proven.
+        c_score = round(min(0.6 + min(ev, 3) * 0.12, 0.97), 2)
         r_score = 0.15
     else:
-        r_score = 0.45
-    r_score = round(r_score, 2)
+        # Genuinely contested: claimant strength scales with evidence on
+        # record from a genuinely low floor (0.2, no evidence at all) rather
+        # than assuming a moderate case by default. Respondent's denial
+        # strength depends on how much they concede via counter-offer: a
+        # firm denial (no counter-offer, or one of zero) is a strong
+        # position; a counter-offer close to the full claim is a near-
+        # concession and only weakly contests the claim.
+        c_score = round(min(0.2 + min(ev, 3) * 0.2, 0.85), 2)
+        counter = respondent.get("counter_offer")
+        if counter is None or counter <= 0:
+            r_score = 0.55
+        else:
+            concession = min(counter / ctx.claim_amount, 1.0) if ctx.claim_amount else 0.0
+            r_score = round(0.55 - concession * 0.35, 2)
+        r_score = round(min(max(r_score, 0.2), 0.7), 2)
+
+    c_score = round(min(max(c_score, 0.1), 0.97), 2)
 
     c_label = "strong" if c_score >= 0.75 else "moderate" if c_score >= 0.5 else "weak"
     r_label = "strong" if r_score >= 0.6 else "moderate" if r_score >= 0.35 else "weak"
@@ -91,7 +119,7 @@ def run(ctx: CaseContext) -> AgentResult:
     neutral = _scripted_summary(ctx, c_label, r_label)
     r_text = respondent.get("statement", "") if respondent else "(No response filed within the 72-hour window.)"
     prompt = (
-        "Write a single neutral paragraph (max 70 words) summarising this consumer dispute "
+        f"Write a single neutral paragraph (max 70 words) summarising this {nlp.dispute_label(ctx.dispute_type)} "
         "for a quasi-judicial record. Do not take sides. Use only these facts.\n\n"
         f"Dispute type: {ing.dispute_subtype if ing else 'consumer grievance'}\n"
         f"Claim amount: {ing.claim_amount_display if ing else nlp.inr(ctx.claim_amount)}\n"
@@ -99,7 +127,7 @@ def run(ctx: CaseContext) -> AgentResult:
         f"{wrap_untrusted('RESPONDENT_STATEMENT', r_text)}\n"
         f"Evidence on record: {ev} item(s). Assessed strength — claimant: {c_label}, respondent: {r_label}."
     )
-    out = llm.generate(prompt, system=llm.SYSTEM_PROMPT, max_tokens=160)
+    out = llm.generate(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
     if out:
         neutral = out
         engine = "llm"

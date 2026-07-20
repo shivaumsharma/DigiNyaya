@@ -2630,5 +2630,160 @@
     "docid": 164551494,
     "judgment_date": "2022-03-14",
     "verified": false
+  },
+  {
+    "id": "IK-150051",
+    "title": "Rangappa vs Sri Mohan on 7 May, 2010",
+    "court": "Supreme Court of India",
+    "year": 2010,
+    "category": "cheque_bounce",
+    "tags": [
+      "cheque_dishonour",
+      "unpaid_dues"
+    ],
+    "summary": "Appeal against acquittal in a cheque dishonour case; the accused argued the cheque did not represent a legally enforceable debt.",
+    "principle": "Section 139 raises a rebuttable presumption that a dishonoured cheque was issued for a legally enforceable debt or liability; the burden shifts to the accused to disprove it.",
+    "outcome": "compensation",
+    "outcome_detail": "Acquittal reversed; fine of Rs. 75,000 (in default, imprisonment) upheld against the drawer.",
+    "relief_amount_ratio": 1.0,
+    "compliance_days": 30,
+    "citation": "Rangappa vs Sri Mohan, (2010) 11 SCC 441",
+    "source": "manual_research",
+    "source_url": "https://indiankanoon.org/doc/150051/",
+    "docid": 150051,
+    "judgment_date": "2010-05-07",
+    "verified": false
+  },
+  {
+    "id": "IK-77590271",
+    "title": "M/S Indus Airways Pvt. Ltd. And Ors vs M/S Magnum Aviation Pvt Ltd And Anr on 7 April, 2014",
+    "court": "Supreme Court of India",
+    "year": 2014,
+    "category": "cheque_bounce",
+    "tags": [
+      "cheque_dishonour",
+      "breach_of_agreement"
+    ],
+    "summary": "Post-dated cheques were issued as advance payment for a purchase order that was cancelled before any goods were supplied; the cheques were later dishonoured.",
+    "principle": "A cheque issued as advance/security for a transaction that is cancelled before performance is not drawn against a subsisting legally enforceable debt, so its dishonour does not attract Section 138 -- only civil liability for breach, if any, can arise.",
+    "outcome": "dismissed",
+    "outcome_detail": "Section 138 complaint quashed; no criminal liability for dishonour of a cheque issued as advance security for a cancelled order.",
+    "relief_amount_ratio": 0.0,
+    "compliance_days": 30,
+    "citation": "M/S Indus Airways Pvt. Ltd. And Ors vs M/S Magnum Aviation Pvt Ltd And Anr on 7 April, 2014",
+    "source": "manual_research",
+    "source_url": "https://indiankanoon.org/doc/77590271/",
+    "docid": 77590271,
+    "judgment_date": "2014-04-07",
+    "verified": false
+  },
+  {
+    "id": "IK-100995424",
+    "title": "Dashrath Rupsingh Rathod vs State Of Maharashtra & Anr on 1 August, 2014",
+    "court": "Supreme Court of India",
+    "year": 2014,
+    "category": "cheque_bounce",
+    "tags": [
+      "cheque_dishonour"
+    ],
+    "summary": "Reference on which court has territorial jurisdiction to try a cheque-dishonour complaint under Section 138.",
+    "principle": "A Section 138 complaint must be filed only where the drawee bank (the bank on which the cheque was drawn) is situated -- mere presentation of the cheque elsewhere does not confer jurisdiction. (Note: Parliament later added Section 142A in 2015, which lets a complaint be filed where the cheque was delivered for collection -- check current law before relying on this for venue.)",
+    "outcome": "dismissed",
+    "outcome_detail": "Clarified filing venue; does not itself decide liability on any specific cheque.",
+    "relief_amount_ratio": 0.0,
+    "compliance_days": 30,
+    "citation": "Dashrath Rupsingh Rathod vs State of Maharashtra, (2014) 9 SCC 129",
+    "source": "manual_research",
+    "source_url": "https://indiankanoon.org/doc/100995424/",
+    "docid": 100995424,
+    "judgment_date": "2014-08-01",
+    "verified": false
+  },
+  {
+    "id": "IK-100228040",
+    "title": "Shri Ravindra Kumar Goel vs Shri Joseph Daniel on 27 September, 2011",
+    "court": "District Court, Dwarka Courts, Delhi",
+    "year": 2011,
+    "category": "money_recovery",
+    "tags": [
+      "loan_default",
+      "unpaid_dues",
+      "cheque_dishonour"
+    ],
+    "summary": "Plaintiff advanced a friendly loan of Rs. 1,00,000 at 12% annual interest, backed by a loan agreement and a post-dated cheque that was later dishonoured for insufficient funds.",
+    "principle": "A friendly loan supported by a written loan agreement and a dishonoured cheque is recoverable in full via a summary suit (Order XXXVII CPC) where the defendant fails to raise a genuine triable defence.",
+    "outcome": "full_refund",
+    "outcome_detail": "Decreed Rs. 1,07,000 plus 6% p.a. interest (pendente lite and future) and costs, jointly and severally against borrower and guarantor.",
+    "relief_amount_ratio": 1.0,
+    "compliance_days": 30,
+    "citation": "Shri Ravindra Kumar Goel vs Shri Joseph Daniel on 27 September, 2011, CS No. 105/2011 (Delhi)",
+    "source": "manual_research",
+    "source_url": "https://indiankanoon.org/doc/100228040/",
+    "docid": 100228040,
+    "judgment_date": "2011-09-27",
+    "verified": false
+  },
+  {
+    "id": "IK-584252",
+    "title": "Fateh Chand vs Balkishan Das on 15 January, 1963",
+    "court": "Supreme Court of India",
+    "year": 1963,
+    "category": "contract_breach",
+    "tags": [
+      "breach_of_agreement",
+      "unpaid_dues"
+    ],
+    "summary": "Seller received Rs. 24,000 as earnest/part payment under a sale agreement; buyer failed to complete the purchase, and the seller sought to forfeit the full amount under a contractual forfeiture clause.",
+    "principle": "Section 74 of the Indian Contract Act lets a court award only reasonable compensation for a proven breach; a forfeiture clause cannot be enforced as an automatic penalty without regard to actual loss.",
+    "outcome": "partial_refund",
+    "outcome_detail": "Full forfeiture of the earnest money disallowed; only reasonable compensation for the proven loss could be retained, balance ordered returned.",
+    "relief_amount_ratio": 0.5,
+    "compliance_days": 30,
+    "citation": "Fateh Chand vs Balkishan Das, AIR 1963 SC 1405",
+    "source": "manual_research",
+    "source_url": "https://indiankanoon.org/doc/584252/",
+    "docid": 584252,
+    "judgment_date": "1963-01-15",
+    "verified": false
+  },
+  {
+    "id": "IK-maulabux-1970",
+    "title": "Maula Bux vs Union Of India",
+    "court": "Supreme Court of India",
+    "year": 1970,
+    "category": "contract_breach",
+    "tags": [
+      "breach_of_agreement",
+      "unpaid_dues"
+    ],
+    "summary": "Government forfeited security deposits after cancelling supply contracts for breach by the contractor.",
+    "principle": "Under Section 74, where the loss caused by a breach is capable of being proved, the court must assess reasonable compensation instead of upholding a blanket forfeiture clause; only where loss is genuinely unascertainable may a reasonable security forfeiture stand without further proof.",
+    "outcome": "partial_refund",
+    "outcome_detail": "Forfeiture clause scaled down to reasonable compensation for proven loss rather than the full deposit.",
+    "relief_amount_ratio": 0.5,
+    "compliance_days": 30,
+    "citation": "Maula Bux vs Union of India, AIR 1970 SC 1955",
+    "source": "manual_research",
+    "verified": false
+  },
+  {
+    "id": "IK-money-recovery-order37-cpc",
+    "title": "Order XXXVII CPC -- Summary Suit Procedure for Recovery of Money",
+    "court": "Code of Civil Procedure, 1908 (procedural reference)",
+    "year": 1908,
+    "category": "money_recovery",
+    "tags": [
+      "loan_default",
+      "unpaid_dues"
+    ],
+    "summary": "Statutory summary procedure available for suits on a written contract, bill of exchange, or promissory note, allowing quicker recovery of a liquidated money claim.",
+    "principle": "A claim for recovery of a definite sum due under a written agreement, promissory note, or similar instrument may be recovered swiftly where the debtor cannot show a genuine, triable defence.",
+    "outcome": "full_refund",
+    "outcome_detail": "Procedural reference only -- not a specific judgment; supports awarding the full claimed amount where no bona fide defence is raised.",
+    "relief_amount_ratio": 1.0,
+    "compliance_days": 30,
+    "citation": "Code of Civil Procedure, 1908, Order XXXVII",
+    "source": "manual_research",
+    "verified": false
   }
 ]

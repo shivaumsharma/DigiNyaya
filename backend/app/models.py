@@ -26,6 +26,9 @@ class CaseStatus(str, Enum):
     mediation_proposed = "mediation_proposed"
     mediation_accepted = "mediation_accepted"
     resolved = "resolved"
+    # Blocked by app.core.safety_gate at either checkpoint -- routed to human
+    # legal review instead of an AI-generated answer. See `escalation` below.
+    escalated = "escalated"
 
 
 class Party(BaseModel):
@@ -55,18 +58,6 @@ def _validate_optional_language(value: str | None) -> str | None:
     if not (is_supported_language(normalized) or is_pipeline_language(normalized)):
         raise ValueError(f"Unsupported language code: {value!r}")
     return normalized
-
-
-class LoginRequest(BaseModel):
-    aadhaar_last4: str = Field(..., min_length=4, max_length=4)
-    name: str
-
-
-class LoginResponse(BaseModel):
-    citizen_id: str
-    name: str
-    aadhaar_verified: bool
-    masked_aadhaar: str
 
 
 class ClaimSubmission(BaseModel):
@@ -131,6 +122,36 @@ class SupportedLanguagesResponse(BaseModel):
     pipeline: str
 
 
+class DocumentOut(BaseModel):
+    id: str
+    original_filename: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_size: Optional[int] = None
+    is_scanned: bool = False
+    extraction_status: str = "pending"
+    ocr_confidence: Optional[float] = None
+    ocr_engine: Optional[str] = None
+    error_message: Optional[str] = None
+    uploaded_at: Optional[str] = None
+
+
+class DocumentDetailOut(DocumentOut):
+    raw_ocr_text: Optional[str] = None
+    cleaned_text: Optional[str] = None
+
+
+class DiscrepancyOut(BaseModel):
+    id: str
+    document_ids: list[str]
+    discrepancy_type: str
+    severity: str
+    confidence_score: float
+    explanation: Optional[str] = None
+    source_location: Optional[str] = None
+    flagged_for_review: bool
+    created_at: Optional[str] = None
+
+
 class CaseView(BaseModel):
     case_id: str
     status: CaseStatus
@@ -153,4 +174,6 @@ class CaseView(BaseModel):
     steps: list[AgentStep] = Field(default_factory=list)
     mediation: Optional[dict[str, Any]] = None
     resolution: Optional[dict[str, Any]] = None
+    # Set when app.core.safety_gate blocked this case -- see EscalationResult.to_dict().
+    escalation: Optional[dict[str, Any]] = None
     created_at: datetime

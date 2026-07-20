@@ -11,8 +11,11 @@ Pure-Python cosine keeps this dependency-free for a small corpus.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import threading
+from pathlib import Path
 
 from .. import llm
 from ..data.loader import load_precedents
@@ -22,27 +25,71 @@ _lock = threading.Lock()
 _doc_vectors: list[list[float]] | None = None
 _doc_built = False
 
+# Embedding the corpus is 1 Ollama HTTP call PER precedent (llm.embed() has
+# no batch endpoint to call -- see app/llm/client.py), so re-embedding all
+# 127+ precedents from scratch on every single process restart is a real,
+# user-visible cold-start cost on the first case that reaches Agent 2
+# (confirmed: this is why "Agent 2" looks slow right after starting the
+# server). Cached to disk, keyed by a hash of the corpus content, so a
+# restart only re-embeds when the precedent corpus actually changed.
+_CACHE_PATH = Path(__file__).resolve().parents[1] / "data" / "precedent_vectors_cache.json"
+
 
 def _doc_text(p: dict) -> str:
     return f"{p['title']}. {p['summary']} {p['principle']} Tags: {', '.join(p.get('tags', []))}."
 
 
+def _corpus_hash(precedents: list[dict]) -> str:
+    texts = "\x00".join(f"{p['id']}\x01{_doc_text(p)}" for p in precedents)
+    return hashlib.sha256(texts.encode("utf-8")).hexdigest()
+
+
+def _load_cached_vectors(expected_hash: str, expected_len: int) -> list[list[float]] | None:
+    try:
+        with open(_CACHE_PATH, encoding="utf-8") as fh:
+            cached = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if cached.get("hash") != expected_hash:
+        return None
+    vecs = cached.get("vectors")
+    if not isinstance(vecs, list) or len(vecs) != expected_len:
+        return None
+    return vecs
+
+
+def _save_cached_vectors(corpus_hash: str, vecs: list[list[float]]) -> None:
+    try:
+        with open(_CACHE_PATH, "w", encoding="utf-8") as fh:
+            json.dump({"hash": corpus_hash, "vectors": vecs}, fh)
+    except OSError:
+        pass  # Cache is a pure optimization -- a write failure just means next boot re-embeds.
+
+
 def _ensure_embeddings() -> bool:
-    """Embed the corpus once. Returns True if semantic search is available."""
+    """Embed the corpus once (disk-cached across restarts). Returns True if
+    semantic search is available."""
     global _doc_vectors, _doc_built
     with _lock:
         if _doc_built:
             return _doc_vectors is not None
         _doc_built = True
         precedents = load_precedents()
-        try:
-            vecs = llm.embed([_doc_text(p) for p in precedents])
-        except Exception:
-            # Ollama was reachable (is_available() passed) but the actual
-            # embed call failed anyway -- e.g. the embedding model isn't
-            # pulled, returning a 500. Don't let that crash the agent;
-            # fall back to keyword search just like the "unreachable" case.
-            vecs = None
+        corpus_hash = _corpus_hash(precedents)
+
+        vecs = _load_cached_vectors(corpus_hash, len(precedents))
+        if vecs is None:
+            try:
+                vecs = llm.embed([_doc_text(p) for p in precedents])
+            except Exception:
+                # Ollama was reachable (is_available() passed) but the actual
+                # embed call failed anyway -- e.g. the embedding model isn't
+                # pulled, returning a 500. Don't let that crash the agent;
+                # fall back to keyword search just like the "unreachable" case.
+                vecs = None
+            if vecs is not None:
+                _save_cached_vectors(corpus_hash, vecs)
+
         _doc_vectors = vecs
         return _doc_vectors is not None
 
@@ -68,10 +115,17 @@ def _keyword_score(p: dict, signals: set[str]) -> float:
     return (0.8 * base + 0.2) * _recency(p.get("year", _CURRENT_YEAR))
 
 
-def retrieve(query: str, signals: list[str], *, k: int = 5, min_results: int = 3) -> dict:
-    """Return ranked precedents + coverage + method."""
+def retrieve(
+    query: str,
+    signals: list[str],
+    *,
+    category: str = "consumer_dispute",
+    k: int = 5,
+    min_results: int = 3,
+) -> dict:
+    """Return ranked precedents + coverage + method, scoped to *category*."""
     precedents = load_precedents()
-    consumer = [p for p in precedents if p.get("category") == "consumer_dispute"]
+    in_category = [p for p in precedents if p.get("category") == category]
     sigset = set(signals)
 
     method = "keyword"
@@ -85,16 +139,16 @@ def retrieve(query: str, signals: list[str], *, k: int = 5, min_results: int = 3
         if qvec:
             method = "semantic"
             qv = qvec[0]
-            # Map corpus index -> vector (consumer subset preserves order).
+            # Map corpus index -> vector (full corpus preserves order).
             idx_by_id = {p["id"]: i for i, p in enumerate(precedents)}
-            for p in consumer:
+            for p in in_category:
                 sim = _cosine(qv, _doc_vectors[idx_by_id[p["id"]]])
                 # Blend semantic similarity with a mild recency prior.
                 scored.append((sim * 0.85 + _recency(p["year"]) * 0.15, p))
 
     if not scored:  # keyword fallback
         method = "keyword"
-        for p in consumer:
+        for p in in_category:
             scored.append((_keyword_score(p, sigset), p))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -150,8 +204,8 @@ def verify_citations(cited_ids: list[str], retrieved_ids: list[str]) -> list[str
     return [c for c in cited_ids if c in allowed]
 
 
-def decoy_candidates(retrieved_ids: list[str], *, k: int = 2) -> list[dict]:
-    """Sample consumer-dispute precedents that were NOT retrieved for this case.
+def decoy_candidates(retrieved_ids: list[str], category: str = "consumer_dispute", *, k: int = 2) -> list[dict]:
+    """Sample same-category precedents that were NOT retrieved for this case.
 
     Used to build a mixed candidate pool (real matches + decoys) so the
     Resolution agent's citation-selection step is a genuine test rather than a
@@ -161,6 +215,6 @@ def decoy_candidates(retrieved_ids: list[str], *, k: int = 2) -> list[dict]:
     import random
 
     precedents = load_precedents()
-    pool = [p for p in precedents if p.get("category") == "consumer_dispute" and p["id"] not in set(retrieved_ids)]
+    pool = [p for p in precedents if p.get("category") == category and p["id"] not in set(retrieved_ids)]
     random.shuffle(pool)
     return pool[:k]

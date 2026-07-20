@@ -1,7 +1,8 @@
 """DigiNyaya FastAPI application.
 
 Architecture:
-  • Auth: bearer tokens; cases are owned by their filer (IDOR-safe).
+  • Auth: real email/phone login (app/auth); cases are owned by their filer's
+    user.id (IDOR-safe). The old Aadhaar-demo HMAC token scheme is retired.
   • Work runs in background jobs (jobs.py), decoupled from the HTTP connection.
   • Clients trigger a phase (POST) then subscribe to a durable + live event
     stream (GET /events?after=cursor) that replays on refresh and resumes.
@@ -28,20 +29,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from . import db, jobs, llm
+from .auth.db import init_auth_db
+from .auth.deps import current_user
+from .auth.orm_models import User
+from .auth.router import me_router as auth_me_router, router as auth_router
 from .core.events import TERMINAL, bus, stream_from_queue
+from .routers.documents import router as documents_router
 from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
-from .language.config import SUPPORTED_LANGUAGES, config as language_config, is_pipeline_language
+from .language.config import (
+    SUPPORTED_LANGUAGES,
+    config as language_config,
+    is_pipeline_language,
+    is_supported_language,
+    normalize_language_code,
+)
 from .language.gateway import UnsupportedLanguageError, get_language_gateway
 from .language.logging import configure_language_logging
 from .models import (
     ClaimSubmission,
     LanguageOption,
-    LoginRequest,
     MediationDecision,
     RespondentSubmission,
     SupportedLanguagesResponse,
 )
-from .security import current_citizen, ensure_owner, make_token, sanitize_text
+from .security import ensure_owner, sanitize_text
 
 # Attach the structured (or plain) handler to the "diginyaya.language" logger
 # tree before any language-gateway module logs anything.
@@ -60,6 +71,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
+app.include_router(auth_me_router)
+app.include_router(documents_router)
 
 
 SAMPLE_CLAIM = {
@@ -89,10 +104,6 @@ SAMPLE_RESPONSE = {
     "accepts_liability": False,
     "counter_offer": 20000,
 }
-
-
-def _mask_aadhaar(last4: str) -> str:
-    return f"XXXX-XXXX-{last4}"
 
 
 # ----------------------------- Language Gateway helpers ----------------------------- #
@@ -147,33 +158,54 @@ def _localize_payload_dict(payload: dict, target_language: str, gw) -> dict:
     return localized
 
 
-def _localize_case_response(case: dict) -> dict:
-    """Build the outgoing response for a case: strip internal ``_``-prefixed
-    keys (unchanged from before), then localize human-readable fields back
-    to the case's stored ``source_language`` -- without mutating ``case``
-    itself, which stays the English canonical record in the DB.
+def _resolve_target_language(case: dict, lang: str | None) -> str:
+    """Pick the language to localize a response into: an explicit ``lang``
+    override from the request (the frontend's current UI language selection)
+    when it's a recognized code, otherwise the case's stored
+    ``source_language`` -- today's behavior, unchanged for callers that don't
+    pass an override.
+    """
+    if lang:
+        normalized = normalize_language_code(lang)
+        if is_supported_language(normalized) or is_pipeline_language(normalized):
+            return normalized
+    return case.get("source_language", language_config.pipeline_language)
 
-    No-op passthrough when the gateway is disabled or the case's source
+
+def _localize_case_response(case: dict, lang: str | None = None) -> dict:
+    """Build the outgoing response for a case: strip internal ``_``-prefixed
+    keys (unchanged from before), then localize human-readable fields back to
+    ``lang`` if given and recognized, else the case's stored
+    ``source_language`` -- without mutating ``case`` itself, which stays the
+    English canonical record in the DB.
+
+    No-op passthrough when the gateway is disabled or the resolved target
     language already *is* the pipeline language (nothing to translate back),
     so this has zero behavior change for existing/English-only cases.
     """
     response = {k: v for k, v in case.items() if not k.startswith("_")}
 
     gw = get_language_gateway()
-    source_language = case.get("source_language", language_config.pipeline_language)
+    source_language = _resolve_target_language(case, lang)
     if not gw.enabled or is_pipeline_language(source_language):
         return response
 
+    # The claimant's/respondent's own original text is only usable verbatim
+    # when displaying in the case's actual filing language; an explicit
+    # override to a *different* language still needs a real translation of
+    # the English pipeline copy below.
+    viewing_in_filing_language = source_language == case.get("source_language")
+
     try:
-        # The claimant's/respondent's original text is already in their own
-        # language -- prefer it over re-translating the English pipeline
-        # copy, which would be lossier and cost an extra Sarvam call for no
-        # benefit.
-        if case.get("original_description"):
+        if viewing_in_filing_language and case.get("original_description"):
             response["description"] = case["original_description"]
 
         respondent_submission = response.get("respondent_submission")
-        if isinstance(respondent_submission, dict) and respondent_submission.get("original_statement"):
+        if (
+            viewing_in_filing_language
+            and isinstance(respondent_submission, dict)
+            and respondent_submission.get("original_statement")
+        ):
             respondent_submission = dict(respondent_submission)
             respondent_submission["statement"] = respondent_submission["original_statement"]
             response["respondent_submission"] = respondent_submission
@@ -218,6 +250,7 @@ def _localize_event(event: dict, source_language: str, gw) -> dict:
 @app.on_event("startup")
 def _startup():
     db.init_db()
+    init_auth_db()
     threading.Thread(target=llm.prewarm, daemon=True).start()
 
 
@@ -232,20 +265,6 @@ def ai_status():
     return llm.status()
 
 
-@app.post("/api/login")
-def login(req: LoginRequest):
-    if not req.aadhaar_last4.isdigit():
-        raise HTTPException(status_code=400, detail="Aadhaar last 4 digits must be numeric")
-    citizen_id = "citizen_" + uuid.uuid4().hex[:10]
-    return {
-        "citizen_id": citizen_id,
-        "name": sanitize_text(req.name, max_len=120) or "Citizen",
-        "aadhaar_verified": True,
-        "masked_aadhaar": _mask_aadhaar(req.aadhaar_last4),
-        "token": make_token(citizen_id),
-    }
-
-
 @app.get("/api/dispute-types")
 def dispute_types():
     return DISPUTE_TYPES
@@ -258,7 +277,7 @@ def precedents():
 
 @app.get("/api/languages", response_model=SupportedLanguagesResponse)
 def languages():
-    # Public (no Depends(current_citizen)), same as /api/dispute-types and
+    # Public (no Depends(current_user)), same as /api/dispute-types and
     # /api/precedents: static reference data, not user-specific, and needed
     # pre-login so the login screen itself can render in the user's language.
     return SupportedLanguagesResponse(
@@ -282,7 +301,7 @@ def _tier_for(dispute_type: str) -> tuple[int, str]:
 
 
 @app.post("/api/cases")
-def create_case(submission: ClaimSubmission, citizen_id: str = Depends(current_citizen)):
+def create_case(submission: ClaimSubmission, user: User = Depends(current_user)):
     case_id = "DN-" + datetime.utcnow().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
     tier, tier_label = _tier_for(submission.dispute_type.value)
     gw = get_language_gateway()
@@ -290,7 +309,7 @@ def create_case(submission: ClaimSubmission, citizen_id: str = Depends(current_c
     inbound = gw.to_pipeline_language(sanitized_description, declared_language=submission.language)
     case = {
         "case_id": case_id,
-        "owner_id": citizen_id,
+        "owner_id": user.id,
         "status": "awaiting_response",
         "tier": tier,
         "tier_label": tier_label,
@@ -318,23 +337,23 @@ def create_case(submission: ClaimSubmission, citizen_id: str = Depends(current_c
     }
 
 
-def _load_owned(case_id: str, citizen_id: str) -> dict:
+def _load_owned(case_id: str, owner_id: str) -> dict:
     case = db.get_case(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    ensure_owner(case, citizen_id)
+    ensure_owner(case, owner_id)
     return case
 
 
 @app.get("/api/cases/{case_id}")
-def get_case(case_id: str, citizen_id: str = Depends(current_citizen)):
-    case = _load_owned(case_id, citizen_id)
-    return _localize_case_response(case)
+def get_case(case_id: str, lang: str | None = None, user: User = Depends(current_user)):
+    case = _load_owned(case_id, user.id)
+    return _localize_case_response(case, lang)
 
 
 @app.post("/api/cases/{case_id}/respond")
-def respond(case_id: str, submission: RespondentSubmission, citizen_id: str = Depends(current_citizen)):
-    case = _load_owned(case_id, citizen_id)
+def respond(case_id: str, submission: RespondentSubmission, user: User = Depends(current_user)):
+    case = _load_owned(case_id, user.id)
     gw = get_language_gateway()
     sanitized_statement = sanitize_text(submission.statement)
     inbound = gw.to_pipeline_language(sanitized_statement, declared_language=submission.language)
@@ -348,15 +367,15 @@ def respond(case_id: str, submission: RespondentSubmission, citizen_id: str = De
 
 
 @app.post("/api/cases/{case_id}/skip-response")
-def skip_response(case_id: str, citizen_id: str = Depends(current_citizen)):
-    _load_owned(case_id, citizen_id)
+def skip_response(case_id: str, user: User = Depends(current_user)):
+    _load_owned(case_id, user.id)
     db.update_case(case_id, respondent_submission=None, status="ready")
     return {"status": "ready", "case_id": case_id, "uncontested": True}
 
 
 @app.post("/api/cases/{case_id}/run")
-def run_pipeline(case_id: str, citizen_id: str = Depends(current_citizen)):
-    case = _load_owned(case_id, citizen_id)
+def run_pipeline(case_id: str, user: User = Depends(current_user)):
+    case = _load_owned(case_id, user.id)
     # Only launch the pipeline for a case that hasn't started it yet, so a page
     # refresh (which re-issues this call) never re-runs the agents.
     # "error" is included so a case that crashed mid-pipeline (e.g. a
@@ -370,22 +389,24 @@ def run_pipeline(case_id: str, citizen_id: str = Depends(current_citizen)):
 
 
 @app.post("/api/cases/{case_id}/mediation")
-def mediation_decision(case_id: str, decision: MediationDecision, citizen_id: str = Depends(current_citizen)):
-    case = _load_owned(case_id, citizen_id)
+def mediation_decision(case_id: str, decision: MediationDecision, user: User = Depends(current_user)):
+    case = _load_owned(case_id, user.id)
     if "_ctx" not in case:
         raise HTTPException(status_code=409, detail="Run the resolution pipeline before deciding mediation")
     if case.get("status") == "resolved":
         return {"status": "resolved", "accepted": case.get("mediation_accepted"), "started": False}
+    if case.get("status") == "escalated":
+        return {"status": "escalated", "accepted": case.get("mediation_accepted"), "started": False}
     db.update_case(case_id, status="mediation_accepted" if decision.accept else "processing")
     started = jobs.start_resolution(case_id, decision.accept)
     return {"status": "ok", "accepted": decision.accept, "started": started}
 
 
 @app.get("/api/cases/{case_id}/events")
-def events(case_id: str, after: int = 0, citizen_id: str = Depends(current_citizen)):
-    case = _load_owned(case_id, citizen_id)
+def events(case_id: str, after: int = 0, lang: str | None = None, user: User = Depends(current_user)):
+    case = _load_owned(case_id, user.id)
     gw = get_language_gateway()
-    source_language = case.get("source_language", language_config.pipeline_language)
+    source_language = _resolve_target_language(case, lang)
     should_localize = gw.enabled and not is_pipeline_language(source_language)
 
     def sse(ev: dict) -> str:

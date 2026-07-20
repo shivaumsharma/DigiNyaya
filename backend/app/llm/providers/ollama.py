@@ -33,6 +33,8 @@ class OllamaProvider(BaseLLMProvider):
 
         self.timeout = config.timeout
 
+        self.embed_timeout = config.embed_timeout
+
     # ---------------------------------------------------------
 
     def _chat(
@@ -83,6 +85,7 @@ class OllamaProvider(BaseLLMProvider):
         temperature=0.2,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ):
 
         messages = []
@@ -118,6 +121,7 @@ class OllamaProvider(BaseLLMProvider):
         temperature=0.0,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ):
 
         messages = []
@@ -160,6 +164,7 @@ class OllamaProvider(BaseLLMProvider):
         temperature=0.2,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ) -> Generator[str, None, None]:
 
         messages = []
@@ -207,7 +212,7 @@ class OllamaProvider(BaseLLMProvider):
                 "model": self.embedding_model,
                 "prompt": text,
             },
-            timeout=self.timeout,
+            timeout=self.embed_timeout,
         )
 
         response.raise_for_status()

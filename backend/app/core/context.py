@@ -31,6 +31,12 @@ class IngestionResult(BaseModel):
     confidence: float
     reasoning: str = ""
     engine: str = "scripted"
+    # What KIND of relief the claim actually asks for -- "monetary" (default)
+    # or one of "injunction"/"declaration"/"replacement"/"possession". See
+    # app.agents.nlp.detect_relief_type: resolution.py could previously only
+    # ever draft a "pay the claimant Rs X" order, even when the real ask (and
+    # what a real court would order) was non-monetary.
+    relief_type_requested: str = "monetary"
 
 
 class RetrievedPrecedent(BaseModel):
@@ -76,6 +82,13 @@ class MediationProposal(BaseModel):
     amount: float
     amount_display: str
     compliance_days: int
+    # Simple interest rate awarded on top of `amount`, per annum, from the
+    # date of this order until payment -- 0.0 when no relief is awarded
+    # (dismissed) or precedent doesn't support an interest award. Indian
+    # money decrees routinely carry an ongoing interest rate rather than a
+    # single precomputed lump sum, so this is expressed as a rate + clause
+    # in the order, not folded into `amount` itself.
+    interest_rate_pct: float = 0.0
     headline: str
     explanation: str = ""
     rationale: list[str] = Field(default_factory=list)
@@ -154,6 +167,11 @@ class CaseContext(BaseModel):
     analysis: Optional[AnalysisResult] = None
     mediation: Optional[MediationProposal] = None
     resolution: Optional[ResolutionDoc] = None
+
+    # Set by app.core.safety_gate when either checkpoint blocks the case --
+    # an EscalationResult.to_dict(). Presence of this field means the case
+    # was routed to human review instead of an AI-generated answer.
+    escalation: Optional[dict[str, Any]] = None
 
     @classmethod
     def from_case(cls, case: dict) -> "CaseContext":

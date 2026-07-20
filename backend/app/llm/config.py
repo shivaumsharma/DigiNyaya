@@ -108,6 +108,25 @@ class LLMConfig:
         )
     )
 
+    # A single embedding call is a small, fast request when Ollama is
+    # actually reachable (a cold-start embed of one string measured ~3-4s in
+    # practice) -- it should never need anywhere close to the 120s
+    # `timeout` above, which exists for slow multi-step chat/reasoning
+    # generation. Using the general `timeout` for embed() meant a single
+    # unreachable/overloaded Ollama instance could block each embed call
+    # (the corpus embed on first use, plus one per subsequent retrieval
+    # query) for up to 120s before app.rag.index's existing try/except
+    # fallback to keyword search could even engage -- confirmed directly:
+    # a pipeline run hung 2+ minutes on this alone. Kept short and
+    # separately configurable so a slow-but-genuinely-working embed model
+    # isn't starved of the (much longer) budget chat completions still get.
+    embed_timeout: int = int(
+        os.getenv(
+            "LLM_EMBED_TIMEOUT",
+            "10"
+        )
+    )
+
     # ------------------------------------------------------------------
     # Retry Behaviour
     # ------------------------------------------------------------------

@@ -12,6 +12,17 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
+      // New auth endpoints live bare at /auth/* and /me (not under /api),
+      // per the spec's endpoint list -- proxied separately so the browser
+      // still talks to a single origin in dev.
+      '/auth': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/me': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

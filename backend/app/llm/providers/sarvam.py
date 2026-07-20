@@ -66,6 +66,7 @@ class SarvamProvider(BaseLLMProvider):
         stream=False,
         response_format=None,
         max_tokens=None,
+        reasoning_effort=None,
     ):
 
         payload = {
@@ -77,6 +78,21 @@ class SarvamProvider(BaseLLMProvider):
 
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+
+        # Sarvam's reasoning models (sarvam-105b) default to "medium" reasoning
+        # effort whenever this field is *omitted* from the request, emitting a
+        # verbose reasoning_content trace that can consume the entire
+        # max_tokens budget before any answer is written to `content`
+        # (content: null, finish_reason: "length"). Empirically, "low" is NOT
+        # reliably low for schema-constrained JSON prompts -- it still burned
+        # 350+ reasoning tokens and starved a 600-token budget in testing.
+        # Explicitly sending reasoning_effort: null (Python None) is what
+        # actually disables reasoning -- confirmed empirically to produce
+        # correct content in ~50 completion tokens with reasoning_content
+        # empty. So this field is always sent (never omitted): None -> JSON
+        # null -> disabled; "low"/"medium"/"high" pass through for callers
+        # that explicitly want deeper reasoning.
+        payload["reasoning_effort"] = reasoning_effort
 
         if response_format:
             payload["response_format"] = response_format
@@ -101,6 +117,7 @@ class SarvamProvider(BaseLLMProvider):
         temperature=0.2,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ):
 
         messages = []
@@ -121,10 +138,11 @@ class SarvamProvider(BaseLLMProvider):
             temperature=temperature,
             model=model,
             max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
         )
 
         return response.json()["choices"][0]["message"]["content"]
-    
+
     def generate_json(
         self,
         prompt,
@@ -134,6 +152,7 @@ class SarvamProvider(BaseLLMProvider):
         temperature=0.0,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ):
 
         messages = []
@@ -154,6 +173,7 @@ class SarvamProvider(BaseLLMProvider):
             temperature=temperature,
             model=model,
             max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
             response_format={
                 "type": "json_object"
             },
@@ -230,6 +250,7 @@ class SarvamProvider(BaseLLMProvider):
     temperature=0.2,
     model=None,
     max_tokens=None,
+    reasoning_effort=None,
 ):
       """
       Stream generated output.
@@ -253,6 +274,7 @@ class SarvamProvider(BaseLLMProvider):
           temperature=temperature,
           model=model,
           max_tokens=max_tokens,
+          reasoning_effort=reasoning_effort,
           stream=True,
       )
 

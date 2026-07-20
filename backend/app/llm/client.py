@@ -11,9 +11,9 @@ require changes outside the llm package.
 
 Call convention (matches every call site in app/agents and app/rag):
 
-    llm.generate(prompt, system=llm.SYSTEM_PROMPT, max_tokens=160)
-    llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=220)
-    llm.generate_stream(prompt, system=llm.SYSTEM_PROMPT, max_tokens=260)
+    llm.generate(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
+    llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
+    llm.generate_stream(prompt, system=llm.SYSTEM_PROMPT, max_tokens=600)
     llm.embed(["doc one", "doc two", ...])   # -> list[list[float]]
     llm.embed("single string")               # -> list[float]
 
@@ -47,6 +47,7 @@ def generate(
     temperature: float = 0.2,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> Optional[str]:
     """
     Generate a text response using the active provider.
@@ -55,6 +56,19 @@ def generate(
     via DIGINYAYA_USE_LLM=0, or the call fails -- callers (analysis.py,
     resolution.py) already treat a falsy result as "fall back to the
     scripted summary", the same contract generate_json() below documents.
+
+    reasoning_effort defaults to None (disabled): Sarvam's reasoning model
+    (sarvam-105b, the default for model=None) defaults to "medium" reasoning
+    effort whenever this field is *omitted*, emitting a verbose
+    reasoning_content trace before writing the final answer -- easily enough
+    to consume the entire max_tokens budget on reasoning alone, leaving
+    content: null. Passing None here is forwarded as an explicit
+    reasoning_effort: null in the request body, which is what actually
+    disables it (confirmed empirically: "low" is NOT reliably low for
+    schema-constrained prompts -- it still starved a 600-token budget in
+    testing, while explicit null produced correct output in ~50 tokens).
+    Pass "low"/"medium"/"high" for call sites that genuinely want deeper
+    reasoning at the cost of more tokens and latency.
     """
     if _llm_disabled():
         return None
@@ -65,6 +79,7 @@ def generate(
             temperature=temperature,
             model=model,
             max_tokens=max_tokens or config.max_tokens,
+            reasoning_effort=reasoning_effort,
         )
     except Exception:
         return None
@@ -78,6 +93,7 @@ def generate_json(
     temperature: float = 0.0,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Generate structured JSON using the active provider.
@@ -86,6 +102,8 @@ def generate_json(
     model's output couldn't be parsed as JSON -- callers (mediation.py,
     resolution.py) already check `if data:` and fall back to scripted
     behaviour on None.
+
+    See generate() above for why reasoning_effort defaults to None (disabled).
     """
     if _llm_disabled():
         return None
@@ -97,6 +115,7 @@ def generate_json(
             temperature=temperature,
             model=model,
             max_tokens=max_tokens or config.max_tokens,
+            reasoning_effort=reasoning_effort,
         )
     except Exception:
         return None
@@ -109,6 +128,7 @@ def generate_stream(
     temperature: float = 0.2,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """
     Stream generated text.
@@ -117,6 +137,8 @@ def generate_stream(
     during streaming, the generator simply yields nothing further so callers
     (graph.py's resolve_node) fall back via `acc or None`, same contract as
     generate() above.
+
+    See generate() above for why reasoning_effort defaults to None (disabled).
     """
     if _llm_disabled():
         return
@@ -127,6 +149,7 @@ def generate_stream(
             temperature=temperature,
             model=model,
             max_tokens=max_tokens or config.max_tokens,
+            reasoning_effort=reasoning_effort,
         )
     except Exception:
         return
