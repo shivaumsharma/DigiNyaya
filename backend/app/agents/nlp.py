@@ -111,6 +111,36 @@ _RELIEF_TYPE_LEXICON: list[tuple[str, tuple[str, ...]]] = [
         "arbitration agreement", "bound by the arbitration clause", "appoint an arbitrator",
         "arbitration and conciliation act", "section 8 of the arbitration",
     )),
+    # Checked ahead of possession/injunction: partnership/co-ownership
+    # disputes routinely ask for BOTH a partition and a protective injunction
+    # in the same breath (e.g. "sought a partition of the property... and an
+    # injunction to prevent the respondent from alienating... his share") --
+    # partition is the more specific, primary relief in these cases (declares
+    # each party's share), so it should win the single relief_kind slot
+    # rather than the more generic, secondary injunction mention. Found via
+    # real-judgment testing: partnership_business_disputes had no relief type
+    # for this at all and defaulted to a monetary compensation figure no real
+    # court in the sample actually awarded.
+    ("partition", (
+        "partition of the property", "seeking a partition", "sought a partition",
+        "decree of partition", "partition suit", "dissolution of the partnership",
+        "dissolve the partnership", "rendition of accounts", "accounts of the partnership",
+    )),
+    # Employment/termination disputes: getting the job back (+ back wages) is
+    # the standard Labour Court remedy for illegal termination, distinct from
+    # a one-off monetary damages award. Checked ahead of possession/
+    # injunction/declaration since "reinstate" can co-occur with generic
+    # relief language but is far more specific to what a Labour Court
+    # actually orders in these matters. Found via real-judgment testing:
+    # employment_disputes had no relief type for this at all and defaulted
+    # to a monetary compensation figure real Labour Courts didn't award in
+    # multiple sampled cases (they ordered reinstatement + back wages, or
+    # nothing, not a lump-sum payment).
+    ("reinstatement", (
+        "reinstate", "reinstatement", "reinstated", "did not reinstate",
+        "seeking reinstatement", "restore him to his post", "restore her to her post",
+        "continuity of service", "back wages",
+    )),
     ("possession", ("vacant possession", "hand over possession", "eviction", "evict", "recover possession")),
     ("injunction", ("injunction", "restrain", "restraining order", "stop the respondent", "cease and desist", "remove the", "removal of the")),
     ("declaration", ("declare", "declaration that", "declared void", "null and void", "declaratory")),
@@ -167,6 +197,80 @@ _DATE_RE = re.compile(
     r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})\b",
     re.IGNORECASE,
 )
+
+
+# Phrases indicating the respondent never actually engaged with the
+# proceeding (defaulted / ex-parte) despite a submission record existing --
+# distinct from a genuine denial. Real courts almost always decree for the
+# claimant by default in these cases, so this must be scored like an
+# uncontested case, not a generic firm denial.
+_NO_DEFENSE_LEXICON = (
+    "did not enter an appearance", "did not appear", "failed to appear",
+    "no defense was filed", "no defence was filed",
+    "did not present any defense", "did not present any defence",
+    "without a sustainable defense", "without a sustainable defence",
+    "failed to apply for leave to defend", "did not apply for leave to defend",
+    "did not file a written statement", "proceeded ex-parte", "ex parte",
+)
+
+# Markers of a SPECIFIC, dispositive legal or factual defense (a named
+# ground or a concrete counter-fact) as opposed to a bare denial. Found via
+# the 46-case real-judgment benchmark (scripts/judge_real_outcomes.py):
+# analysis.py's respondent strength previously reacted only to whether a
+# counter-offer was made, so a rock-solid "no contract existed" / "barred by
+# limitation" defense scored identically to a vague denial -- the dominant
+# remaining failure mode (11/23 mismatches) was the AI awarding relief the
+# real court had refused because of exactly this kind of defense.
+_DEFENSE_SUBSTANCE_LEXICON = (
+    "no contract", "no agreement", "not a tenant", "not an employee",
+    "no privity", "landlord-tenant relationship", "lack of jurisdiction",
+    "no jurisdiction", "jurisdiction", "limitation", "barred",
+    "not maintainable", "maintainable", "locus standi", "arbitration",
+    "res judicata", "estoppel", "condonation", "cause of action",
+    "non-joinder", "already paid", "already delivered", "took delivery",
+    "cleared all dues", "full and final settlement", "settlement was reached",
+    "forgery", "encroach", "title document", "site plan", "possession since",
+    "never worked for", "never issued", "stolen", "stop payment",
+    # Tenancy/ownership-protection defenses: found via real-judgment testing
+    # to be a dominant, previously-unscored mismatch pattern for tenancy
+    # disputes -- e.g. a landlord's eviction suit failing because the
+    # landlord "failed to prove ownership" is exactly as dispositive as any
+    # of the entries above, but none of them matched this common phrasing.
+    "failed to prove ownership", "failed to prove his ownership",
+    "failed to prove her ownership", "failed to prove title",
+    "protected tenant", "statutory tenant", "rent control act",
+    "bonafide requirement", "bona fide requirement", "not proved",
+    "did not prove", "no relationship of landlord and tenant",
+    "denied the existence of tenancy", "adverse possession",
+)
+
+
+def defendant_defaulted(text: str) -> bool:
+    """True if the respondent's own statement describes a failure to engage
+    with the proceeding at all (ex-parte / no defense filed), rather than a
+    denial on the merits."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(p in lowered for p in _NO_DEFENSE_LEXICON)
+
+
+def score_defense_substance(text: str) -> float:
+    """Heuristic 0..1 estimate of how specific/dispositive a respondent's
+    defense is, as opposed to a bare, unparticularised denial. Deliberately
+    keyword-based (not an LLM call) so the Analysis agent stays free and
+    deterministic on every case, including uncontested ones."""
+    if not text:
+        return 0.0
+    lowered = text.lower()
+    matches = sum(1 for m in _DEFENSE_SUBSTANCE_LEXICON if m in lowered)
+    if matches == 0:
+        return 0.0
+    if matches == 1:
+        return 0.5
+    if matches == 2:
+        return 0.75
+    return 0.9
 
 
 def extract_signals(text: str) -> list[str]:

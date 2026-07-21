@@ -29,6 +29,8 @@ _NON_MONETARY_ACTIONS = {
     ),
     "replacement": "provide the claimant a replacement of like kind and quality for the goods/services in dispute",
     "possession": "hand over vacant possession of the property in dispute to the claimant",
+    "partition": "recognise the claimant's declared share in the property and cooperate in effecting a partition by metes and bounds accordingly",
+    "reinstatement": "reinstate the claimant to their former position with continuity of service",
     "arbitration_referral": (
         "refer the parties to arbitration in accordance with the arbitration clause between them, without "
         "adjudication of the merits of this dispute by this forum"
