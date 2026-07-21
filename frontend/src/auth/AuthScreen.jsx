@@ -136,8 +136,9 @@ function ForgotPasswordCard({ onBack }) {
         ) : (
           <form onSubmit={handleSubmit} style={{ marginTop: 14 }}>
             <div className="field">
-              <label>Email</label>
+              <label htmlFor="fp-email">Email</label>
               <input
+                id="fp-email"
                 className="input"
                 type="email"
                 value={email}

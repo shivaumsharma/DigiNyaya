@@ -55,8 +55,9 @@ export default function PhoneOtpForm({ needsProfile, languages, onStart, onVerif
     return (
       <form onSubmit={handleStart}>
         <div className="field">
-          <label>Phone number</label>
+          <label htmlFor="otp-phone">Phone number</label>
           <input
+            id="otp-phone"
             className="input"
             type="tel"
             value={phone}
@@ -87,8 +88,9 @@ export default function PhoneOtpForm({ needsProfile, languages, onStart, onVerif
       {needsProfile && (
         <>
           <div className="field">
-            <label>Full name</label>
+            <label htmlFor="otp-full-name">Full name</label>
             <input
+              id="otp-full-name"
               className="input"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -98,8 +100,8 @@ export default function PhoneOtpForm({ needsProfile, languages, onStart, onVerif
           </div>
           {languages?.length > 0 && (
             <div className="field">
-              <label>Preferred language</label>
-              <select className="select" value={language} onChange={(e) => setLanguage(e.target.value)}>
+              <label htmlFor="otp-language">Preferred language</label>
+              <select id="otp-language" className="select" value={language} onChange={(e) => setLanguage(e.target.value)}>
                 {languages.map((l) => (
                   <option key={l.code} value={l.code}>
                     {l.native} ({l.label})
@@ -111,8 +113,9 @@ export default function PhoneOtpForm({ needsProfile, languages, onStart, onVerif
         </>
       )}
       <div className="field">
-        <label>Enter the 6-digit code</label>
+        <label htmlFor="otp-code">Enter the 6-digit code</label>
         <input
+          id="otp-code"
           className="input"
           value={otp}
           onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}

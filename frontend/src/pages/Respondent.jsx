@@ -69,8 +69,9 @@ export default function Respondent() {
             </button>
           </div>
           <div className="field">
-            <label>{t('respondent.fieldStatement')}</label>
+            <label htmlFor="resp-statement">{t('respondent.fieldStatement')}</label>
             <textarea
+              id="resp-statement"
               className="textarea"
               style={{ minHeight: 110 }}
               value={statement}
@@ -80,8 +81,8 @@ export default function Respondent() {
           </div>
           <div className="field-row">
             <div className="field">
-              <label>{t('respondent.fieldCounter')}</label>
-              <input className="input" type="number" value={counter} onChange={(e) => setCounter(e.target.value)} placeholder={t('respondent.placeholderCounter')} />
+              <label htmlFor="resp-counter">{t('respondent.fieldCounter')}</label>
+              <input id="resp-counter" className="input" type="number" value={counter} onChange={(e) => setCounter(e.target.value)} placeholder={t('respondent.placeholderCounter')} />
             </div>
             <div className="field">
               <label>{t('respondent.fieldLiability')}</label>

@@ -4,12 +4,13 @@ import { Eye, EyeOff } from '../icons.jsx'
 // Shared by EmailPasswordForm and ResetPassword -- a password field with a
 // show/hide toggle, since a bare type="password" input gives the user no way
 // to check what they typed before submitting.
-export default function PasswordInput({ value, onChange, placeholder, minLength, autoComplete }) {
+export default function PasswordInput({ id, value, onChange, placeholder, minLength, autoComplete }) {
   const [visible, setVisible] = useState(false)
 
   return (
     <div className="password-field">
       <input
+        id={id}
         className="input"
         type={visible ? 'text' : 'password'}
         value={value}

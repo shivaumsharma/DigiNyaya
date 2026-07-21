@@ -88,12 +88,13 @@ export default function NewCase() {
       <form onSubmit={submit} className="card elev-sm card-pad">
         <div className="field-row">
           <div className="field">
-            <label>{t('newCase.fieldClaimant')}</label>
-            <input className="input" value={form.claimant_name} onChange={(e) => set('claimant_name', e.target.value)} required />
+            <label htmlFor="nc-claimant-name">{t('newCase.fieldClaimant')}</label>
+            <input id="nc-claimant-name" className="input" value={form.claimant_name} onChange={(e) => set('claimant_name', e.target.value)} required />
           </div>
           <div className="field">
-            <label>{t('newCase.fieldRespondent')}</label>
+            <label htmlFor="nc-respondent-name">{t('newCase.fieldRespondent')}</label>
             <input
+              id="nc-respondent-name"
               className="input"
               value={form.respondent_name}
               onChange={(e) => set('respondent_name', e.target.value)}
@@ -104,8 +105,9 @@ export default function NewCase() {
         </div>
 
         <div className="field" style={{ maxWidth: 260 }}>
-          <label>{t('newCase.fieldAmount')}</label>
+          <label htmlFor="nc-claim-amount">{t('newCase.fieldAmount')}</label>
           <input
+            id="nc-claim-amount"
             className="input"
             type="number"
             value={form.claim_amount}
@@ -116,8 +118,9 @@ export default function NewCase() {
         </div>
 
         <div className="field">
-          <label>{t('newCase.fieldDescription')}</label>
+          <label htmlFor="nc-description">{t('newCase.fieldDescription')}</label>
           <textarea
+            id="nc-description"
             className="textarea"
             value={form.description}
             onChange={(e) => set('description', e.target.value)}
@@ -127,9 +130,10 @@ export default function NewCase() {
         </div>
 
         <div className="field">
-          <label>{t('newCase.fieldEvidence')}</label>
+          <label htmlFor="nc-evidence-name">{t('newCase.fieldEvidence')}</label>
           <div className="flex gap">
             <input
+              id="nc-evidence-name"
               className="input"
               value={evName}
               onChange={(e) => setEvName(e.target.value)}

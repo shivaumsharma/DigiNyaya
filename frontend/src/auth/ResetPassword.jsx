@@ -46,8 +46,9 @@ export default function ResetPassword() {
         ) : (
           <form onSubmit={handleSubmit} style={{ marginTop: 14 }}>
             <div className="field">
-              <label>New password</label>
+              <label htmlFor="rp-new-password">New password</label>
               <PasswordInput
+                id="rp-new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 8 characters"

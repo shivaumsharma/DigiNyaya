@@ -69,7 +69,7 @@ describe('NewCase', () => {
     const user = userEvent.setup()
     renderNewCase()
 
-    const evidenceInput = screen.getByPlaceholderText(/order_invoice/i)
+    const evidenceInput = screen.getByLabelText(/^evidence$/i)
     await user.type(evidenceInput, 'contract.pdf')
     await user.click(screen.getByRole('button', { name: /add/i }))
 
@@ -84,9 +84,9 @@ describe('NewCase', () => {
     api.createCase.mockResolvedValue({ case_id: 'case-42' })
     renderNewCase()
 
-    await user.type(screen.getByPlaceholderText(/seller.*business name/i), 'Acme Corp')
-    await user.type(screen.getByPlaceholderText('42999'), '15000')
-    await user.type(screen.getByPlaceholderText(/what did you buy/i), 'They never delivered the goods.')
+    await user.type(screen.getByLabelText(/opposing party/i), 'Acme Corp')
+    await user.type(screen.getByLabelText(/claim amount/i), '15000')
+    await user.type(screen.getByLabelText(/describe your dispute/i), 'They never delivered the goods.')
     await user.click(screen.getByRole('button', { name: /file claim/i }))
 
     await waitFor(() => expect(api.createCase).toHaveBeenCalled())
@@ -105,9 +105,9 @@ describe('NewCase', () => {
     api.createCase.mockResolvedValue({ case_id: 'case-1' })
     renderNewCase()
 
-    await user.type(screen.getByPlaceholderText(/seller.*business name/i), 'Acme Corp')
-    await user.type(screen.getByPlaceholderText('42999'), '0')
-    await user.type(screen.getByPlaceholderText(/what did you buy/i), 'Some description text.')
+    await user.type(screen.getByLabelText(/opposing party/i), 'Acme Corp')
+    await user.type(screen.getByLabelText(/claim amount/i), '0')
+    await user.type(screen.getByLabelText(/describe your dispute/i), 'Some description text.')
     await user.click(screen.getByRole('button', { name: /file claim/i }))
 
     await waitFor(() => expect(api.createCase).toHaveBeenCalled())
@@ -119,9 +119,9 @@ describe('NewCase', () => {
     api.createCase.mockRejectedValue(new Error('Server exploded'))
     renderNewCase()
 
-    await user.type(screen.getByPlaceholderText(/seller.*business name/i), 'Acme Corp')
-    await user.type(screen.getByPlaceholderText('42999'), '15000')
-    await user.type(screen.getByPlaceholderText(/what did you buy/i), 'Some description text.')
+    await user.type(screen.getByLabelText(/opposing party/i), 'Acme Corp')
+    await user.type(screen.getByLabelText(/claim amount/i), '15000')
+    await user.type(screen.getByLabelText(/describe your dispute/i), 'Some description text.')
     await user.click(screen.getByRole('button', { name: /file claim/i }))
 
     expect(await screen.findByText('Server exploded')).toBeInTheDocument()

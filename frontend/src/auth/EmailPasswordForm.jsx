@@ -35,8 +35,9 @@ export default function EmailPasswordForm({ mode, languages, onSubmit, onForgotP
     <form onSubmit={handleSubmit}>
       {isSignup && (
         <div className="field">
-          <label>Full name</label>
+          <label htmlFor="ep-full-name">Full name</label>
           <input
+            id="ep-full-name"
             className="input"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
@@ -46,8 +47,9 @@ export default function EmailPasswordForm({ mode, languages, onSubmit, onForgotP
         </div>
       )}
       <div className="field">
-        <label>Email</label>
+        <label htmlFor="ep-email">Email</label>
         <input
+          id="ep-email"
           className="input"
           type="email"
           value={email}
@@ -57,8 +59,9 @@ export default function EmailPasswordForm({ mode, languages, onSubmit, onForgotP
         />
       </div>
       <div className="field">
-        <label>Password</label>
+        <label htmlFor="ep-password">Password</label>
         <PasswordInput
+          id="ep-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={isSignup ? 'At least 8 characters' : 'Your password'}
@@ -68,8 +71,8 @@ export default function EmailPasswordForm({ mode, languages, onSubmit, onForgotP
       </div>
       {isSignup && languages?.length > 0 && (
         <div className="field">
-          <label>Preferred language</label>
-          <select className="select" value={language} onChange={(e) => setLanguage(e.target.value)}>
+          <label htmlFor="ep-language">Preferred language</label>
+          <select id="ep-language" className="select" value={language} onChange={(e) => setLanguage(e.target.value)}>
             {languages.map((l) => (
               <option key={l.code} value={l.code}>
                 {l.native} ({l.label})

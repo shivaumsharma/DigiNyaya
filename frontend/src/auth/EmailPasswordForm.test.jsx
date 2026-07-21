@@ -14,11 +14,11 @@ describe('EmailPasswordForm', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     render(<EmailPasswordForm mode="login" languages={LANGUAGES} onSubmit={onSubmit} />)
 
-    expect(screen.queryByPlaceholderText(/your full name/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/preferred language/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/full name/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/preferred language/i)).not.toBeInTheDocument()
 
-    await user.type(screen.getByPlaceholderText(/you@example.com/i), 'user@example.com')
-    await user.type(screen.getByPlaceholderText(/your password/i), 'hunter22')
+    await user.type(screen.getByLabelText(/email/i), 'user@example.com')
+    await user.type(screen.getByLabelText(/^password$/i), 'hunter22')
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
     expect(onSubmit).toHaveBeenCalledWith({ email: 'user@example.com', password: 'hunter22' })
@@ -29,9 +29,9 @@ describe('EmailPasswordForm', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     render(<EmailPasswordForm mode="signup" languages={LANGUAGES} onSubmit={onSubmit} />)
 
-    await user.type(screen.getByPlaceholderText(/your full name/i), 'Ada Lovelace')
-    await user.type(screen.getByPlaceholderText(/you@example.com/i), 'ada@example.com')
-    await user.type(screen.getByPlaceholderText(/at least 8 characters/i), 'analytical1')
+    await user.type(screen.getByLabelText(/full name/i), 'Ada Lovelace')
+    await user.type(screen.getByLabelText(/email/i), 'ada@example.com')
+    await user.type(screen.getByLabelText(/^password$/i), 'analytical1')
     await user.click(screen.getByRole('button', { name: /create account/i }))
 
     expect(onSubmit).toHaveBeenCalledWith({
@@ -47,8 +47,8 @@ describe('EmailPasswordForm', () => {
     const onSubmit = vi.fn().mockRejectedValue(new Error('Invalid credentials'))
     render(<EmailPasswordForm mode="login" languages={LANGUAGES} onSubmit={onSubmit} />)
 
-    await user.type(screen.getByPlaceholderText(/you@example.com/i), 'user@example.com')
-    await user.type(screen.getByPlaceholderText(/your password/i), 'wrongpass')
+    await user.type(screen.getByLabelText(/email/i), 'user@example.com')
+    await user.type(screen.getByLabelText(/^password$/i), 'wrongpass')
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument()

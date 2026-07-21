@@ -12,7 +12,7 @@ describe('PhoneOtpForm', () => {
     const onVerify = vi.fn().mockResolvedValue(undefined)
     render(<PhoneOtpForm onStart={onStart} onVerify={onVerify} />)
 
-    await user.type(screen.getByPlaceholderText(/98765 43210/), '+919876543210')
+    await user.type(screen.getByLabelText(/phone number/i), '+919876543210')
     await user.click(screen.getByRole('button', { name: /send otp/i }))
 
     expect(onStart).toHaveBeenCalledWith('+919876543210')
@@ -25,10 +25,10 @@ describe('PhoneOtpForm', () => {
     const onStart = vi.fn().mockResolvedValue({})
     render(<PhoneOtpForm onStart={onStart} onVerify={vi.fn()} />)
 
-    await user.type(screen.getByPlaceholderText(/98765 43210/), '9876543210')
+    await user.type(screen.getByLabelText(/phone number/i), '9876543210')
     await user.click(screen.getByRole('button', { name: /send otp/i }))
 
-    const otpInput = await screen.findByPlaceholderText('123456')
+    const otpInput = await screen.findByLabelText(/enter the 6-digit code/i)
     await user.type(otpInput, 'ab12cd34ef56')
     expect(otpInput).toHaveValue('123456')
   })
@@ -38,10 +38,10 @@ describe('PhoneOtpForm', () => {
     const onStart = vi.fn().mockResolvedValue({})
     render(<PhoneOtpForm onStart={onStart} onVerify={vi.fn()} />)
 
-    await user.type(screen.getByPlaceholderText(/98765 43210/), '9876543210')
+    await user.type(screen.getByLabelText(/phone number/i), '9876543210')
     await user.click(screen.getByRole('button', { name: /send otp/i }))
 
-    const otpInput = await screen.findByPlaceholderText('123456')
+    const otpInput = await screen.findByLabelText(/enter the 6-digit code/i)
     const verifyBtn = screen.getByRole('button', { name: /verify & continue/i })
     expect(verifyBtn).toBeDisabled()
 
@@ -58,11 +58,11 @@ describe('PhoneOtpForm', () => {
     const onVerify = vi.fn().mockResolvedValue(undefined)
     render(<PhoneOtpForm needsProfile languages={LANGUAGES} onStart={onStart} onVerify={onVerify} />)
 
-    await user.type(screen.getByPlaceholderText(/98765 43210/), '9876543210')
+    await user.type(screen.getByLabelText(/phone number/i), '9876543210')
     await user.click(screen.getByRole('button', { name: /send otp/i }))
 
-    await user.type(await screen.findByPlaceholderText(/your full name/i), 'Ada Lovelace')
-    await user.type(screen.getByPlaceholderText('123456'), '123456')
+    await user.type(await screen.findByLabelText(/full name/i), 'Ada Lovelace')
+    await user.type(screen.getByLabelText(/enter the 6-digit code/i), '123456')
     await user.click(screen.getByRole('button', { name: /verify & continue/i }))
 
     expect(onVerify).toHaveBeenCalledWith('9876543210', '123456', {
@@ -76,14 +76,14 @@ describe('PhoneOtpForm', () => {
     const onStart = vi.fn().mockResolvedValue({})
     render(<PhoneOtpForm onStart={onStart} onVerify={vi.fn()} />)
 
-    await user.type(screen.getByPlaceholderText(/98765 43210/), '9876543210')
+    await user.type(screen.getByLabelText(/phone number/i), '9876543210')
     await user.click(screen.getByRole('button', { name: /send otp/i }))
-    await screen.findByPlaceholderText('123456')
+    await screen.findByLabelText(/enter the 6-digit code/i)
 
     await user.click(screen.getByRole('button', { name: /use a different number/i }))
 
-    expect(screen.getByPlaceholderText(/98765 43210/)).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('123456')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/phone number/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/enter the 6-digit code/i)).not.toBeInTheDocument()
   })
 
   it('surfaces the rejected error message when starting OTP fails', async () => {
@@ -91,7 +91,7 @@ describe('PhoneOtpForm', () => {
     const onStart = vi.fn().mockRejectedValue(new Error('Too many requests'))
     render(<PhoneOtpForm onStart={onStart} onVerify={vi.fn()} />)
 
-    await user.type(screen.getByPlaceholderText(/98765 43210/), '9876543210')
+    await user.type(screen.getByLabelText(/phone number/i), '9876543210')
     await user.click(screen.getByRole('button', { name: /send otp/i }))
 
     expect(await screen.findByText('Too many requests')).toBeInTheDocument()
