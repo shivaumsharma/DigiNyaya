@@ -5,6 +5,11 @@ import react from '@vitejs/plugin-react'
 // so the browser talks to a single origin (no CORS in dev) and SSE streams cleanly.
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.js',
+    globals: true,
+  },
   server: {
     port: 5173,
     proxy: {
