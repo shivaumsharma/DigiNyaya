@@ -78,13 +78,13 @@ def _client_ip(request: Request) -> str:
 
 
 def _dev_otp_field(code: str) -> str | None:
-    """There's no real SMS provider wired up (sms.py is a console-log stub),
-    so outside production the OTP-start response includes the code directly
-    -- without this, testing the phone flow requires reading server logs.
-    Always None in production, where a real SMS provider will actually
-    deliver it.
+    """get_sms_provider() (sms.py) is unconditionally the console-log stub --
+    there is no real SMS provider wired up yet, in production or otherwise --
+    so the OTP-start response always includes the code directly; without
+    this, phone signup/login has no way to reach the user at all. Once a
+    real SMS provider is wired up, gate this back on `not _is_production()`.
     """
-    return None if _is_production() else code
+    return code
 
 
 def _is_production() -> bool:
