@@ -1,7 +1,10 @@
-// Thin API client for the DigiNyaya backend. Uses the Vite proxy (/api -> :8000).
+// Thin API client for the DigiNyaya backend. In dev, relative paths go
+// through the Vite proxy (/api -> :8000). In production the frontend and
+// backend are separate deploys on different domains, so VITE_API_BASE points
+// straight at the backend's origin (see .env.production / Render env vars).
 import { getAccessToken } from './auth/tokenStore.js'
 
-const BASE = '/api'
+const BASE = `${import.meta.env.VITE_API_BASE || ''}/api`
 
 function authHeaders() {
   const token = getAccessToken()

@@ -11,6 +11,7 @@ Architecture:
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from datetime import datetime
@@ -60,13 +61,18 @@ configure_language_logging(language_config)
 
 app = FastAPI(title="DigiNyaya API", version="0.2.0")
 
+# The frontend is a separate static-site deploy on its own onrender.com
+# domain, so this is genuinely cross-origin in production -- CORS must name
+# that exact origin (credentials mode forbids "*") for cookies + auth headers
+# to be accepted.
+_cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173"]
+_frontend_origin = os.getenv("DIGINYAYA_FRONTEND_URL")
+if _frontend_origin and _frontend_origin not in _cors_origins:
+    _cors_origins.append(_frontend_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

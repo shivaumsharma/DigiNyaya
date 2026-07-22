@@ -97,7 +97,11 @@ def _set_refresh_cookie(response: Response, raw_token: str) -> None:
         value=raw_token,
         httponly=True,
         secure=_is_production(),
-        samesite="lax",
+        # The frontend and backend are separate cross-site origins in
+        # production (two onrender.com domains), so the cookie needs
+        # SameSite=None to be sent at all; browsers require Secure whenever
+        # SameSite=None is set, which _is_production() also guarantees.
+        samesite="none" if _is_production() else "lax",
         max_age=int(timedelta(days=7).total_seconds()),
         # Scoped to /auth so this cookie is never sent to unrelated routes.
         path="/auth",

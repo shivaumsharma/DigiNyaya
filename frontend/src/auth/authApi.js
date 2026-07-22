@@ -4,7 +4,8 @@
 // different credential scheme: httpOnly refresh cookie + in-memory bearer
 // access token, not a localStorage token.
 
-const AUTH_BASE = '/auth'
+const API_ROOT = import.meta.env.VITE_API_BASE || ''
+const AUTH_BASE = `${API_ROOT}/auth`
 
 async function jsonFetch(path, options = {}) {
   const { headers, ...rest } = options
@@ -68,7 +69,7 @@ export const authApi = {
 
   refresh: () => jsonFetch(`${AUTH_BASE}/refresh`, { method: 'POST' }),
   logout: (token) => jsonFetch(`${AUTH_BASE}/logout`, { method: 'POST', headers: authHeader(token) }),
-  me: (token) => jsonFetch('/me', { headers: authHeader(token) }),
+  me: (token) => jsonFetch(`${API_ROOT}/me`, { headers: authHeader(token) }),
 
   passwordResetRequest: (email) =>
     jsonFetch(`${AUTH_BASE}/password/reset/request`, { method: 'POST', body: JSON.stringify({ email }) }),
