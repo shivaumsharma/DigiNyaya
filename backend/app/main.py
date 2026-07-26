@@ -35,6 +35,7 @@ from .auth.deps import current_user
 from .auth.orm_models import User
 from .auth.router import me_router as auth_me_router, router as auth_router
 from .core.events import TERMINAL, bus, stream_from_queue
+from .core.logging import configure_app_logging
 from .routers.documents import router as documents_router
 from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
 from .language.config import (
@@ -58,6 +59,7 @@ from .security import ensure_owner, sanitize_text
 # Attach the structured (or plain) handler to the "diginyaya.language" logger
 # tree before any language-gateway module logs anything.
 configure_language_logging(language_config)
+configure_app_logging()
 
 app = FastAPI(title="DigiNyaya API", version="0.2.0")
 

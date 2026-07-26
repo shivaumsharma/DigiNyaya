@@ -25,11 +25,16 @@ call with a TypeError. Fixed here + at each call site.
 """
 
 from __future__ import annotations
+import logging
 import os
+import threading
+import time
 from typing import Any, Dict, Generator, List, Optional, Union
 from app.llm.factory import get_provider, get_embedding_provider
 from app.llm.config import config
 from app.prompts.system import SYSTEM_PROMPT
+
+logger = logging.getLogger("diginyaya.llm")
 
 
 def _llm_disabled() -> bool:
@@ -38,6 +43,60 @@ def _llm_disabled() -> bool:
     (scripts/eval_cases.py) to guarantee a free, deterministic run instead
     of silently placing real billed Sarvam calls."""
     return os.environ.get("DIGINYAYA_USE_LLM", "1") == "0"
+
+
+class _CircuitBreaker:
+    """Process-wide circuit breaker around provider calls.
+
+    generate()/generate_json()/generate_stream() below already catch every
+    exception and degrade to None/empty (agents fall back to scripted
+    behaviour) -- but each of those failing calls still pays the full
+    provider timeout (config.timeout, tens of seconds) before giving up.
+    A single dispute run makes several LLM calls across 5 agents; during a
+    real Sarvam outage, this turns "one slow request" into "every agent in
+    every concurrent case blocks for a timeout in turn."
+
+    After FAILURE_THRESHOLD consecutive failures, the breaker opens: for
+    COOLDOWN_SECONDS, calls fail fast (no network attempt at all) instead of
+    waiting out another timeout, matching the existing None/empty degrade
+    contract exactly -- callers can't tell the difference, they just get an
+    answer faster. One trial call after cooldown decides whether to close
+    the breaker again (success) or re-open it for another cooldown window.
+    """
+
+    FAILURE_THRESHOLD = 3
+    COOLDOWN_SECONDS = 30.0
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._consecutive_failures = 0
+        self._open_until = 0.0
+
+    def allow(self) -> bool:
+        with self._lock:
+            return time.monotonic() >= self._open_until
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._consecutive_failures = 0
+            self._open_until = 0.0
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= self.FAILURE_THRESHOLD and self._open_until < time.monotonic():
+                self._open_until = time.monotonic() + self.COOLDOWN_SECONDS
+                logger.warning(
+                    "circuit breaker opened",
+                    extra={
+                        "event": "llm_circuit_breaker_open",
+                        "consecutive_failures": self._consecutive_failures,
+                        "cooldown_seconds": self.COOLDOWN_SECONDS,
+                    },
+                )
+
+
+_breaker = _CircuitBreaker()
 
 
 def generate(
@@ -70,10 +129,10 @@ def generate(
     Pass "low"/"medium"/"high" for call sites that genuinely want deeper
     reasoning at the cost of more tokens and latency.
     """
-    if _llm_disabled():
+    if _llm_disabled() or not _breaker.allow():
         return None
     try:
-        return get_provider().generate(
+        result = get_provider().generate(
             prompt=prompt,
             system=system,
             temperature=temperature,
@@ -81,7 +140,10 @@ def generate(
             max_tokens=max_tokens or config.max_tokens,
             reasoning_effort=reasoning_effort,
         )
+        _breaker.record_success()
+        return result
     except Exception:
+        _breaker.record_failure()
         return None
 
 
@@ -105,10 +167,10 @@ def generate_json(
 
     See generate() above for why reasoning_effort defaults to None (disabled).
     """
-    if _llm_disabled():
+    if _llm_disabled() or not _breaker.allow():
         return None
     try:
-        return get_provider().generate_json(
+        result = get_provider().generate_json(
             prompt=prompt,
             system=system,
             schema=schema,
@@ -117,7 +179,10 @@ def generate_json(
             max_tokens=max_tokens or config.max_tokens,
             reasoning_effort=reasoning_effort,
         )
+        _breaker.record_success()
+        return result
     except Exception:
+        _breaker.record_failure()
         return None
 
 
@@ -140,7 +205,7 @@ def generate_stream(
 
     See generate() above for why reasoning_effort defaults to None (disabled).
     """
-    if _llm_disabled():
+    if _llm_disabled() or not _breaker.allow():
         return
     try:
         yield from get_provider().generate_stream(
@@ -151,7 +216,9 @@ def generate_stream(
             max_tokens=max_tokens or config.max_tokens,
             reasoning_effort=reasoning_effort,
         )
+        _breaker.record_success()
     except Exception:
+        _breaker.record_failure()
         return
 
 

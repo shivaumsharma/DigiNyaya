@@ -14,6 +14,7 @@ runner follows the transition table until it hits a pause or terminal state.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable, Iterator
 
 from .. import llm
@@ -21,6 +22,8 @@ from ..agents import analysis, ingestion, mediation, research, resolution
 from . import safety_gate
 from .context import CaseContext, RouteDecision
 from .events import make_event
+
+logger = logging.getLogger("diginyaya.pipeline")
 
 TITLES = {
     "orchestrator": "Orchestrator",
@@ -54,10 +57,20 @@ def _escalated_event(ctx: CaseContext, result: safety_gate.EscalationResult) -> 
     )
 
 
-def _done(agent: str, result) -> dict:
+def _done(agent: str, result, ctx: CaseContext) -> dict:
     payload = result.output.model_dump() if result.output else {}
     payload["engine"] = result.engine
     payload["confidence"] = result.confidence
+    logger.info(
+        "agent decision",
+        extra={
+            "event": "agent_decision",
+            "case_id": ctx.case_id,
+            "agent": agent,
+            "engine": result.engine,
+            "confidence": result.confidence,
+        },
+    )
     return make_event("agent", agent=agent, title=TITLES[agent], status="done", detail=result.detail, payload=payload)
 
 
@@ -66,7 +79,7 @@ def ingest_node(ctx: CaseContext) -> Iterator[dict]:
     yield _running("ingestion", "Reading claim narrative & evidence…")
     res = ingestion.run(ctx)
     ctx.ingestion = res.output
-    yield _done("ingestion", res)
+    yield _done("ingestion", res, ctx)
 
 
 def route_node(ctx: CaseContext) -> Iterator[dict]:
@@ -82,6 +95,16 @@ def route_node(ctx: CaseContext) -> Iterator[dict]:
         reason=ing.reasoning if ing else "",
     )
     ctx.tier, ctx.tier_label = tier, label
+    logger.info(
+        "tier routing decision",
+        extra={
+            "event": "tier_routing",
+            "case_id": ctx.case_id,
+            "tier": tier,
+            "autonomous": autonomous,
+            "confidence": ing.confidence if ing else 0,
+        },
+    )
     yield make_event(
         "routing",
         detail=(
@@ -104,14 +127,14 @@ def research_node(ctx: CaseContext) -> Iterator[dict]:
     yield _running("research", f"Querying NCDRC / State / District judgments{note}…")
     res = research.run(ctx)
     ctx.research = res.output
-    yield _done("research", res)
+    yield _done("research", res, ctx)
 
 
 def analyze_node(ctx: CaseContext) -> Iterator[dict]:
     yield _running("analysis", "Reading both submissions & reasoning…")
     res = analysis.run(ctx)
     ctx.analysis = res.output
-    yield _done("analysis", res)
+    yield _done("analysis", res, ctx)
     if ctx.analysis and ctx.analysis.needs_more_research:
         yield make_event("loop", detail="Precedent coverage thin — orchestrator is looping back to Research with a broader query.")
 
@@ -120,7 +143,7 @@ def mediate_node(ctx: CaseContext) -> Iterator[dict]:
     yield _running("mediation", "Modelling a settlement on precedent outcomes…")
     res = mediation.run(ctx)
     ctx.mediation = res.output
-    yield _done("mediation", res)
+    yield _done("mediation", res, ctx)
 
 
 def resolve_node(ctx: CaseContext) -> Iterator[dict]:
@@ -150,7 +173,7 @@ def resolve_node(ctx: CaseContext) -> Iterator[dict]:
         yield _escalated_event(ctx, escalation)
         return
 
-    yield _done("resolution", res)
+    yield _done("resolution", res, ctx)
     yield make_event(
         "resolved",
         detail="Case RESOLVED. Order issued and compliance monitoring activated."
