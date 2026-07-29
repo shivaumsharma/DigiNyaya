@@ -6,7 +6,9 @@ from .client import (  # noqa: F401
     generate,
     generate_json,
     generate_stream,
+    get_usage_totals,
     is_available,
     prewarm,
+    reset_usage_totals,
     status,
 )

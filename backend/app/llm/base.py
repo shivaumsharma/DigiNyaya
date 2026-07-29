@@ -92,3 +92,15 @@ class BaseLLMProvider(ABC):
         Return True if provider is reachable.
         """
         raise NotImplementedError
+
+    def last_usage(self) -> Optional[Dict[str, int]]:
+        """
+        Token usage from the most recent generate()/generate_json() call, as
+        {"prompt_tokens", "completion_tokens", "total_tokens"} if the
+        provider's API exposes it, else None. Concrete (not abstract) with a
+        safe default so providers that don't track usage (Mock, and Ollama
+        until wired up) don't need to implement anything -- only
+        SarvamProvider currently overrides this, by setting self._last_usage
+        in _chat().
+        """
+        return getattr(self, "_last_usage", None)
