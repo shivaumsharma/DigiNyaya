@@ -38,19 +38,33 @@ _NON_MONETARY_KINDS = {
     "declaration": "a declaration in the claimant's favour on the matter in dispute",
     "replacement": "replacement of the goods/services in question",
     "possession": "an order restoring possession of the property to the claimant",
+    "partition": "a decree of partition declaring each party's share in the property",
+    "reinstatement": "reinstatement of the claimant to their position with continuity of service",
     "arbitration_referral": (
         "an order referring the parties to arbitration in accordance with the "
         "arbitration clause, with no adjudication of the merits by this forum"
     ),
 }
 
-# Unlike the other non-monetary kinds (which can legitimately carry an
-# "in addition, pay incidental compensation" secondary clause -- e.g. an
-# injunction PLUS damages is common in practice), an arbitration referral
-# never can: a forum that has just recognised "this dispute isn't ours to
-# decide" cannot, in the same breath, award damages on the merits. See
-# _relief_phrase() and the interest-rate computation below.
-_NO_INCIDENTAL_AMOUNT_KINDS = {"arbitration_referral"}
+# No non-monetary kind gets an automatic "in addition, pay incidental
+# compensation" clause by default. Originally only arbitration_referral was
+# excluded (a forum that isn't deciding the merits at all obviously can't
+# also award damages), on the assumption injunction/possession/declaration/
+# replacement claims routinely succeed on a SEPARATE incidental-damages
+# claim alongside the primary relief. Real-judgment testing at a larger
+# (200-case) scale showed the opposite is the more common pattern: courts
+# very often grant the injunction/possession/etc. while EXPRESSLY denying an
+# accompanying damages claim for insufficient proof (e.g. IK-EVAL-103304687:
+# injunction granted, "dismissed the plaintiff's claim for damages... finding
+# that the plaintiff had failed to prove" them) -- awarding incidental
+# compensation by default was a bigger source of real-judgment mismatches
+# than never awarding it. See _relief_phrase() and the interest-rate
+# computation below.
+# "reinstatement" is deliberately NOT in this set: back wages are the
+# standard, expected companion to a reinstatement order (real Labour Court
+# judgments consistently award both together), not a separate speculative
+# damages claim the way incidental compensation is for the other kinds above.
+_NO_INCIDENTAL_AMOUNT_KINDS = {"arbitration_referral", "injunction", "possession", "declaration", "replacement", "partition"}
 
 
 def run(ctx: CaseContext) -> AgentResult:
@@ -103,7 +117,7 @@ def run(ctx: CaseContext) -> AgentResult:
         "case is as strong as or stronger than the claimant's, use outcome_type 'dismissed' and "
         "relief_ratio 0.0. Do not exceed the claim."
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=220)
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=600)
     if data:
         engine = "llm"
         try:

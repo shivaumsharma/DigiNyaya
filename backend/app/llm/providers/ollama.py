@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import requests
 
-from typing import Any, Dict, Generator, List, Optional
+from typing import Generator, List
 
 from app.llm.base import BaseLLMProvider
 from app.llm.config import config
@@ -85,6 +85,7 @@ class OllamaProvider(BaseLLMProvider):
         temperature=0.2,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ):
 
         messages = []
@@ -120,6 +121,7 @@ class OllamaProvider(BaseLLMProvider):
         temperature=0.0,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ):
 
         messages = []
@@ -162,6 +164,7 @@ class OllamaProvider(BaseLLMProvider):
         temperature=0.2,
         model=None,
         max_tokens=None,
+        reasoning_effort=None,
     ) -> Generator[str, None, None]:
 
         messages = []

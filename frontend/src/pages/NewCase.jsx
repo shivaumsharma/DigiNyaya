@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { api } from '../api.js'
-import { useSession } from '../session.jsx'
+import { useAuth } from '../auth/AuthContext.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { ArrowLeft, ArrowRight, FileText, Receipt } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
@@ -10,12 +10,12 @@ const EV_KINDS = ['invoice', 'receipt', 'screenshot', 'contract', 'photo', 'othe
 
 export default function NewCase() {
   const { type } = useParams()
-  const { user } = useSession()
+  const { user } = useAuth()
   const { t } = useLanguage()
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
-    claimant_name: user?.name || '',
+    claimant_name: user?.full_name || '',
     respondent_name: '',
     claim_amount: '',
     description: '',
@@ -25,10 +25,6 @@ export default function NewCase() {
   const [evKind, setEvKind] = useState('invoice')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
-
-  useEffect(() => {
-    if (!user) navigate('/')
-  }, [user, navigate])
 
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -74,30 +70,31 @@ export default function NewCase() {
   }
 
   return (
-    <section className="page fade-in">
+    <section className="page fade-in container" style={{ maxWidth: 760, margin: '0 auto' }}>
       <Stepper current={1} />
       <Link to="/disputes" className="back-link">
         <ArrowLeft width={14} height={14} /> {t('newCase.backLink')}
       </Link>
       <div className="page-head between flex">
         <div>
-          <h2>{t('newCase.title')}</h2>
-          <p>{t('newCase.subtitle')}</p>
+          <h1 style={{ fontWeight: 400, marginBottom: 8 }}>{t('newCase.title')}</h1>
+          <p style={{ fontSize: '0.95rem', margin: 0 }}>{t('newCase.subtitle')}</p>
         </div>
         <button className="btn btn-ghost" onClick={loadSample} type="button">
           <Receipt width={16} height={16} /> {t('newCase.loadDemo')}
         </button>
       </div>
 
-      <form onSubmit={submit} className="card card-pad" style={{ maxWidth: 760 }}>
+      <form onSubmit={submit} className="card elev-sm card-pad">
         <div className="field-row">
           <div className="field">
-            <label>{t('newCase.fieldClaimant')}</label>
-            <input className="input" value={form.claimant_name} onChange={(e) => set('claimant_name', e.target.value)} required />
+            <label htmlFor="nc-claimant-name">{t('newCase.fieldClaimant')}</label>
+            <input id="nc-claimant-name" className="input" value={form.claimant_name} onChange={(e) => set('claimant_name', e.target.value)} required />
           </div>
           <div className="field">
-            <label>{t('newCase.fieldRespondent')}</label>
+            <label htmlFor="nc-respondent-name">{t('newCase.fieldRespondent')}</label>
             <input
+              id="nc-respondent-name"
               className="input"
               value={form.respondent_name}
               onChange={(e) => set('respondent_name', e.target.value)}
@@ -108,8 +105,9 @@ export default function NewCase() {
         </div>
 
         <div className="field" style={{ maxWidth: 260 }}>
-          <label>{t('newCase.fieldAmount')}</label>
+          <label htmlFor="nc-claim-amount">{t('newCase.fieldAmount')}</label>
           <input
+            id="nc-claim-amount"
             className="input"
             type="number"
             value={form.claim_amount}
@@ -120,8 +118,9 @@ export default function NewCase() {
         </div>
 
         <div className="field">
-          <label>{t('newCase.fieldDescription')}</label>
+          <label htmlFor="nc-description">{t('newCase.fieldDescription')}</label>
           <textarea
+            id="nc-description"
             className="textarea"
             value={form.description}
             onChange={(e) => set('description', e.target.value)}
@@ -131,9 +130,10 @@ export default function NewCase() {
         </div>
 
         <div className="field">
-          <label>{t('newCase.fieldEvidence')}</label>
+          <label htmlFor="nc-evidence-name">{t('newCase.fieldEvidence')}</label>
           <div className="flex gap">
             <input
+              id="nc-evidence-name"
               className="input"
               value={evName}
               onChange={(e) => setEvName(e.target.value)}

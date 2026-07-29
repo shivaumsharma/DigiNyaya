@@ -15,6 +15,32 @@ export const Scales = (p) => (
     <path d="M12 3v18M7 21h10M5 7h14M5 7l-3 6a3 3 0 0 0 6 0L5 7zM19 7l-3 6a3 3 0 0 0 6 0l-3-6z" />
   </svg>
 )
+// Logo mark used in the header and the resolution document seal -- distinct
+// two-tone rendering (ink circle/base, gold scale) rather than a single
+// currentColor stroke, so it reads correctly regardless of surrounding text color.
+export const Logo = (p) => (
+  <svg width="28" height="28" viewBox="0 0 40 40" fill="none" {...p}>
+    <circle cx="20" cy="20" r="19" stroke="var(--color-text)" strokeWidth="1.4" />
+    <path
+      d="M20 8v22M20 8l-8 6M20 8l8 6M8 14h4M28 14h4M12 14l-4 8a4 4 0 0 0 8 0l-4-8ZM28 14l-4 8a4 4 0 0 0 8 0l-4-8Z"
+      stroke="var(--color-accent)"
+      strokeWidth="1.3"
+      strokeLinejoin="round"
+    />
+    <rect x="14" y="30" width="12" height="2.4" rx="1.2" fill="var(--color-text)" />
+  </svg>
+)
+export const Eye = (p) => (
+  <svg {...base} {...p}>
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+)
+export const EyeOff = (p) => (
+  <svg {...base} {...p}>
+    <path d="M2 2l20 20M9.9 9.9a3 3 0 0 0 4.2 4.2M6.5 6.7C4 8.3 2 12 2 12s4 7 11 7c1.9 0 3.6-.5 5-1.2M15.6 5.4A11.6 11.6 0 0 1 23 12s-1 1.8-2.9 3.5" />
+  </svg>
+)
 export const ShoppingBag = (p) => (
   <svg {...base} {...p}>
     <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0" />

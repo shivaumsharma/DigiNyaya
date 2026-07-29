@@ -7,7 +7,7 @@ import Stepper from '../components/Stepper.jsx'
 
 export default function Respondent() {
   const { id } = useParams()
-  const { lang, t } = useLanguage()
+  const { t } = useLanguage()
   const navigate = useNavigate()
   const [caseData, setCaseData] = useState(null)
   const [statement, setStatement] = useState('')
@@ -16,8 +16,8 @@ export default function Respondent() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api.getCase(id, lang).then(setCaseData).catch(() => {})
-  }, [id, lang])
+    api.getCase(id).then(setCaseData).catch(() => {})
+  }, [id])
 
   async function loadSampleResponse() {
     const { response } = await api.sampleClaim()
@@ -51,24 +51,27 @@ export default function Respondent() {
   }
 
   return (
-    <section className="page fade-in">
+    <section className="page fade-in container">
       <Stepper current={2} />
       <div className="page-head">
-        <h2>{t('respondent.title')}</h2>
-        <p>{caseData ? t('respondent.notice', { name: caseData.respondent?.name, id }) : t('respondent.loading')}</p>
+        <h1 style={{ fontWeight: 400, marginBottom: 10 }}>{t('respondent.title')}</h1>
+        <p style={{ fontSize: '0.95rem', maxWidth: '75ch', lineHeight: 1.6 }}>
+          {caseData ? t('respondent.notice', { name: caseData.respondent?.name, id }) : t('respondent.loading')}
+        </p>
       </div>
 
       <div className="flex gap" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div className="card card-pad" style={{ flex: 1, minWidth: 340, maxWidth: 560 }}>
+        <div className="card elev-sm card-pad" style={{ flex: 1, minWidth: 340, maxWidth: 560 }}>
           <div className="flex between" style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: '1.1rem' }}>{t('respondent.replyTitle')}</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{t('respondent.replyTitle')}</h3>
             <button className="btn btn-ghost" style={{ padding: '7px 13px' }} onClick={loadSampleResponse} type="button">
               {t('respondent.loadDemoReply')}
             </button>
           </div>
           <div className="field">
-            <label>{t('respondent.fieldStatement')}</label>
+            <label htmlFor="resp-statement">{t('respondent.fieldStatement')}</label>
             <textarea
+              id="resp-statement"
               className="textarea"
               style={{ minHeight: 110 }}
               value={statement}
@@ -78,8 +81,8 @@ export default function Respondent() {
           </div>
           <div className="field-row">
             <div className="field">
-              <label>{t('respondent.fieldCounter')}</label>
-              <input className="input" type="number" value={counter} onChange={(e) => setCounter(e.target.value)} placeholder="e.g. 20000" />
+              <label htmlFor="resp-counter">{t('respondent.fieldCounter')}</label>
+              <input id="resp-counter" className="input" type="number" value={counter} onChange={(e) => setCounter(e.target.value)} placeholder={t('respondent.placeholderCounter')} />
             </div>
             <div className="field">
               <label>{t('respondent.fieldLiability')}</label>
@@ -94,10 +97,10 @@ export default function Respondent() {
           </button>
         </div>
 
-        <div className="card card-pad" style={{ width: 320 }}>
+        <div className="card elev-sm card-pad" style={{ width: 320 }}>
           <div className="flex gap" style={{ alignItems: 'center', marginBottom: 8 }}>
             <Clock width={20} height={20} />
-            <h3 style={{ fontSize: '1.05rem' }}>{t('respondent.noResponseTitle')}</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>{t('respondent.noResponseTitle')}</h3>
           </div>
           <p className="muted" style={{ fontSize: '0.88rem', marginBottom: 18 }}>
             {t('respondent.noResponseText')}

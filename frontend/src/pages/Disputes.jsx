@@ -1,52 +1,41 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
-import { useSession } from '../session.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
-import { DISPUTE_ICONS } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
 
 export default function Disputes() {
-  const { user } = useSession()
-  const { t } = useLanguage()
   const navigate = useNavigate()
+  const { t } = useLanguage()
   const [types, setTypes] = useState([])
-
-  useEffect(() => {
-    if (!user) navigate('/')
-  }, [user, navigate])
 
   useEffect(() => {
     api.disputeTypes().then(setTypes).catch(() => {})
   }, [])
 
   return (
-    <section className="page fade-in">
+    <section className="page fade-in container" style={{ width: '100%' }}>
       <Stepper current={0} />
       <div className="page-head">
-        <h2>{t('disputes.title')}</h2>
-        <p>{t('disputes.subtitle')}</p>
+        <h1 style={{ fontWeight: 400, marginBottom: 10 }}>{t('disputes.title')}</h1>
+        <p style={{ fontSize: '0.95rem', maxWidth: '70ch', lineHeight: 1.6 }}>{t('disputes.subtitle')}</p>
       </div>
 
       <div className="dispute-grid">
-        {types.map((t2) => {
-          const Icon = DISPUTE_ICONS[t2.icon] || DISPUTE_ICONS['file-text']
-          return (
-            <div
-              key={t2.id}
-              className={`card dispute-card ${t2.active ? '' : 'disabled'}`}
-              onClick={() => t2.active && navigate(`/file/${t2.id}`)}
-            >
-              {!t2.active && <span className="soon">{t('disputes.roadmap')}</span>}
-              <span className="tier-tag">{t('disputes.tier', { n: t2.tier })}</span>
-              <div className="ic">
-                <Icon width={24} height={24} />
-              </div>
-              <h4>{t2.label}</h4>
-              <p>{t2.description}</p>
-            </div>
-          )
-        })}
+        {types.map((dt) => (
+          <div
+            key={dt.id}
+            className={`card elev-sm dispute-card ${dt.active ? '' : 'disabled'}`}
+            onClick={() => dt.active && navigate(`/file/${dt.id}`)}
+          >
+            {!dt.active && <span className="soon">{t('disputes.roadmap')}</span>}
+            <span className={`tag ${dt.tier === 1 ? 'tag-accent' : 'tag-outline'}`}>
+              {t('disputes.tier', { n: dt.tier })} · {dt.tier === 1 ? t('disputes.tier1Desc') : t('disputes.tier2Desc')}
+            </span>
+            <div className="card-title">{dt.label}</div>
+            <p className="card-body">{dt.description}</p>
+          </div>
+        ))}
       </div>
     </section>
   )

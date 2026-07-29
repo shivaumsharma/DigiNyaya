@@ -60,7 +60,7 @@ def _check_integrity_and_backup() -> None:
         sys.exit(1)
 
     if result != [("ok",)]:
-        print(f"!! Refusing to continue: PRAGMA integrity_check reported problems:")
+        print("!! Refusing to continue: PRAGMA integrity_check reported problems:")
         for row in result:
             print(f"   {row}")
         sys.exit(1)

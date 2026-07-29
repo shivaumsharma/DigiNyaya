@@ -55,6 +55,11 @@ def init_db() -> None:
             )"""
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_case ON events(case_id, seq)")
+        # No endpoint queries WHERE owner_id=... yet (every lookup today is by
+        # case_id, then an in-app ownership check -- see security/auth.py's
+        # ensure_owner). Added ahead of a "my disputes" listing endpoint,
+        # which doesn't exist yet either; free and harmless to have in place.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cases_owner ON cases(owner_id)")
         conn.execute(
             """CREATE TABLE IF NOT EXISTS documents (
                 id TEXT PRIMARY KEY,

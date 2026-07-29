@@ -11,8 +11,11 @@ Pure-Python cosine keeps this dependency-free for a small corpus.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import threading
+from pathlib import Path
 
 from .. import llm
 from ..data.loader import load_precedents
@@ -22,27 +25,71 @@ _lock = threading.Lock()
 _doc_vectors: list[list[float]] | None = None
 _doc_built = False
 
+# Embedding the corpus is 1 Ollama HTTP call PER precedent (llm.embed() has
+# no batch endpoint to call -- see app/llm/client.py), so re-embedding all
+# 127+ precedents from scratch on every single process restart is a real,
+# user-visible cold-start cost on the first case that reaches Agent 2
+# (confirmed: this is why "Agent 2" looks slow right after starting the
+# server). Cached to disk, keyed by a hash of the corpus content, so a
+# restart only re-embeds when the precedent corpus actually changed.
+_CACHE_PATH = Path(__file__).resolve().parents[1] / "data" / "precedent_vectors_cache.json"
+
 
 def _doc_text(p: dict) -> str:
     return f"{p['title']}. {p['summary']} {p['principle']} Tags: {', '.join(p.get('tags', []))}."
 
 
+def _corpus_hash(precedents: list[dict]) -> str:
+    texts = "\x00".join(f"{p['id']}\x01{_doc_text(p)}" for p in precedents)
+    return hashlib.sha256(texts.encode("utf-8")).hexdigest()
+
+
+def _load_cached_vectors(expected_hash: str, expected_len: int) -> list[list[float]] | None:
+    try:
+        with open(_CACHE_PATH, encoding="utf-8") as fh:
+            cached = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if cached.get("hash") != expected_hash:
+        return None
+    vecs = cached.get("vectors")
+    if not isinstance(vecs, list) or len(vecs) != expected_len:
+        return None
+    return vecs
+
+
+def _save_cached_vectors(corpus_hash: str, vecs: list[list[float]]) -> None:
+    try:
+        with open(_CACHE_PATH, "w", encoding="utf-8") as fh:
+            json.dump({"hash": corpus_hash, "vectors": vecs}, fh)
+    except OSError:
+        pass  # Cache is a pure optimization -- a write failure just means next boot re-embeds.
+
+
 def _ensure_embeddings() -> bool:
-    """Embed the corpus once. Returns True if semantic search is available."""
+    """Embed the corpus once (disk-cached across restarts). Returns True if
+    semantic search is available."""
     global _doc_vectors, _doc_built
     with _lock:
         if _doc_built:
             return _doc_vectors is not None
         _doc_built = True
         precedents = load_precedents()
-        try:
-            vecs = llm.embed([_doc_text(p) for p in precedents])
-        except Exception:
-            # Ollama was reachable (is_available() passed) but the actual
-            # embed call failed anyway -- e.g. the embedding model isn't
-            # pulled, returning a 500. Don't let that crash the agent;
-            # fall back to keyword search just like the "unreachable" case.
-            vecs = None
+        corpus_hash = _corpus_hash(precedents)
+
+        vecs = _load_cached_vectors(corpus_hash, len(precedents))
+        if vecs is None:
+            try:
+                vecs = llm.embed([_doc_text(p) for p in precedents])
+            except Exception:
+                # Ollama was reachable (is_available() passed) but the actual
+                # embed call failed anyway -- e.g. the embedding model isn't
+                # pulled, returning a 500. Don't let that crash the agent;
+                # fall back to keyword search just like the "unreachable" case.
+                vecs = None
+            if vecs is not None:
+                _save_cached_vectors(corpus_hash, vecs)
+
         _doc_vectors = vecs
         return _doc_vectors is not None
 

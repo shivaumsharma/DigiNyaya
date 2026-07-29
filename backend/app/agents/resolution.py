@@ -29,6 +29,8 @@ _NON_MONETARY_ACTIONS = {
     ),
     "replacement": "provide the claimant a replacement of like kind and quality for the goods/services in dispute",
     "possession": "hand over vacant possession of the property in dispute to the claimant",
+    "partition": "recognise the claimant's declared share in the property and cooperate in effecting a partition by metes and bounds accordingly",
+    "reinstatement": "reinstate the claimant to their former position with continuity of service",
     "arbitration_referral": (
         "refer the parties to arbitration in accordance with the arbitration clause between them, without "
         "adjudication of the merits of this dispute by this forum"
@@ -107,7 +109,7 @@ def _select_citations(ctx: CaseContext, precedents: list) -> tuple[list[str], st
         f"Claim amount: {nlp.inr(ctx.claim_amount)}\n\n"
         f"Candidates:\n{candidates_text}"
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=160)
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
     if not data or not isinstance(data.get("cited_ids"), list):
         return deterministic, "scripted"
 
@@ -117,7 +119,7 @@ def _select_citations(ctx: CaseContext, precedents: list) -> tuple[list[str], st
 
 def run(ctx: CaseContext) -> AgentResult:
     """Non-streaming path: generate findings then finalize."""
-    out = llm.generate(findings_prompt(ctx), system=llm.SYSTEM_PROMPT, max_tokens=260)
+    out = llm.generate(findings_prompt(ctx), system=llm.SYSTEM_PROMPT, max_tokens=600)
     return finalize(ctx, out)
 
 
@@ -313,8 +315,8 @@ def _scripted_findings(ctx: CaseContext, subtype: str, amount: float, days: int,
 
 
 def _split(text: str) -> list[str]:
-    lines = [re.sub(r"^\s*(\d+[.)]|[-*•])\s*", "", l).strip() for l in text.splitlines() if l.strip()]
-    lines = [l for l in lines if l]
+    lines = [re.sub(r"^\s*(\d+[.)]|[-*•])\s*", "", line).strip() for line in text.splitlines() if line.strip()]
+    lines = [line for line in lines if line]
     if len(lines) <= 1:
         lines = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
     return lines[:5]
