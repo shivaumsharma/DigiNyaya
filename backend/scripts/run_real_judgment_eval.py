@@ -102,6 +102,41 @@ EXPECTED_CONDITION_BY_CATEGORY = {
 DEFAULT_CLAIM_AMOUNT = 50_000.0
 PLACEHOLDER_EVIDENCE = [{"filename": "source_judgment_reference.pdf", "kind": "document"}]
 
+# Free (no extra LLM call), best-effort party labels for the resolution
+# document -- generic "Claimant"/"Respondent" was found to confuse the paid
+# judge in scripts/judge_real_outcomes.py: it couldn't reliably map the
+# generic labels back to a real judgment's named parties (e.g. "the Bank"/
+# "the Borrower"), and scored a couple of cases as mismatches even though the
+# AI's actual computed relief direction was correct. Whichever role-word in
+# a pair appears FIRST in the narrative is treated as the party who filed --
+# matches how these judgments are almost always phrased ("The X ... against
+# the Y", "X filed a suit against Y"). Falls back to the old generic labels
+# when no known pair is found, same as before.
+_PARTY_ROLE_PAIRS: tuple[tuple[str, str], ...] = (
+    ("bank", "borrower"),
+    ("bank", "defendant"),  # "the plaintiff bank ... against the defendant" -- common phrasing that skips "borrower" entirely
+    ("landlord", "tenant"),
+    ("employer", "employee"),
+    ("insurance company", "insured"),
+    ("insurer", "policyholder"),
+    ("builder", "buyer"),
+    ("developer", "buyer"),
+    ("complainant", "opposite party"),
+    ("purchaser", "seller"),
+    ("creditor", "debtor"),
+)
+
+
+def _infer_party_labels(description: str) -> tuple[str, str]:
+    text = description.lower()
+    for role_a, role_b in _PARTY_ROLE_PAIRS:
+        pos_a, pos_b = text.find(role_a), text.find(role_b)
+        if pos_a == -1 or pos_b == -1:
+            continue
+        first, second = (role_a, role_b) if pos_a < pos_b else (role_b, role_a)
+        return f"the {first.title()}", f"the {second.title()}"
+    return "Claimant", "Respondent"
+
 
 def _infer_claim_amount(description: str) -> float:
     amounts = nlp.extract_amounts(description)
@@ -137,7 +172,25 @@ def _build_ctx(case: dict) -> CaseContext:
         # since that's the one input score_defense_substance actually reads.
         ground = signals.get("respondent_legal_ground")
         if ground and str(ground).strip().lower() not in ("null", "none", ""):
-            statement = f"{statement} The respondent's defense relies on: {ground}."
+            # Naming a doctrine isn't evidence that it applies -- real courts
+            # reject unsupported invocations constantly (see nlp.py's
+            # _UNSUPPORTED_ASSERTION_MARKER, which score_defense_substance()
+            # specifically checks for). Whether a concrete fact was actually
+            # offered in support (an exact date/figure/document/registration
+            # number, not just the doctrine's name) was extracted separately
+            # so the strength score can react to it, the same way it already
+            # reacts to the claimant's evidence_count.
+            has_support = signals.get("respondent_ground_has_specific_support")
+            if has_support:
+                statement = (
+                    f"{statement} The respondent's defense relies on: {ground}, "
+                    "supported by specific facts in the record."
+                )
+            else:
+                statement = (
+                    f"{statement} The respondent's defense relies on: {ground}, "
+                    "without citing any specific supporting facts."
+                )
         respondent_submission = {
             "statement": statement,
             "accepts_liability": bool(signals.get("respondent_accepts_liability")),
@@ -147,12 +200,14 @@ def _build_ctx(case: dict) -> CaseContext:
         evidence = list(PLACEHOLDER_EVIDENCE)
         respondent_submission = {"statement": "The respondent disputes the claim.", "accepts_liability": False}
 
+    claimant_name, respondent_name = _infer_party_labels(case["case_description"])
+
     return CaseContext(
         case_id=case["case_id"],
         owner_id="real_judgment_eval",
         dispute_type=dispute_type,
-        claimant_name="Claimant",
-        respondent_name="Respondent",
+        claimant_name=claimant_name,
+        respondent_name=respondent_name,
         claim_amount=_infer_claim_amount(case["case_description"]),
         description=case["case_description"],
         evidence=evidence,

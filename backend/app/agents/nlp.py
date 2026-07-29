@@ -223,6 +223,7 @@ _NO_DEFENSE_LEXICON = (
 # real court had refused because of exactly this kind of defense.
 _DEFENSE_SUBSTANCE_LEXICON = (
     "no contract", "no agreement", "not a tenant", "not an employee",
+    "employer-employee relationship", "employment relationship",
     "no privity", "landlord-tenant relationship", "lack of jurisdiction",
     "no jurisdiction", "jurisdiction", "limitation", "barred",
     "not maintainable", "maintainable", "locus standi", "arbitration",
@@ -255,17 +256,40 @@ def defendant_defaulted(text: str) -> bool:
     return any(p in lowered for p in _NO_DEFENSE_LEXICON)
 
 
+
+# Real-judgment testing found the dominant remaining failure mode isn't
+# missing a dispositive-sounding phrase -- it's the opposite: naming a real
+# legal doctrine ("SICA protection", "Order 23 Rule 1") is being treated as
+# automatically dispositive just because it sounds official, regardless of
+# whether the respondent actually backed it with anything. Real courts
+# reject unsupported invocations of a doctrine constantly; the doctrine's
+# NAME isn't evidence, a checkable fact behind it is. This marker phrase is
+# how scripts/run_real_judgment_eval.py's _build_ctx() flags that no such
+# fact was extracted -- see that module for the corresponding
+# "supported by specific facts" phrase used when one was found.
+_UNSUPPORTED_ASSERTION_MARKER = "without citing any specific supporting facts"
+
+
 def score_defense_substance(text: str) -> float:
     """Heuristic 0..1 estimate of how specific/dispositive a respondent's
     defense is, as opposed to a bare, unparticularised denial. Deliberately
     keyword-based (not an LLM call) so the Analysis agent stays free and
-    deterministic on every case, including uncontested ones."""
+    deterministic on every case, including uncontested ones.
+
+    A named doctrine with no concrete fact behind it (the unsupported-
+    assertion marker) is capped well below what any keyword match alone
+    would otherwise score -- a bare "we are protected under X" is not
+    meaningfully different from a bare denial just because X is a real
+    legal term.
+    """
     if not text:
         return 0.0
     lowered = text.lower()
     matches = sum(1 for m in _DEFENSE_SUBSTANCE_LEXICON if m in lowered)
     if matches == 0:
         return 0.0
+    if _UNSUPPORTED_ASSERTION_MARKER in lowered:
+        return 0.2
     if matches == 1:
         return 0.5
     if matches == 2:
