@@ -1,0 +1,53 @@
+name: Cost Gate
+
+# Manual-only, deliberately -- unlike ci.yml's jobs (which run scripted,
+# DIGINYAYA_USE_LLM=0, free, on every PR/push), this job makes real, billed
+# Sarvam API calls (scripts/measure_eval_cost.py runs all 18 golden cases
+# with DIGINYAYA_USE_LLM=1). No automatic trigger, so it never runs without
+# someone deliberately clicking "Run workflow."
+#
+# Requires a SARVAM_API_KEY repository secret (Settings -> Secrets and
+# variables -> Actions -> New repository secret) -- not committed anywhere.
+on:
+  workflow_dispatch:
+    inputs:
+      write_baseline:
+        description: "Overwrite the committed baseline with this run's measurement instead of comparing against it"
+        type: boolean
+        default: false
+
+jobs:
+  cost-gate:
+    name: Token-cost regression (18 live cases)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # only needed to commit the baseline back when write_baseline is used
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Measure token cost
+        env:
+          SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+        run: |
+          if [ "${{ inputs.write_baseline }}" = "true" ]; then
+            python -m scripts.measure_eval_cost --write-baseline
+          else
+            python -m scripts.measure_eval_cost
+          fi
+      - name: Commit updated baseline
+        if: ${{ inputs.write_baseline == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/eval_cost_baseline.json
+          git diff --cached --quiet || git commit -m "Update eval cost baseline"
+          git push

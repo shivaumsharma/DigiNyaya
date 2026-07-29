@@ -107,6 +107,18 @@ class SarvamProvider(BaseLLMProvider):
 
         response.raise_for_status()
 
+        # Non-streaming responses carry a usage block (OpenAI-compatible
+        # shape); a streaming response's body can't be read here without
+        # consuming the generator the caller still needs, so usage is only
+        # captured for the two non-streaming call sites (generate,
+        # generate_json) -- streaming callers (generate_stream) don't get a
+        # last_usage() reading, which is fine, cost measurement never uses it.
+        if not stream:
+            try:
+                self._last_usage = response.json().get("usage")
+            except (ValueError, AttributeError):
+                self._last_usage = None
+
         return response
     
     def generate(
