@@ -21,12 +21,11 @@ Usage (from the backend folder):
 from __future__ import annotations
 
 import argparse
-import json
 import random
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import requests
 

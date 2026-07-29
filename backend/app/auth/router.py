@@ -20,7 +20,6 @@ from .deps import current_user, require_https
 from .jwt import ACCESS_TOKEN_TTL, create_access_token, refresh_token_expiry
 from .mail import get_mail_provider
 from .orm_models import AuthToken, OtpCode, RefreshToken, User
-from .phone import normalize_phone
 from .rate_limit import (
     enforce_login_rate_limit,
     enforce_otp_request_limit,

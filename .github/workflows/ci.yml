@@ -1,0 +1,73 @@
+name: CI
+
+# CI matches production's Python version (Render's backend service pins
+# PYTHON_VERSION=3.11.9 to avoid a pydantic-core source build), not whatever
+# a local dev machine happens to have.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend lint + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Ruff (lint)
+        run: python -m ruff check app/ scripts/ tests/
+      - name: pytest
+        run: python -m pytest -q
+
+  eval-gate:
+    name: Golden eval suite (18 cases)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run golden eval suite
+        # DIGINYAYA_USE_LLM defaults to 0 inside eval_cases.py itself (scripted
+        # mode) -- no SARVAM_API_KEY needed, no external calls, no cost.
+        # Fails the build on a regression in bands A-D (easy/ambiguous/
+        # conflicting/escalation) or if average composite confidence drops
+        # below the floor set in scripts/eval_cases.py -- NOT on a stress-band
+        # failure, which the suite is deliberately designed to allow.
+        run: python -m scripts.eval_cases
+
+  frontend:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Vitest
+        run: npx vitest run

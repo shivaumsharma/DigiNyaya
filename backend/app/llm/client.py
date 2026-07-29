@@ -32,7 +32,7 @@ import time
 from typing import Any, Dict, Generator, List, Optional, Union
 from app.llm.factory import get_provider, get_embedding_provider
 from app.llm.config import config
-from app.prompts.system import SYSTEM_PROMPT
+from app.prompts.system import SYSTEM_PROMPT  # noqa: F401 -- re-exported as llm.SYSTEM_PROMPT
 
 logger = logging.getLogger("diginyaya.llm")
 

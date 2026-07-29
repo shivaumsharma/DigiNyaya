@@ -315,8 +315,8 @@ def _scripted_findings(ctx: CaseContext, subtype: str, amount: float, days: int,
 
 
 def _split(text: str) -> list[str]:
-    lines = [re.sub(r"^\s*(\d+[.)]|[-*•])\s*", "", l).strip() for l in text.splitlines() if l.strip()]
-    lines = [l for l in lines if l]
+    lines = [re.sub(r"^\s*(\d+[.)]|[-*•])\s*", "", line).strip() for line in text.splitlines() if line.strip()]
+    lines = [line for line in lines if line]
     if len(lines) <= 1:
         lines = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
     return lines[:5]

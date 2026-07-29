@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import requests
 
-from typing import Any, Dict, Generator, List, Optional
+from typing import Generator, List
 
 from app.llm.base import BaseLLMProvider
 from app.llm.config import config
