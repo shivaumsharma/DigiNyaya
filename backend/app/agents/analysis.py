@@ -107,10 +107,15 @@ def run(ctx: CaseContext) -> AgentResult:
         '{"neutral_summary": "<max 70 word neutral paragraph for a quasi-judicial record, do not take '
         'sides, use only the facts given>", '
         '"respondent_defense_strength": <number 0.0-1.0: how dispositive/case-ending the RESPONDENT\'s '
-        "defense is on its own legal merits -- 0.0 means a bare denial with no real substance, 1.0 means "
-        "a fully dispositive ground such as limitation, lack of jurisdiction, no privity of contract, res "
-        "judicata, arbitration clause, or the claimant's own case failing to establish an essential fact. "
-        "Judge the SUBSTANCE of the argument, not merely whether a defense was filed at all.>"
+        "defense actually is -- but naming a legal doctrine is NOT the same as establishing it. Score on "
+        "whether the respondent's OWN statement offers a SPECIFIC, checkable fact behind the doctrine "
+        "(an exact date, figure, registration/order number, or document) -- not on how official the "
+        "terminology sounds. A bare invocation with nothing concrete behind it ('we are protected under "
+        "the Act', 'this is barred by limitation') scores LOW (0.1-0.3) even if the doctrine named -- "
+        "limitation, lack of jurisdiction, no privity of contract, res judicata, arbitration clause -- "
+        "would be fully dispositive if actually established. Only score 0.7+ when a concrete fact is "
+        "actually stated that would make the doctrine apply, or when the claimant's own case fails to "
+        "establish an essential fact. A bare denial with nothing behind it at all still scores 0.0.>"
         "}"
     )
     prompt = (
