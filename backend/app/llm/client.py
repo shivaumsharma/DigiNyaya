@@ -99,6 +99,60 @@ class _CircuitBreaker:
 _breaker = _CircuitBreaker()
 
 
+class _UsageTracker:
+    """Process-wide accumulator for provider token usage.
+
+    Populated from provider.last_usage() after each successful generate()/
+    generate_json() call (see _record_usage() below). Only SarvamProvider
+    currently reports real numbers (see app/llm/providers/sarvam.py); other
+    providers' last_usage() returns None and is a no-op here. Used by
+    scripts/measure_eval_cost.py to compare tokens-per-case against a
+    committed baseline -- reset_totals() is called once per eval case so
+    each case's usage can be read in isolation.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
+
+    def record(self, usage: Optional[Dict[str, Any]]) -> None:
+        if not usage:
+            return
+        with self._lock:
+            self._totals["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
+            self._totals["completion_tokens"] += int(usage.get("completion_tokens") or 0)
+            self._totals["total_tokens"] += int(usage.get("total_tokens") or 0)
+            self._totals["calls"] += 1
+
+    def totals(self) -> Dict[str, int]:
+        with self._lock:
+            return dict(self._totals)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
+
+
+_usage = _UsageTracker()
+
+
+def _record_usage() -> None:
+    try:
+        _usage.record(get_provider().last_usage())
+    except Exception:
+        pass  # usage tracking is a pure add-on -- never let it affect a real call's outcome
+
+
+def get_usage_totals() -> Dict[str, int]:
+    """Cumulative token usage recorded since the last reset_usage_totals()."""
+    return _usage.totals()
+
+
+def reset_usage_totals() -> None:
+    """Zero the usage accumulator -- call before measuring a single unit of work (e.g. one eval case)."""
+    _usage.reset()
+
+
 def generate(
     prompt: str,
     *,
@@ -141,6 +195,7 @@ def generate(
             reasoning_effort=reasoning_effort,
         )
         _breaker.record_success()
+        _record_usage()
         return result
     except Exception:
         _breaker.record_failure()
@@ -180,6 +235,7 @@ def generate_json(
             reasoning_effort=reasoning_effort,
         )
         _breaker.record_success()
+        _record_usage()
         return result
     except Exception:
         _breaker.record_failure()
