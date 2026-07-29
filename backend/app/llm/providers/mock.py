@@ -7,7 +7,6 @@ Allows the application to boot and supports testing.
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, Generator, List, Optional
 
 from app.llm.base import BaseLLMProvider
@@ -15,7 +14,18 @@ from app.llm.base import BaseLLMProvider
 
 class MockProvider(BaseLLMProvider):
     """
-    Deterministic mock implementation of BaseLLMProvider.
+    Stub implementation of BaseLLMProvider used when no real provider
+    (Sarvam/Ollama) is configured or reachable.
+
+    generate()/generate_json()/generate_stream() deliberately return
+    falsy values (never placeholder text) so every call site's existing
+    `if out:` / `if data:` / `acc or None` fallback-to-scripted check
+    engages honestly instead of mistaking mock output for a genuine LLM
+    response and labelling it engine="llm" in a resolution document.
+    is_available()/status() report unavailable for the same reason: to
+    this codebase "available" means "a real LLM is behind this", which a
+    mock stub never is -- otherwise the frontend's engine badge shows
+    "Live LLM · mock" when nothing live is actually configured.
     """
 
     def generate(
@@ -26,14 +36,10 @@ class MockProvider(BaseLLMProvider):
         temperature: float = 0.2,
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> str:
 
-        return (
-            "[MOCK PROVIDER]\n\n"
-            "No LLM provider is currently configured.\n\n"
-            f"Model: {model or 'default'}\n"
-            f"Prompt Length: {len(prompt)} characters"
-        )
+        return ""
 
     def generate_json(
         self,
@@ -44,15 +50,10 @@ class MockProvider(BaseLLMProvider):
         temperature: float = 0.0,
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        reasoning_effort: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
 
-        return {
-            "provider": "mock",
-            "success": True,
-            "message": "Mock JSON response.",
-            "model": model or "mock",
-            "prompt_length": len(prompt),
-        }
+        return None
 
     def generate_stream(
         self,
@@ -62,18 +63,11 @@ class MockProvider(BaseLLMProvider):
         temperature: float = 0.2,
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> Generator[str, None, None]:
 
-        text = self.generate(
-            prompt,
-            system=system,
-            temperature=temperature,
-            model=model,
-            max_tokens=max_tokens,
-        )
-
-        for word in text.split():
-            yield word + " "
+        return
+        yield  # pragma: no cover -- makes this a generator function
 
     def embed(self, text: str) -> List[float]:
         """
@@ -89,11 +83,11 @@ class MockProvider(BaseLLMProvider):
         return {
             "provider": "mock",
             "engine": "MockProvider",
-            "online": True,
-            "available": True,
+            "online": False,
+            "available": False,
             "model": "mock",
             "models": ["mock"],
         }
 
     def is_available(self) -> bool:
-        return True
+        return False

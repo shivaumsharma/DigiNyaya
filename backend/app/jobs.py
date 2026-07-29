@@ -11,6 +11,7 @@ no-op, so refreshing the page won't re-run agents or burn LLM compute twice.
 
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Iterator
 
@@ -20,6 +21,16 @@ from .core.context import CaseContext
 from .core.events import EPHEMERAL, bus, make_event
 from .documents import extraction as doc_extraction
 from .storage import get_storage
+
+logger = logging.getLogger("diginyaya.jobs")
+
+
+def _log_status(case_id: str, status: str, **extra) -> None:
+    logger.info(
+        "case status transition",
+        extra={"event": "case_status_transition", "case_id": case_id, "status": status, **extra},
+    )
+
 
 _lock = threading.Lock()
 _running: dict[str, str] = {}  # case_id -> phase currently running
@@ -103,6 +114,7 @@ def _run_pipeline(case_id: str) -> None:
             return
         ctx = CaseContext.from_case(case)
         db.update_case(case_id, status="processing")
+        _log_status(case_id, "processing")
 
         def on_event(ev: dict) -> None:
             if ev.get("type") == "awaiting_decision":
@@ -114,6 +126,7 @@ def _run_pipeline(case_id: str) -> None:
                     mediation=ctx.mediation.model_dump() if ctx.mediation else None,
                     _ctx=ctx.model_dump(mode="json"),
                 )
+                _log_status(case_id, "mediation_proposed", tier=ctx.tier)
             elif ev.get("type") == "escalated_terminal":
                 # Safety Gate CHECKPOINT A blocked the case before any agent
                 # ran -- persist the escalation, not a pipeline result.
@@ -123,6 +136,7 @@ def _run_pipeline(case_id: str) -> None:
                     escalation=ctx.escalation,
                     _ctx=ctx.model_dump(mode="json"),
                 )
+                _log_status(case_id, "escalated", checkpoint="A", escalation=ctx.escalation)
 
         _pump(case_id, graph.run_pipeline(ctx), on_event=on_event)
     except Exception as exc:  # surface failures as an event instead of dying silently
@@ -135,6 +149,7 @@ def _run_pipeline(case_id: str) -> None:
         # would show it "running" indefinitely even though this thread has
         # already exited.
         db.update_case(case_id, status="error")
+        _log_status(case_id, "error", detail=str(exc))
     finally:
         _release(case_id)
 
@@ -158,6 +173,7 @@ def _run_resolution(case_id: str, via_mediation: bool) -> None:
                     mediation_accepted=via_mediation,
                     _ctx=ctx.model_dump(mode="json"),
                 )
+                _log_status(case_id, "resolved", via_mediation=via_mediation)
             elif ev.get("type") == "escalated_terminal":
                 # Safety Gate CHECKPOINT B discarded the drafted resolution --
                 # persist the escalation instead; the resolution the agents
@@ -169,6 +185,7 @@ def _run_resolution(case_id: str, via_mediation: bool) -> None:
                     mediation_accepted=via_mediation,
                     _ctx=ctx.model_dump(mode="json"),
                 )
+                _log_status(case_id, "escalated", checkpoint="B", escalation=ctx.escalation)
 
         _pump(case_id, graph.run_resolution(ctx, via_mediation=via_mediation), on_event=on_event)
     except Exception as exc:
@@ -176,6 +193,7 @@ def _run_resolution(case_id: str, via_mediation: bool) -> None:
         db.append_event(case_id, ev)
         bus.publish(case_id, ev)
         db.update_case(case_id, status="error")
+        _log_status(case_id, "error", detail=str(exc))
     finally:
         _release(case_id)
 

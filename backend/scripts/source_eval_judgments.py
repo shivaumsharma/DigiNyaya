@@ -91,9 +91,19 @@ TOKEN_ENV = "DIGINYAYA_INDIANKANOON_TOKEN"
 # docsource text filter instead.
 CIVIL_CATEGORIES: dict[str, dict] = {
     "contract_disputes": {
+        # At the original small target (6), keyword-only queries surfaced
+        # enough on-topic multi-state civil-court hits. At a much larger
+        # target (needed to scale the eval set up), the same landmark-
+        # judgment-dominance problem already documented for tenancy/
+        # employment/property/partnership below hits this category too --
+        # confirmed empirically: 6 pagenum steps x 2 queries (~360 raw hits)
+        # surfaced only 1 civil-court match without a doctype anchor. Added
+        # a 3rd, Delhi-District-Court-scoped query rather than changing the
+        # first two (which do still find genuine multi-state civil hits).
         "queries": [
             "breach of contract non-payment recovery suit civil",
             "failure to deliver goods breach of agreement compensation suit",
+            "breach of contract suit for damages doctypes:delhidc",
         ],
         "doctypes": None,
     },
@@ -227,35 +237,56 @@ def _make_client(token: str) -> _IKApiWithBrowserUA:
 
 
 def search_candidates(client: _IKApiWithBrowserUA, queries: list[str], doctypes: str | None,
-                       *, civil_only: bool, target: int) -> list[dict]:
+                       *, civil_only: bool, target: int, exclude_tids: set[int] | None = None,
+                       max_pagenum_steps: int = 6) -> list[dict]:
     """Search across query variants, dedupe by tid, filter by court signal
-    at the search-result stage (before any full-text fetch is spent)."""
-    seen: set[int] = set()
+    at the search-result stage (before any full-text fetch is spent).
+
+    exclude_tids lets an incremental re-run skip judgments already present in
+    an existing dataset -- those don't count toward `target` and are never
+    re-fetched/re-extracted, so growing the dataset never re-pays for cases
+    already sourced. Paginates deeper (pagenum += maxpages, up to
+    max_pagenum_steps rounds) when the first page doesn't surface enough NEW
+    candidates, since a bigger target on a re-run will otherwise mostly
+    re-discover the same top hits already excluded.
+    """
+    seen: set[int] = set(exclude_tids or ())
     pool: list[dict] = []
     for q in queries:
         if len(pool) >= target:
             break
         form = q if not doctypes else f"{q} doctypes:{doctypes}"
-        try:
-            raw = client.search(form, pagenum=0, maxpages=3)
-            obj = json.loads(raw)
-        except Exception as e:
-            print(f"  ! search failed for {q!r}: {e}")
-            continue
-        docs = obj.get("docs", [])
-        print(f"  >> {q!r}: {len(docs)} raw hits")
-        for d in docs:
-            tid = d.get("tid")
-            if tid is None or tid in seen:
-                continue
-            seen.add(tid)
-            docsource = d.get("docsource", "")
-            if civil_only and not _passes_court_filter(docsource):
-                continue
-            pool.append(d)
+        pagenum = 0
+        for _ in range(max_pagenum_steps):
             if len(pool) >= target:
                 break
-        time.sleep(0.4)
+            try:
+                raw = client.search(form, pagenum=pagenum, maxpages=3)
+                obj = json.loads(raw)
+            except Exception as e:
+                print(f"  ! search failed for {q!r} @page{pagenum}: {e}")
+                break
+            docs = obj.get("docs", [])
+            print(f"  >> {q!r} @page{pagenum}: {len(docs)} raw hits")
+            if not docs:
+                break
+            new_this_page = 0
+            for d in docs:
+                tid = d.get("tid")
+                if tid is None or tid in seen:
+                    continue
+                seen.add(tid)
+                docsource = d.get("docsource", "")
+                if civil_only and not _passes_court_filter(docsource):
+                    continue
+                pool.append(d)
+                new_this_page += 1
+                if len(pool) >= target:
+                    break
+            time.sleep(0.4)
+            pagenum += 3
+            if new_this_page == 0 and len(docs) < 3:
+                break  # exhausted this query's results
     return pool
 
 
@@ -398,10 +429,15 @@ def build_case(
 def _run_category(
     client: _IKApiWithBrowserUA, category: str, cfg: dict, *, target: int, civil_only: bool,
     escalation_expected: bool, condition_type: str | None, dry_run: bool,
+    exclude_tids: set[int] | None = None,
 ) -> tuple[list[dict], int]:
-    print(f"\n=== {category} ===")
+    print(f"\n=== {category} === (need {target} new)")
+    if target <= 0:
+        print("  already have enough for this category, skipping")
+        return [], 0
     candidates = search_candidates(
-        client, cfg["queries"], cfg.get("doctypes"), civil_only=civil_only, target=target
+        client, cfg["queries"], cfg.get("doctypes"), civil_only=civil_only, target=target,
+        exclude_tids=exclude_tids,
     )
     print(f"  {len(candidates)} candidate(s) passed the court filter" if civil_only else f"  {len(candidates)} candidate(s) found")
     if dry_run:
@@ -439,10 +475,15 @@ def _run_category(
 def main() -> int:
     ap = argparse.ArgumentParser(description="Source real Indian Kanoon judgments into DigiNyaya eval-case format.")
     ap.add_argument("--token-env", default=TOKEN_ENV)
-    ap.add_argument("--per-category", type=int, default=6, help="candidate judgments to pull per civil category")
-    ap.add_argument("--escalation-per-condition", type=int, default=3, help="candidates per escalation condition")
+    ap.add_argument("--per-category", type=int, default=6,
+                    help="TOTAL candidate judgments wanted per civil category (not just new ones -- "
+                         "existing entries for that category count toward this)")
+    ap.add_argument("--escalation-per-condition", type=int, default=3,
+                    help="TOTAL candidates wanted per escalation condition")
     ap.add_argument("--out", default=str(OUT_PATH))
     ap.add_argument("--dry-run", action="store_true", help="search + filter only; no fetch/extraction (cheap)")
+    ap.add_argument("--fresh", action="store_true",
+                     help="ignore any existing --out dataset and start over (re-pays for everything)")
     args = ap.parse_args()
 
     token = _token(args.token_env)
@@ -452,25 +493,45 @@ def main() -> int:
         print("WARNING: local LLM unavailable -- extraction will fail for every candidate. Start Ollama first.")
         return 1
 
-    all_cases: list[dict] = []
+    existing: list[dict] = []
+    if not args.fresh and Path(args.out).exists():
+        existing = json.loads(Path(args.out).read_text(encoding="utf-8"))
+        print(f"Loaded {len(existing)} existing case(s) from {args.out} -- running incrementally "
+              "(use --fresh to ignore and start over).")
+
+    existing_by_category: dict[str, list[dict]] = {}
+    exclude_tids: set[int] = set()
+    for c in existing:
+        existing_by_category.setdefault(c["category"], []).append(c)
+        docid = c.get("source", {}).get("docid")
+        if docid is not None:
+            exclude_tids.add(docid)
+
+    all_cases: list[dict] = list(existing)
     summary: dict[str, dict] = {}
 
     for category, cfg in CIVIL_CATEGORIES.items():
+        have = len(existing_by_category.get(category, []))
+        need = max(0, args.per_category - have)
         cases, n_candidates = _run_category(
-            client, category, cfg, target=args.per_category, civil_only=True,
+            client, category, cfg, target=need, civil_only=True,
             escalation_expected=False, condition_type=None, dry_run=args.dry_run,
+            exclude_tids=exclude_tids,
         )
         all_cases.extend(cases)
-        summary[category] = {"candidates": n_candidates, "usable": len(cases)}
+        summary[category] = {"had": have, "candidates": n_candidates, "new": len(cases)}
 
     for condition_key, cfg in ESCALATION_CATEGORIES.items():
+        cat_name = f"escalation__{condition_key}"
+        have = len(existing_by_category.get(cat_name, []))
+        need = max(0, args.escalation_per_condition - have)
         cases, n_candidates = _run_category(
-            client, f"escalation__{condition_key}", cfg, target=args.escalation_per_condition,
+            client, cat_name, cfg, target=need,
             civil_only=False, escalation_expected=True, condition_type=cfg["condition_type"],
-            dry_run=args.dry_run,
+            dry_run=args.dry_run, exclude_tids=exclude_tids,
         )
         all_cases.extend(cases)
-        summary[f"escalation__{condition_key}"] = {"candidates": n_candidates, "usable": len(cases)}
+        summary[cat_name] = {"had": have, "candidates": n_candidates, "new": len(cases)}
 
     if args.dry_run:
         print("\nDry run complete -- no documents fetched, no extraction, nothing written.")
@@ -480,11 +541,12 @@ def main() -> int:
     Path(args.out).write_text(json.dumps(all_cases, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print("\n" + "=" * 60)
-    print(f"Wrote {len(all_cases)} case(s) -> {args.out}")
+    print(f"Wrote {len(all_cases)} case(s) total ({len(all_cases) - len(existing)} new) -> {args.out}")
     print("Per-category summary:")
     for category, stats in summary.items():
-        flag = "  <-- FEWER THAN 4 USABLE, needs more sourcing" if stats["usable"] < 4 else ""
-        print(f"  {category:32s} candidates={stats['candidates']:3d}  usable={stats['usable']:3d}{flag}")
+        total = stats["had"] + stats["new"]
+        flag = "  <-- FEWER THAN 4 TOTAL, needs more sourcing" if total < 4 else ""
+        print(f"  {category:32s} had={stats['had']:3d}  new={stats['new']:3d}  total={total:3d}{flag}")
     print(
         "\nAll entries marked verified=false -- review case_description/expected_outcome/"
         "cited_precedent against the source URL before treating any of these as ground truth."

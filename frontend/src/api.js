@@ -1,19 +1,13 @@
-// Thin API client for the DigiNyaya backend. Uses the Vite proxy (/api -> :8077).
+// Thin API client for the DigiNyaya backend. In dev, relative paths go
+// through the Vite proxy (/api -> :8000). In production the frontend and
+// backend are separate deploys on different domains, so VITE_API_BASE points
+// straight at the backend's origin (see .env.production / Render env vars).
+import { getAccessToken } from './auth/tokenStore.js'
 
-const BASE = '/api'
-const SESSION_KEY = 'diginyaya_session'
-
-function authToken() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw)?.token : null
-  } catch {
-    return null
-  }
-}
+const BASE = `${import.meta.env.VITE_API_BASE || ''}/api`
 
 function authHeaders() {
-  const token = authToken()
+  const token = getAccessToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
@@ -27,7 +21,9 @@ async function jsonFetch(path, options = {}) {
     try {
       const body = await res.json()
       if (body.detail) msg = body.detail
-    } catch (_) {}
+    } catch {
+      // Response body wasn't JSON -- fall back to the generic message above.
+    }
     const err = new Error(msg)
     err.status = res.status
     throw err
@@ -36,14 +32,13 @@ async function jsonFetch(path, options = {}) {
 }
 
 export const api = {
-  login: (name, aadhaar_last4) =>
-    jsonFetch('/login', { method: 'POST', body: JSON.stringify({ name, aadhaar_last4 }) }),
   aiStatus: () => jsonFetch('/ai-status'),
+  languages: () => jsonFetch('/languages'),
   disputeTypes: () => jsonFetch('/dispute-types'),
   sampleClaim: () => jsonFetch('/sample-claim'),
   precedents: () => jsonFetch('/precedents'),
   createCase: (claim) => jsonFetch('/cases', { method: 'POST', body: JSON.stringify(claim) }),
-  getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${lang}` : ''}`),
+  getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
   respond: (id, submission) =>
     jsonFetch(`/cases/${id}/respond`, { method: 'POST', body: JSON.stringify(submission) }),
   skipResponse: (id) => jsonFetch(`/cases/${id}/skip-response`, { method: 'POST' }),
@@ -77,7 +72,9 @@ export function streamSSE(path, { onEvent, onDone, onError }) {
           try {
             const data = JSON.parse(raw)
             if (data && data.type) onEvent && onEvent(data)
-          } catch (_) {}
+          } catch {
+            // Malformed SSE frame -- skip it rather than crash the stream.
+          }
         }
       }
       onDone && onDone()

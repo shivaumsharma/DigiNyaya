@@ -18,6 +18,10 @@ backend/data_cache/
 # Citizen-uploaded case documents (local storage backend's default root)
 backend/uploads/
 
+# Precomputed precedent embeddings (regenerated automatically when the
+# corpus content changes -- see app/rag/index.py's _corpus_hash)
+backend/app/data/precedent_vectors_cache.json
+
 # Node / frontend
 frontend/node_modules/
 frontend/dist/
@@ -26,6 +30,3 @@ frontend/dist/
 .DS_Store
 .vscode/
 *.log
-
-# Claude Code local tool state (includes ad-hoc worktrees) — not project source
-.claude/

@@ -111,6 +111,36 @@ _RELIEF_TYPE_LEXICON: list[tuple[str, tuple[str, ...]]] = [
         "arbitration agreement", "bound by the arbitration clause", "appoint an arbitrator",
         "arbitration and conciliation act", "section 8 of the arbitration",
     )),
+    # Checked ahead of possession/injunction: partnership/co-ownership
+    # disputes routinely ask for BOTH a partition and a protective injunction
+    # in the same breath (e.g. "sought a partition of the property... and an
+    # injunction to prevent the respondent from alienating... his share") --
+    # partition is the more specific, primary relief in these cases (declares
+    # each party's share), so it should win the single relief_kind slot
+    # rather than the more generic, secondary injunction mention. Found via
+    # real-judgment testing: partnership_business_disputes had no relief type
+    # for this at all and defaulted to a monetary compensation figure no real
+    # court in the sample actually awarded.
+    ("partition", (
+        "partition of the property", "seeking a partition", "sought a partition",
+        "decree of partition", "partition suit", "dissolution of the partnership",
+        "dissolve the partnership", "rendition of accounts", "accounts of the partnership",
+    )),
+    # Employment/termination disputes: getting the job back (+ back wages) is
+    # the standard Labour Court remedy for illegal termination, distinct from
+    # a one-off monetary damages award. Checked ahead of possession/
+    # injunction/declaration since "reinstate" can co-occur with generic
+    # relief language but is far more specific to what a Labour Court
+    # actually orders in these matters. Found via real-judgment testing:
+    # employment_disputes had no relief type for this at all and defaulted
+    # to a monetary compensation figure real Labour Courts didn't award in
+    # multiple sampled cases (they ordered reinstatement + back wages, or
+    # nothing, not a lump-sum payment).
+    ("reinstatement", (
+        "reinstate", "reinstatement", "reinstated", "did not reinstate",
+        "seeking reinstatement", "restore him to his post", "restore her to her post",
+        "continuity of service", "back wages",
+    )),
     ("possession", ("vacant possession", "hand over possession", "eviction", "evict", "recover possession")),
     ("injunction", ("injunction", "restrain", "restraining order", "stop the respondent", "cease and desist", "remove the", "removal of the")),
     ("declaration", ("declare", "declaration that", "declared void", "null and void", "declaratory")),
@@ -201,6 +231,17 @@ _DEFENSE_SUBSTANCE_LEXICON = (
     "cleared all dues", "full and final settlement", "settlement was reached",
     "forgery", "encroach", "title document", "site plan", "possession since",
     "never worked for", "never issued", "stolen", "stop payment",
+    # Tenancy/ownership-protection defenses: found via real-judgment testing
+    # to be a dominant, previously-unscored mismatch pattern for tenancy
+    # disputes -- e.g. a landlord's eviction suit failing because the
+    # landlord "failed to prove ownership" is exactly as dispositive as any
+    # of the entries above, but none of them matched this common phrasing.
+    "failed to prove ownership", "failed to prove his ownership",
+    "failed to prove her ownership", "failed to prove title",
+    "protected tenant", "statutory tenant", "rent control act",
+    "bonafide requirement", "bona fide requirement", "not proved",
+    "did not prove", "no relationship of landlord and tenant",
+    "denied the existence of tenancy", "adverse possession",
 )
 
 

@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["scripts/_vendor"]  # vendored third-party code, not ours to lint
+
+[tool.ruff.lint]
+# Conservative on purpose: real-bug categories (undefined names, unused
+# imports, obvious logic errors), not style opinions. A CI gate that starts
+# by failing the build over pre-existing formatting choices just trains
+# everyone to ignore it -- widen this once the codebase is already clean
+# against it, not before.
+select = ["E9", "F", "E7"]
+ignore = [
+    "E402",  # several modules load .env / configure logging before other imports by design
+]

@@ -31,6 +31,7 @@ Run (from backend/): python -m scripts.extract_case_signals
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -66,6 +67,14 @@ def extract_signals(case: dict) -> dict | None:
         "CLAIMANT relies on, per the facts section only>, "
         '"respondent_defense_summary": "<=30 words: what the respondent argued in their defense, '
         'from the facts/arguments section only>", '
+        '"respondent_legal_ground": "<the SPECIFIC named legal doctrine or procedural ground the '
+        "respondent's defense rests on, if any was actually argued -- e.g. 'limitation', 'lack of "
+        "jurisdiction', 'no privity of contract', 'res judicata', 'arbitration clause', 'non-joinder "
+        "of necessary parties', 'estoppel', 'protected/statutory tenant', 'landlord failed to prove "
+        "ownership', 'plaintiff lacks locus standi', 'claim barred', 'bona fide requirement not "
+        "proved'. Name the DOCTRINE/GROUND itself, not just the underlying facts -- e.g. if the "
+        "respondent argued the suit was filed too late, write 'limitation', not a restatement of the "
+        "dates. null if the defense is a plain factual denial with no such named ground.>\", "
         '"respondent_accepts_liability": <true only if the respondent explicitly admitted/conceded '
         "the claim in their pleadings -- not if the court later ruled against them>, "
         '"respondent_offered_settlement_amount": <number or null -- ONLY if the facts state the '
@@ -82,15 +91,39 @@ def extract_signals(case: dict) -> dict | None:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description="Extract per-case signals for the real-judgment eval dataset.")
+    ap.add_argument("--fresh", action="store_true",
+                     help="re-extract every case, ignoring any already-signalled entries in the existing output")
+    args = ap.parse_args()
+
     if not llm.is_available():
         print("ERROR: LLM unavailable -- signal extraction needs a real LLM call. Aborting.")
         return 1
 
     cases = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+
+    # Incremental by default: a prior run's signals are real per-case facts
+    # extracted from a judgment's text, which never change on re-run -- only
+    # NEWLY added cases (from an incremental scripts/source_eval_judgments.py
+    # run) need a fresh extraction call, so re-paying for the ones a previous
+    # run already signalled would be pure waste.
+    already_signalled: dict[str, dict] = {}
+    if not args.fresh and OUT_PATH.exists():
+        prior = json.loads(OUT_PATH.read_text(encoding="utf-8"))
+        already_signalled = {c["case_id"]: c for c in prior if c.get("signals")}
+        print(f"Loaded {len(already_signalled)} already-signalled case(s) from {OUT_PATH} -- "
+              "only extracting for new/missing cases (use --fresh to redo everything).")
+
     enriched = []
     failures = []
+    to_extract = [c for c in cases if c["case_id"] not in already_signalled]
+    print(f"{len(cases)} total case(s), {len(to_extract)} need extraction.")
     for i, case in enumerate(cases):
-        print(f"[{i + 1}/{len(cases)}] {case['case_id']}...", end=" ", flush=True)
+        if case["case_id"] in already_signalled:
+            enriched.append(already_signalled[case["case_id"]])
+            continue
+        idx = [c["case_id"] for c in to_extract].index(case["case_id"]) + 1
+        print(f"[{idx}/{len(to_extract)}] {case['case_id']}...", end=" ", flush=True)
         signals = extract_signals(case)
         if signals is None:
             print("FAILED (no signals extracted -- will fall back to placeholder defaults)")

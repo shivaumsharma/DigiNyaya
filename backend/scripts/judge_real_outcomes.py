@@ -14,10 +14,23 @@ LLM judge compares each AI resolution against the real judgment's
 expected_outcome (already sourced, real ground truth) and scores it
 match / partial / mismatch with a short reason.
 
+INCREMENTAL BY DEFAULT, two levels:
+  1. Scripted-mode re-runs skip re-executing the pipeline ENTIRELY for any
+     case where the pipeline's source code hasn't changed since the last
+     run (scripted mode is a pure function of case + code, so there's
+     nothing to learn from re-running it) -- see _pipeline_fingerprint().
+  2. Otherwise (code changed, or --live-llm), the pipeline is re-run but the
+     judge() LLM call is skipped whenever the resulting AI output hashes
+     the same as a prior run's -- only cases whose ACTUAL resolution
+     changed get a fresh (paid) judge call.
+Pass --fresh to ignore all caching and redo everything from scratch.
+
 Run (from backend/): python -m scripts.judge_real_outcomes
 """
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import os
 import sys
@@ -42,16 +55,25 @@ OUT_PATH = Path(__file__).resolve().parent.parent / "data_cache" / "real_judgmen
 
 
 class _llm_disabled_for:
-    """Scope DIGINYAYA_USE_LLM=0 to a block only. app.llm.client._llm_disabled()
+    """Scope DIGINYAYA_USE_LLM to a block only. app.llm.client._llm_disabled()
     reads this env var globally with no scoping of its own -- setting it for
     the whole process (as an earlier version of this script did) also
     silently kills this script's OWN judge() calls later, since they go
     through the same llm.generate_json() gate. Restores whatever value (or
-    absence) was there before on exit, rather than assuming "1"."""
+    absence) was there before on exit, rather than assuming "1".
+
+    `value` defaults to "0" (fast/free scripted mode, the default for
+    day-to-day re-runs). Pass "1" (via --live-llm) to let analysis.py's
+    LLM-based defense-strength judgment and mediation.py's LLM reasoning
+    actually run during the eval -- real per-case Sarvam cost, only worth
+    paying when specifically testing the live-LLM path's accuracy."""
+
+    def __init__(self, value: str = "0"):
+        self._value = value
 
     def __enter__(self):
         self._prev = os.environ.get("DIGINYAYA_USE_LLM")
-        os.environ["DIGINYAYA_USE_LLM"] = "0"
+        os.environ["DIGINYAYA_USE_LLM"] = self._value
         return self
 
     def __exit__(self, *exc):
@@ -61,12 +83,12 @@ class _llm_disabled_for:
             os.environ["DIGINYAYA_USE_LLM"] = self._prev
 
 
-def run_and_capture(case: dict) -> dict | None:
-    """Re-run one case through the pipeline (scripted/fast -- see
+def run_and_capture(case: dict, *, live_llm: bool = False) -> dict | None:
+    """Re-run one case through the pipeline (scripted/fast by default -- see
     _llm_disabled_for) to capture full resolution details. Returns None if
     it escalated (nothing to compare -- no AI resolution was produced)."""
     ctx = _build_ctx(case)
-    with _llm_disabled_for():
+    with _llm_disabled_for("1" if live_llm else "0"):
         list(graph.run_pipeline(ctx))
         if ctx.escalation is not None or ctx.mediation is None:
             return None
@@ -91,6 +113,51 @@ def run_and_capture(case: dict) -> dict | None:
         "findings": res.findings,
         "compliance_days": res.compliance_days,
     }
+
+
+# Source files that determine the SCRIPTED/deterministic pipeline's output
+# for a given case. Deliberately excludes anything only reachable via a live
+# LLM call (whose output isn't a pure function of this repo's code anyway).
+_PIPELINE_SOURCE_FILES = [
+    "app/agents/nlp.py", "app/agents/analysis.py", "app/agents/mediation.py",
+    "app/agents/resolution.py", "app/agents/ingestion.py", "app/agents/research.py",
+    "app/core/safety_gate.py", "app/core/graph.py",
+    "app/data/loader.py", "app/data/precedents.json",
+]
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _pipeline_fingerprint() -> str:
+    """Hash of every source file that affects the deterministic (scripted)
+    pipeline's output. In scripted mode the pipeline is a pure function of
+    (case input, this code) -- if neither changed since the last run,
+    re-executing it would produce byte-identical output, so there's nothing
+    to learn from doing so. Used to skip run_and_capture() ENTIRELY (not
+    just the judge() call) for scripted-mode re-runs where nothing relevant
+    changed. Deliberately NOT trusted for --live-llm runs, where the actual
+    model call means re-running can genuinely produce different output even
+    with identical code -- see judge_real_outcomes.py's docstring."""
+    h = hashlib.sha256()
+    for rel in _PIPELINE_SOURCE_FILES:
+        p = _BACKEND_ROOT / rel
+        h.update(p.read_bytes() if p.exists() else b"<missing>")
+    return h.hexdigest()
+
+
+def _ai_hash(ai: dict) -> str:
+    """Deterministic fingerprint of everything judge() actually reads from
+    `ai` (relief_type, amount, order text). Used to cache verdicts by
+    case_id -- as long as a case's ACTUAL AI output hasn't changed since the
+    last run, the cached verdict is still correct and re-asking the judge
+    LLM would just re-pay for the identical question. Only cases whose
+    resolution genuinely changed (because a real code fix touched them) get
+    re-judged on the next run."""
+    material = {
+        "relief_type": ai.get("relief_type"),
+        "relief_amount": ai.get("relief_amount"),
+        "order": ai.get("order"),
+    }
+    return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
 
 def judge(case: dict, ai: dict) -> dict | None:
@@ -128,26 +195,90 @@ def judge(case: dict, ai: dict) -> dict | None:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description="Judge AI resolutions against real court outcomes.")
+    ap.add_argument("--live-llm", action="store_true",
+                     help="let analysis.py/mediation.py's own LLM reasoning run during the pipeline "
+                          "re-run (real per-case Sarvam cost), instead of the default fast/free "
+                          "scripted mode. The judge() call itself always uses the LLM either way.")
+    ap.add_argument("--fresh", action="store_true",
+                     help="ignore any cached verdicts in the existing output file and re-judge every "
+                          "case from scratch (re-pays for all of them). Default is incremental: a "
+                          "case is only re-judged if its actual AI output (relief type/amount/order) "
+                          "changed since the last run.")
+    args = ap.parse_args()
+
     cases = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     if not llm.is_available():
         print("ERROR: LLM unavailable -- the judge step needs a real LLM call. Aborting.")
         return 1
+    if args.live_llm:
+        print("--live-llm: analysis.py/mediation.py will make real LLM calls during this run.")
+
+    # Cache keyed by case_id -> {ai_hash, verdict, reason, ai_relief,
+    # real_outcome, code_fingerprint, live_llm}. Two levels of reuse:
+    #  1. Full skip (no pipeline execution, no judge call at all) when this
+    #     run is scripted mode, the cached entry was ALSO scripted mode, and
+    #     the pipeline code hasn't changed since (see _pipeline_fingerprint).
+    #     Scripted mode is a pure function of (case, code) -- nothing to
+    #     learn from re-running it.
+    #  2. Judge-only skip (pipeline re-run, but reuse the verdict) whenever
+    #     the freshly-computed AI output hashes the same as before -- covers
+    #     --live-llm runs (which always re-execute the pipeline, since a live
+    #     model call can genuinely differ run to run) and scripted runs where
+    #     the code fingerprint changed but this SPECIFIC case's output didn't.
+    cache: dict[str, dict] = {}
+    if not args.fresh and OUT_PATH.exists():
+        prior = json.loads(OUT_PATH.read_text(encoding="utf-8"))
+        cache = {r["case_id"]: r for r in prior if r.get("ai_hash")}
+        print(f"Loaded {len(cache)} cached verdict(s) from {OUT_PATH} -- only re-judging cases whose "
+              "AI output changed (use --fresh to ignore and re-judge everything).")
+
+    current_fingerprint = _pipeline_fingerprint()
 
     results = []
+    n_full_skip = 0
+    n_cached = 0
+    n_judged = 0
     for i, case in enumerate(cases):
         print(f"[{i + 1}/{len(cases)}] {case['case_id']} ({case['category']})...", end=" ", flush=True)
-        ai = run_and_capture(case)
+
+        cached = cache.get(case["case_id"])
+        if (
+            cached
+            and not args.live_llm
+            and cached.get("live_llm") is False
+            and cached.get("code_fingerprint") == current_fingerprint
+        ):
+            print(f"(unchanged, pipeline not re-run) {cached['verdict']} -- {(cached.get('reason') or '')[:80]}")
+            results.append(cached)
+            n_full_skip += 1
+            continue
+
+        ai = run_and_capture(case, live_llm=args.live_llm)
         if ai is None:
             print("skipped (escalated -- no AI resolution to compare)")
             continue
+        ai_hash = _ai_hash(ai)
+        if cached and cached.get("ai_hash") == ai_hash:
+            print(f"(cached) {cached['verdict']} -- {(cached.get('reason') or '')[:80]}")
+            reused = dict(cached)
+            reused["code_fingerprint"] = current_fingerprint
+            reused["live_llm"] = args.live_llm
+            results.append(reused)
+            n_cached += 1
+            continue
+        n_judged += 1
         verdict = judge(case, ai)
         if verdict is None or verdict.get("verdict") not in ("match", "partial", "mismatch"):
             print("JUDGE FAILED (no usable response)")
             results.append({
                 "case_id": case["case_id"], "category": case["category"],
                 "verdict": "judge_failed", "reason": None,
-                "ai_relief": ai["relief_amount_display"],
+                "ai_relief": ai["relief_amount_display"], "ai_hash": ai_hash,
+                "code_fingerprint": current_fingerprint, "live_llm": args.live_llm,
             })
+            # Saved incrementally so a mid-run crash doesn't lose already-judged cases.
+            OUT_PATH.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
             continue
         print(f"{verdict['verdict']} -- {verdict.get('reason', '')[:80]}")
         results.append({
@@ -157,7 +288,11 @@ def main() -> int:
             "reason": verdict.get("reason"),
             "ai_relief": ai["relief_amount_display"],
             "real_outcome": case["expected_outcome"][:200],
+            "ai_hash": ai_hash,
+            "code_fingerprint": current_fingerprint,
+            "live_llm": args.live_llm,
         })
+        OUT_PATH.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
         time.sleep(0.3)
 
     OUT_PATH.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -167,7 +302,9 @@ def main() -> int:
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
 
     print("\n" + "=" * 70)
-    print(f"Compared {len(results)} case(s) with a drafted AI resolution -> {OUT_PATH}\n")
+    print(f"Compared {len(results)} case(s) with a drafted AI resolution -> {OUT_PATH}")
+    print(f"({n_full_skip} unchanged/fully skipped, {n_cached} reused from cache after re-running, "
+          f"{n_judged} freshly judged)\n")
     print(f"  MATCH:        {counts['match']}")
     print(f"  PARTIAL:      {counts['partial']}")
     print(f"  MISMATCH:     {counts['mismatch']}")

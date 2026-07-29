@@ -58,6 +58,11 @@ def _case(case_id: str, dispute_type: str, claimant: str, respondent: str, claim
     }
 
 
+# CI gate floor for average composite confidence across resolved cases.
+# Measured baseline (scripted mode, all 18 cases) was 0.841 -- set below that
+# with headroom for normal run-to-run variance, not at the exact number.
+CI_MIN_AVG_CONFIDENCE = 0.80
+
 GOLDEN = [
     # ---------------------------------------------------------------- A. easy
     {
@@ -385,14 +390,21 @@ def main() -> int:
     conf_records = []
     for spec in GOLDEN:
         ok, conf = run_case(spec)
-        results.append(ok)
+        results.append((spec["band"], ok))
         if conf:
             conf_records.append(conf)
 
-    passed = sum(results)
+    passed = sum(1 for _, ok in results if ok)
     total = len(results)
 
     print(f"\n{'='*60}\nRESULT: {passed}/{total} golden cases passed ({round(100*passed/total,1)}%)")
+
+    # CI gate: the "stress" band is deliberately adversarial (see this
+    # module's docstring) -- a failure there is expected and healthy, not a
+    # regression. Only a failure OUTSIDE that band (easy/ambiguous/
+    # conflicting/escalation, cases the harness expects to actually pass)
+    # should ever fail the build.
+    non_stress_failures = [band for band, ok in results if not ok and band != "stress"]
 
     if conf_records:
         proposed = sum(c["citations_proposed"] for c in conf_records)
@@ -416,7 +428,17 @@ def main() -> int:
         else:
             print(f"{llm_selected}/{len(conf_records)} cases used LLM-based citation selection (decoys were shown to the model).")
 
-    return 0 if passed == total else 1
+    # Confidence floor: below CI_MIN_AVG_CONFIDENCE is a real regression
+    # signal (composite confidence dropping means ingestion/retrieval/schema/
+    # citation quality degraded somewhere), independent of raw pass/fail.
+    confidence_ok = not conf_records or (sum(c["score"] for c in conf_records) / len(conf_records)) >= CI_MIN_AVG_CONFIDENCE
+
+    if non_stress_failures:
+        print(f"\nFAIL: non-stress-band regression(s) in: {', '.join(non_stress_failures)}")
+    if not confidence_ok:
+        print(f"\nFAIL: average composite confidence below the {CI_MIN_AVG_CONFIDENCE} floor.")
+
+    return 0 if (not non_stress_failures and confidence_ok) else 1
 
 
 if __name__ == "__main__":

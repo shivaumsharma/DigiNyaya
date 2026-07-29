@@ -229,6 +229,77 @@ there's nothing else to configure.
 
 ---
 
+## Authentication (citizen accounts)
+
+A standalone dual-path signup/login system (phone+OTP and email+password), independent from
+the `/api/login` Aadhaar-demo flow above that still gates case filing — **the two are not yet
+wired together**; a future task migrates case ownership from the Aadhaar-demo `citizen_id` to
+the `user.id` this system produces. Lives in `backend/app/auth/`.
+
+**Data layer:** SQLite (same `diginyaya.db` file `db.py` already uses) via SQLAlchemy +
+Alembic migrations (`backend/alembic/`). The original spec called for Postgres' `citext` on
+`email`; this app has no Postgres anywhere, so case-insensitive email uniqueness is done by
+always storing/comparing a lowercased column instead.
+
+### Endpoints
+
+| Method | Path                          | Auth required | Purpose                                            |
+| ------ | ----------------------------- | -------------- | --------------------------------------------------- |
+| `POST` | `/auth/signup/email`          | —              | Create an account with email + password              |
+| `POST` | `/auth/signup/phone/start`    | —              | Send a signup OTP to a phone number                  |
+| `POST` | `/auth/signup/phone/verify`   | —              | Verify OTP, create the account                       |
+| `POST` | `/auth/login/email`           | —              | Log in with email + password                          |
+| `POST` | `/auth/login/phone/start`     | —              | Send a login OTP                                      |
+| `POST` | `/auth/login/phone/verify`    | —              | Verify OTP, log in                                    |
+| `POST` | `/auth/link/phone/start`      | yes            | Send an OTP to add a phone number to the current account |
+| `POST` | `/auth/link/phone/verify`     | yes            | Verify OTP, link the phone (no duplicate user created) |
+| `POST` | `/auth/refresh`                | reads cookie   | Rotate the refresh token, issue a new access token    |
+| `POST` | `/auth/logout`                 | yes            | Revoke the refresh token server-side                  |
+| `POST` | `/auth/password/reset/request` | —             | Enumeration-safe: always returns the same message     |
+| `POST` | `/auth/password/reset/confirm` | —             | Consume the reset token, set a new password           |
+| `GET`  | `/auth/verify-email?token=...` | —             | Consume the verification token                        |
+| `GET`  | `/me`                          | yes            | Current user's profile                                |
+
+`yes` = `Authorization: Bearer <access_token>` header required (15-minute JWT). The refresh
+token is a 7-day opaque value in an **httpOnly** cookie scoped to `/auth`, rotated on every use
+— reusing an already-rotated-out refresh token revokes every token descended from that login
+(theft signal), not just the reused one.
+
+### Env vars
+
+| Variable                  | Default                 | Purpose                                                                                   |
+| -------------------------- | ------------------------ | ------------------------------------------------------------------------------------------- |
+| `DIGINYAYA_JWT_SECRET`     | random per-process       | Signs access tokens. Set a real value in production or sessions reset on every restart.     |
+| `DIGINYAYA_ENV`            | `development`            | Set to `production` to reject non-HTTPS requests to any `/auth/*` or `/me` endpoint.        |
+| `DIGINYAYA_DB`             | `backend/diginyaya.db`   | Same var `db.py` already reads — one shared SQLite file for cases *and* auth tables.        |
+| `DIGINYAYA_FRONTEND_URL`   | `http://localhost:5173`  | Base URL used to build the email-verification and password-reset links.                    |
+
+SMS and email are both **provider-stub interfaces** (`app/auth/sms.py`, `app/auth/mail.py`) —
+in dev they log the OTP/link to the console instead of sending anything real. Swap
+`get_sms_provider()`/`get_mail_provider()`'s return value for a real Twilio/MSG91/WhatsApp
+Business API or SES/SendGrid/Postmark client later; nothing else changes.
+
+### Migrations
+
+```bash
+cd backend
+python -m alembic upgrade head      # apply migrations
+python -m alembic revision --autogenerate -m "..."   # after changing app/auth/orm_models.py
+```
+
+### Tests
+
+```bash
+cd backend
+python -m pytest tests/ -v
+```
+
+Covers password hashing (bcrypt cost 12), OTP hashing/rate-limiting (3 requests/15min, 5 verify
+attempts), refresh-token rotation + reuse/theft detection, and enumeration-safe error responses
+(login and password-reset return identical responses whether or not the account exists).
+
+---
+
 ## Roadmap (beyond this MVP)
 
 - **Phase 2** — All four Tier 1 case types (money recovery, contract breach, cheque bounce), real Aadhaar integration, mobile-first UI.

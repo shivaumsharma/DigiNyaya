@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, streamSSE } from '../api.js'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
-import { AGENT_ICONS, Check, Clock, Handshake, Gavel } from '../icons.jsx'
+import { AGENT_ICONS, Check, Clock, Handshake, Gavel, Shield } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
 import ResolutionDoc from '../components/ResolutionDoc.jsx'
 
@@ -16,12 +16,11 @@ export default function Resolve() {
   const [notices, setNotices] = useState([]) // routing / escalation / loop decisions
   const [draft, setDraft] = useState('') // live streamed resolution findings
   const [phase, setPhase] = useState('loading') // loading|pipeline|mediation|resolving|resolved|escalated
-  const [escalation, setEscalation] = useState(null) // safety-gate block details, set on 'escalated_terminal'
+  const [escalation, setEscalation] = useState(null)
   const [error, setError] = useState(null)
   const startedRef = useRef(false)
   const cursorRef = useRef(0)
   const abortRef = useRef(null)
-  const langRef = useRef(lang)
 
   useEffect(() => {
     if (startedRef.current) return
@@ -34,7 +33,7 @@ export default function Resolve() {
           await api.runPipeline(id)
         }
         if (c.status === 'resolved') setPhase('resolved')
-        if (c.status === 'escalated') {
+        else if (c.status === 'escalated') {
           setPhase('escalated')
           setEscalation(c.escalation || null)
         }
@@ -47,21 +46,10 @@ export default function Resolve() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  // On a language switch mid-case: redraw already-loaded case content in the
-  // new language and reconnect the event stream from the current cursor so
-  // both replayed history and any still-streaming agent output localize to
-  // it. Skipped on first mount (handled by the effect above).
-  useEffect(() => {
-    if (langRef.current === lang) return
-    langRef.current = lang
-    api.getCase(id, lang).then(setCaseData).catch(() => {})
-    openStream(cursorRef.current)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang])
-
   function openStream(after) {
     if (abortRef.current) abortRef.current()
-    abortRef.current = streamSSE(`/cases/${id}/events?after=${after}&lang=${lang}`, {
+    const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : ''
+    abortRef.current = streamSSE(`/cases/${id}/events?after=${after}${langParam}`, {
       onEvent: applyEvent,
       onError: (e) => setError(e.message),
     })
@@ -142,12 +130,12 @@ export default function Resolve() {
   const resolving = phase === 'resolving' && !resolution
 
   return (
-    <section className="page fade-in">
+    <section className="page fade-in container">
       <Stepper current={3} />
       <div className="page-head between flex">
         <div>
-          <h2>{t('resolve.title')}</h2>
-          <p>{t('resolve.subtitle', { id })}</p>
+          <h1 style={{ fontWeight: 400, marginBottom: 10 }}>{t('resolve.title')}</h1>
+          <p style={{ fontSize: '0.95rem' }}>{t('resolve.subtitle', { id })}</p>
         </div>
         {phase === 'resolved' && (
           <span className="resolved-badge">
@@ -155,8 +143,8 @@ export default function Resolve() {
           </span>
         )}
         {phase === 'escalated' && (
-          <span className="escalated-badge">
-            {t('resolve.escalatedBadge')}
+          <span className="tag tag-outline">
+            <Shield width={14} height={14} /> {t('resolve.escalatedBadge')}
           </span>
         )}
       </div>
@@ -167,13 +155,6 @@ export default function Resolve() {
           <button className="btn btn-small" onClick={() => { setError(null); openStream(cursorRef.current) }}>
             {t('resolve.reconnect')}
           </button>
-        </div>
-      )}
-
-      {phase === 'escalated' && (
-        <div className="escalation-banner">
-          <strong>{t('resolve.escalatedTitle')}</strong>
-          <p>{escalation?.user_message || t('resolve.escalatedDefaultMessage')}</p>
         </div>
       )}
 
@@ -190,6 +171,8 @@ export default function Resolve() {
             .map((a) => (
               <AgentRow key={a} agent={a} data={agents[a]} draft={a === 'resolution' && resolving ? draft : ''} t={t} />
             ))}
+
+          {phase === 'escalated' && <EscalationPanel escalation={escalation} t={t} />}
 
           {phase === 'mediation' && mediation && <MediationPanel proposal={mediation} onDecide={decide} t={t} />}
 
@@ -229,7 +212,7 @@ function AgentRow({ agent, data, draft, t }) {
         <div className="agent-title">
           {data.title}
           <span className={`agent-status ${data.status}`}>{data.status}</span>
-          {data.payload?.engine && <EngineTag engine={data.payload.engine} t={t} />}
+          {data.payload?.engine && <EngineTag engine={data.payload.engine} />}
         </div>
         <div className="agent-detail">{data.detail}</div>
         {draft && (
@@ -344,6 +327,31 @@ function AgentPayload({ agent, payload, t }) {
   return null
 }
 
+function EscalationPanel({ escalation, t }) {
+  return (
+    <div className="mediation-banner fade-in" style={{ borderColor: 'var(--color-divider)' }}>
+      <h3>
+        <Shield width={22} height={22} /> {t('resolve.escalatedTitle')}
+      </h3>
+      <p className="headline-big">
+        {escalation?.user_message || t('resolve.escalatedDefaultMessage')}
+      </p>
+      {escalation?.checkpoint && (
+        <div className="chips">
+          <span className="chip">
+            {t('resolve.escalated.checkpointLabel')}{' '}
+            {escalation.checkpoint === 'pre_filter' ? t('resolve.escalated.checkpointPre') : t('resolve.escalated.checkpointPost')}
+          </span>
+          {escalation.case_id && <span className="chip">{t('resolve.escalated.caseLabel')} {escalation.case_id}</span>}
+        </div>
+      )}
+      <p className="muted" style={{ fontSize: '0.85rem', marginTop: 12 }}>
+        {t('resolve.escalated.reviewNotice')}
+      </p>
+    </div>
+  )
+}
+
 function MediationPanel({ proposal, onDecide, t }) {
   return (
     <div className="mediation-banner fade-in">
@@ -399,7 +407,7 @@ function SidePanel({ caseData, phase, resolution, t }) {
       <div className="card card-pad">
         <div className="mini-head">{t('resolve.side.caseFile')}</div>
         <div className="kv"><span className="k">{t('resolve.side.caseId')}</span><span className="v">{caseData.case_id}</span></div>
-        <div className="kv"><span className="k">{t('resolve.side.status')}</span><span className="v" style={{ color: phase === 'resolved' ? 'var(--green)' : 'var(--gold)' }}>{statusLabel}</span></div>
+        <div className="kv"><span className="k">{t('resolve.side.status')}</span><span className="v" style={{ color: phase === 'resolved' ? 'var(--green)' : phase === 'escalated' ? 'var(--text-dim)' : 'var(--gold)' }}>{statusLabel}</span></div>
         <div className="kv"><span className="k">{t('resolve.side.tierLabel')}</span><span className="v">{t('resolve.side.tier', { n: caseData.tier })}</span></div>
         <div className="kv"><span className="k">{t('resolve.side.claimant')}</span><span className="v">{caseData.claimant?.name}</span></div>
         <div className="kv"><span className="k">{t('resolve.side.respondent')}</span><span className="v">{caseData.respondent?.name}</span></div>

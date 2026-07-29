@@ -19,9 +19,11 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from .. import db, jobs
+from ..auth.deps import current_user
+from ..auth.orm_models import User
 from ..documents.validation import validate_upload
 from ..models import DiscrepancyOut, DocumentDetailOut, DocumentOut
-from ..security import current_citizen, ensure_owner
+from ..security import ensure_owner
 from ..storage import get_storage
 from ..storage.config import config as storage_config
 
@@ -30,11 +32,11 @@ router = APIRouter(prefix="/api/cases/{case_id}", tags=["documents"])
 _MAX_UPLOAD_BYTES = storage_config.max_upload_mb * 1024 * 1024
 
 
-def _load_owned(case_id: str, citizen_id: str) -> dict:
+def _load_owned(case_id: str, owner_id: str) -> dict:
     case = db.get_case(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    ensure_owner(case, citizen_id)
+    ensure_owner(case, owner_id)
     return case
 
 
@@ -46,9 +48,9 @@ def _evidence_kind(mime_type: str) -> str:
 async def upload_documents(
     case_id: str,
     files: list[UploadFile] = File(...),
-    citizen_id: str = Depends(current_citizen),
+    user: User = Depends(current_user),
 ):
-    case = _load_owned(case_id, citizen_id)
+    case = _load_owned(case_id, user.id)
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
@@ -90,14 +92,14 @@ async def upload_documents(
 
 
 @router.get("/documents", response_model=list[DocumentOut])
-def list_documents(case_id: str, citizen_id: str = Depends(current_citizen)):
-    _load_owned(case_id, citizen_id)
+def list_documents(case_id: str, user: User = Depends(current_user)):
+    _load_owned(case_id, user.id)
     return db.list_documents(case_id)
 
 
 @router.get("/documents/{document_id}", response_model=DocumentDetailOut)
-def get_document(case_id: str, document_id: str, citizen_id: str = Depends(current_citizen)):
-    _load_owned(case_id, citizen_id)
+def get_document(case_id: str, document_id: str, user: User = Depends(current_user)):
+    _load_owned(case_id, user.id)
     doc = db.get_document(document_id)
     if doc is None or doc["case_id"] != case_id:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -105,8 +107,8 @@ def get_document(case_id: str, document_id: str, citizen_id: str = Depends(curre
 
 
 @router.post("/discrepancy-check")
-def trigger_discrepancy_check(case_id: str, citizen_id: str = Depends(current_citizen)):
-    _load_owned(case_id, citizen_id)
+def trigger_discrepancy_check(case_id: str, user: User = Depends(current_user)):
+    _load_owned(case_id, user.id)
     docs = db.list_documents(case_id)
     if not docs:
         raise HTTPException(status_code=400, detail="No documents uploaded for this case yet")
@@ -115,6 +117,6 @@ def trigger_discrepancy_check(case_id: str, citizen_id: str = Depends(current_ci
 
 
 @router.get("/discrepancies", response_model=list[DiscrepancyOut])
-def list_discrepancies(case_id: str, citizen_id: str = Depends(current_citizen)):
-    _load_owned(case_id, citizen_id)
+def list_discrepancies(case_id: str, user: User = Depends(current_user)):
+    _load_owned(case_id, user.id)
     return db.list_discrepancies(case_id)

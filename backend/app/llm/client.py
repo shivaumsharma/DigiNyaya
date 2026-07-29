@@ -11,9 +11,9 @@ require changes outside the llm package.
 
 Call convention (matches every call site in app/agents and app/rag):
 
-    llm.generate(prompt, system=llm.SYSTEM_PROMPT, max_tokens=160)
-    llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=220)
-    llm.generate_stream(prompt, system=llm.SYSTEM_PROMPT, max_tokens=260)
+    llm.generate(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
+    llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
+    llm.generate_stream(prompt, system=llm.SYSTEM_PROMPT, max_tokens=600)
     llm.embed(["doc one", "doc two", ...])   # -> list[list[float]]
     llm.embed("single string")               # -> list[float]
 
@@ -25,11 +25,16 @@ call with a TypeError. Fixed here + at each call site.
 """
 
 from __future__ import annotations
+import logging
 import os
+import threading
+import time
 from typing import Any, Dict, Generator, List, Optional, Union
 from app.llm.factory import get_provider, get_embedding_provider
 from app.llm.config import config
-from app.prompts.system import SYSTEM_PROMPT
+from app.prompts.system import SYSTEM_PROMPT  # noqa: F401 -- re-exported as llm.SYSTEM_PROMPT
+
+logger = logging.getLogger("diginyaya.llm")
 
 
 def _llm_disabled() -> bool:
@@ -40,6 +45,60 @@ def _llm_disabled() -> bool:
     return os.environ.get("DIGINYAYA_USE_LLM", "1") == "0"
 
 
+class _CircuitBreaker:
+    """Process-wide circuit breaker around provider calls.
+
+    generate()/generate_json()/generate_stream() below already catch every
+    exception and degrade to None/empty (agents fall back to scripted
+    behaviour) -- but each of those failing calls still pays the full
+    provider timeout (config.timeout, tens of seconds) before giving up.
+    A single dispute run makes several LLM calls across 5 agents; during a
+    real Sarvam outage, this turns "one slow request" into "every agent in
+    every concurrent case blocks for a timeout in turn."
+
+    After FAILURE_THRESHOLD consecutive failures, the breaker opens: for
+    COOLDOWN_SECONDS, calls fail fast (no network attempt at all) instead of
+    waiting out another timeout, matching the existing None/empty degrade
+    contract exactly -- callers can't tell the difference, they just get an
+    answer faster. One trial call after cooldown decides whether to close
+    the breaker again (success) or re-open it for another cooldown window.
+    """
+
+    FAILURE_THRESHOLD = 3
+    COOLDOWN_SECONDS = 30.0
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._consecutive_failures = 0
+        self._open_until = 0.0
+
+    def allow(self) -> bool:
+        with self._lock:
+            return time.monotonic() >= self._open_until
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._consecutive_failures = 0
+            self._open_until = 0.0
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= self.FAILURE_THRESHOLD and self._open_until < time.monotonic():
+                self._open_until = time.monotonic() + self.COOLDOWN_SECONDS
+                logger.warning(
+                    "circuit breaker opened",
+                    extra={
+                        "event": "llm_circuit_breaker_open",
+                        "consecutive_failures": self._consecutive_failures,
+                        "cooldown_seconds": self.COOLDOWN_SECONDS,
+                    },
+                )
+
+
+_breaker = _CircuitBreaker()
+
+
 def generate(
     prompt: str,
     *,
@@ -47,6 +106,7 @@ def generate(
     temperature: float = 0.2,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> Optional[str]:
     """
     Generate a text response using the active provider.
@@ -55,18 +115,35 @@ def generate(
     via DIGINYAYA_USE_LLM=0, or the call fails -- callers (analysis.py,
     resolution.py) already treat a falsy result as "fall back to the
     scripted summary", the same contract generate_json() below documents.
+
+    reasoning_effort defaults to None (disabled): Sarvam's reasoning model
+    (sarvam-105b, the default for model=None) defaults to "medium" reasoning
+    effort whenever this field is *omitted*, emitting a verbose
+    reasoning_content trace before writing the final answer -- easily enough
+    to consume the entire max_tokens budget on reasoning alone, leaving
+    content: null. Passing None here is forwarded as an explicit
+    reasoning_effort: null in the request body, which is what actually
+    disables it (confirmed empirically: "low" is NOT reliably low for
+    schema-constrained prompts -- it still starved a 600-token budget in
+    testing, while explicit null produced correct output in ~50 tokens).
+    Pass "low"/"medium"/"high" for call sites that genuinely want deeper
+    reasoning at the cost of more tokens and latency.
     """
-    if _llm_disabled():
+    if _llm_disabled() or not _breaker.allow():
         return None
     try:
-        return get_provider().generate(
+        result = get_provider().generate(
             prompt=prompt,
             system=system,
             temperature=temperature,
             model=model,
             max_tokens=max_tokens or config.max_tokens,
+            reasoning_effort=reasoning_effort,
         )
+        _breaker.record_success()
+        return result
     except Exception:
+        _breaker.record_failure()
         return None
 
 
@@ -78,6 +155,7 @@ def generate_json(
     temperature: float = 0.0,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Generate structured JSON using the active provider.
@@ -86,19 +164,25 @@ def generate_json(
     model's output couldn't be parsed as JSON -- callers (mediation.py,
     resolution.py) already check `if data:` and fall back to scripted
     behaviour on None.
+
+    See generate() above for why reasoning_effort defaults to None (disabled).
     """
-    if _llm_disabled():
+    if _llm_disabled() or not _breaker.allow():
         return None
     try:
-        return get_provider().generate_json(
+        result = get_provider().generate_json(
             prompt=prompt,
             system=system,
             schema=schema,
             temperature=temperature,
             model=model,
             max_tokens=max_tokens or config.max_tokens,
+            reasoning_effort=reasoning_effort,
         )
+        _breaker.record_success()
+        return result
     except Exception:
+        _breaker.record_failure()
         return None
 
 
@@ -109,6 +193,7 @@ def generate_stream(
     temperature: float = 0.2,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """
     Stream generated text.
@@ -117,8 +202,10 @@ def generate_stream(
     during streaming, the generator simply yields nothing further so callers
     (graph.py's resolve_node) fall back via `acc or None`, same contract as
     generate() above.
+
+    See generate() above for why reasoning_effort defaults to None (disabled).
     """
-    if _llm_disabled():
+    if _llm_disabled() or not _breaker.allow():
         return
     try:
         yield from get_provider().generate_stream(
@@ -127,8 +214,11 @@ def generate_stream(
             temperature=temperature,
             model=model,
             max_tokens=max_tokens or config.max_tokens,
+            reasoning_effort=reasoning_effort,
         )
+        _breaker.record_success()
     except Exception:
+        _breaker.record_failure()
         return
 
 

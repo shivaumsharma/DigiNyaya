@@ -55,7 +55,6 @@ from app.language.detector import (
 )
 from app.language.translator import (
     Translator,
-    TranslationResult,
     get_translator,
 )
 

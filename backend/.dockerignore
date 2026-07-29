@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+diginyaya.db
+diginyaya.db-wal
+diginyaya.db-shm
+data_cache/
+uploads/
+app/data/precedent_vectors_cache.json
+tests/
+scripts/_vendor/

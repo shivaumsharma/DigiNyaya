@@ -123,8 +123,23 @@ def _build_ctx(case: dict) -> CaseContext:
     if signals:
         n_evidence = max(1, min(int(signals.get("claimant_evidence_count") or 1), 5))
         evidence = [dict(PLACEHOLDER_EVIDENCE[0]) for _ in range(n_evidence)]
+        statement = signals.get("respondent_defense_summary") or "The respondent disputes the claim."
+        # A real respondent typing their own defense would naturally name the
+        # legal ground they're relying on in their own words (which is
+        # exactly what app.agents.nlp.score_defense_substance scans free
+        # text for) -- extract_case_signals.py's original 30-word compressed
+        # defense_summary sometimes dropped the doctrine name even when the
+        # judgment's own arguments section clearly stated it (e.g. "barred
+        # by limitation"), understating a genuinely dispositive defense.
+        # respondent_legal_ground is extracted separately, from the same
+        # facts/arguments-only text, specifically to name the doctrine; folded
+        # into the same free-text statement here (not a new schema field)
+        # since that's the one input score_defense_substance actually reads.
+        ground = signals.get("respondent_legal_ground")
+        if ground and str(ground).strip().lower() not in ("null", "none", ""):
+            statement = f"{statement} The respondent's defense relies on: {ground}."
         respondent_submission = {
-            "statement": signals.get("respondent_defense_summary") or "The respondent disputes the claim.",
+            "statement": statement,
             "accepts_liability": bool(signals.get("respondent_accepts_liability")),
             "counter_offer": signals.get("respondent_offered_settlement_amount"),
         }

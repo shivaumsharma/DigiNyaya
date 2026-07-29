@@ -60,18 +60,6 @@ def _validate_optional_language(value: str | None) -> str | None:
     return normalized
 
 
-class LoginRequest(BaseModel):
-    aadhaar_last4: str = Field(..., min_length=4, max_length=4)
-    name: str
-
-
-class LoginResponse(BaseModel):
-    citizen_id: str
-    name: str
-    aadhaar_verified: bool
-    masked_aadhaar: str
-
-
 class ClaimSubmission(BaseModel):
     claimant_name: str
     respondent_name: str

@@ -239,7 +239,7 @@ def extract_fields(doc: dict) -> dict | None:
         "stated default. Do not invent amounts.\n\n"
         f"SCHEMA: {schema}\n\nJUDGMENT TEXT:\n{_window(body)}"
     )
-    data = llm.generate_json(llm.SYSTEM_PROMPT, prompt, max_tokens=400)
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=800)
     if not data:
         return None
     return data

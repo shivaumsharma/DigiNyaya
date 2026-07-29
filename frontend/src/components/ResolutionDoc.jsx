@@ -1,4 +1,4 @@
-import { Scales, Download, Check } from '../icons.jsx'
+import { Logo, Download, Check } from '../icons.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 
 export default function ResolutionDoc({ doc }) {
@@ -27,7 +27,7 @@ export default function ResolutionDoc({ doc }) {
     lines.push(t('resolutionDoc.txtOrder'))
     doc.order.forEach((o, i) => lines.push(`  ${i + 1}. ${o}`))
     lines.push('')
-    lines.push(`${t('resolutionDoc.txtComplianceDeadline')} ${doc.compliance_deadline} (${doc.compliance_days} days)`)
+    lines.push(`${t('resolutionDoc.txtComplianceDeadline')} ${doc.compliance_deadline} (${t('resolve.side.complianceDays', { n: doc.compliance_days })})`)
     lines.push('')
     lines.push(doc.footer)
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
@@ -45,7 +45,7 @@ export default function ResolutionDoc({ doc }) {
         <div className="doc-head">
           <div className="seal">
             <span className="s-logo">
-              <Scales width={22} height={22} />
+              <Logo width={22} height={22} />
             </span>
             <div>
               <h3>{doc.header}</h3>
