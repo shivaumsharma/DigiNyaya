@@ -41,6 +41,12 @@ class SarvamProvider(BaseLLMProvider):
             "Content-Type": "application/json",
         }
 
+        # One 5-agent case run makes ~4 calls to Sarvam; module-level
+        # requests.post()/get() opens a brand-new TCP+TLS connection every
+        # single time. A shared Session reuses the underlying connection
+        # (HTTP keep-alive) across calls from this provider instance instead.
+        self._session = requests.Session()
+
     # --------------------------------------------------------
 
     def _resolve_model(
@@ -97,7 +103,7 @@ class SarvamProvider(BaseLLMProvider):
         if response_format:
             payload["response_format"] = response_format
 
-        response = requests.post(
+        response = self._session.post(
             f"{self.base_url}/chat/completions",
             headers=self.headers,
             json=payload,
@@ -204,7 +210,7 @@ class SarvamProvider(BaseLLMProvider):
 
       try:
 
-          response = requests.get(
+          response = self._session.get(
               f"{self.base_url}/models",
               headers=self.headers,
               timeout=5,
@@ -221,11 +227,12 @@ class SarvamProvider(BaseLLMProvider):
       Return provider diagnostics.
       """
 
+      available = self.is_available()
       return {
           "provider": "sarvam",
           "engine": self.__class__.__name__,
-          "online": self.is_available(),
-          "available": self.is_available(),
+          "online": available,
+          "available": available,
           "model": config.sarvam_fast_model,
           "models": [
               config.sarvam_fast_model,
