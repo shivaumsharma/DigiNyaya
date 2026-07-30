@@ -55,3 +55,15 @@ def current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user
+
+
+def current_reviewer(user: User = Depends(current_user)) -> User:
+    """Same identity as current_user, plus the is_reviewer gate for the
+    human-review endpoints (app/routers/reviews.py). No general admin role
+    exists -- is_reviewer is deliberately the one narrow capability those
+    endpoints need, bootstrapped via scripts/promote_reviewer.py, never
+    settable through the API.
+    """
+    if not user.is_reviewer:
+        raise HTTPException(status_code=403, detail="Reviewer access required")
+    return user
