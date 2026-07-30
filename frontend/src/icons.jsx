@@ -108,6 +108,21 @@ export const ArrowLeft = (p) => (
 export const Download = (p) => (
   <svg {...base} {...p}><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
 )
+export const UploadCloud = (p) => (
+  <svg {...base} {...p}>
+    <path d="M16 16l-4-4-4 4M12 12v9" />
+    <path d="M20.4 18.5A4.5 4.5 0 0 0 18 10h-1.3A7 7 0 1 0 4 15.9" />
+  </svg>
+)
+export const AlertTriangle = (p) => (
+  <svg {...base} {...p}>
+    <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9v4M12 17h.01" />
+  </svg>
+)
+export const XCircle = (p) => (
+  <svg {...base} {...p}><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6M9 9l6 6" /></svg>
+)
 export const Bot = (p) => (
   <svg {...base} {...p}>
     <rect x="4" y="8" width="16" height="12" rx="3" /><path d="M12 8V4M9 4h6" />

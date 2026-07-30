@@ -387,6 +387,26 @@ button { font-family: var(--font-body); cursor: pointer; border: none; backgroun
 .ev-row .x { margin-left: auto; color: var(--text-faint); cursor: pointer; }
 .ev-kind { font-size: 0.7rem; color: var(--color-accent-800); background: var(--color-accent-100); padding: 2px 8px; }
 
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  gap: 4px; padding: 36px 20px; border: 1.5px dashed var(--color-divider); border-radius: var(--radius-sm);
+  color: var(--text-dim); cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dropzone:hover, .dropzone.dragging {
+  border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+.dropzone-title { font-weight: 500; color: var(--color-text); margin: 6px 0 2px; }
+
+.review-note {
+  display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--radius-sm);
+  font-size: 0.88rem; line-height: 1.5; border: 1px solid var(--color-divider); background: var(--color-surface);
+}
+.review-note.warn { border-color: var(--color-accent-300); background: var(--gold-soft); }
+.review-note.ok { border-color: var(--color-success); background: var(--green-soft); }
+.review-doc { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--color-divider); background: var(--color-surface); font-size: 0.86rem; }
+.review-doc .looks-like { font-size: 0.72rem; color: var(--color-accent-800); background: var(--color-accent-100); padding: 2px 8px; margin-left: 8px; }
+
 .footer { border-top: 1px solid var(--color-divider); padding: var(--space-5) 0; color: var(--text-faint); font-size: 0.82rem; margin-top: auto; }
 
 .notice-row { display: flex; gap: 12px; align-items: baseline; margin: 8px 0 8px 52px; padding: 10px 14px;

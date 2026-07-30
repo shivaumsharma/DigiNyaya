@@ -122,6 +122,7 @@
     "addEvidence": "Add",
     "filing": "Filing…",
     "fileClaim": "File claim & notify respondent",
+    "continueToEvidence": "Continue to evidence",
     "kind": {
       "invoice": "invoice",
       "receipt": "receipt",
@@ -130,6 +131,25 @@
       "photo": "photo",
       "other": "other"
     }
+  },
+  "evidence": {
+    "title": "Add your evidence",
+    "subtitle": "Drop the documents that support your claim. Our AI checks them before you file, so you can fix anything missing first.",
+    "dropTitle": "Drag & drop files here, or click to choose",
+    "dropHint": "PDF or image files. You can add more than one.",
+    "uploading": "Uploading…",
+    "statusPending": "processing…",
+    "statusReady": "ready",
+    "statusFailed": "couldn't read this file",
+    "waiting": "Processing files…",
+    "continueToReview": "Continue to review"
+  },
+  "review": {
+    "title": "Preliminary review",
+    "subtitle": "A quick, non-binding AI check of your evidence -- the real review happens after the respondent replies.",
+    "loading": "Reviewing your evidence…",
+    "addMoreEvidence": "Add more evidence",
+    "backToEvidence": "Back to evidence"
   },
   "respondent": {
     "title": "Respondent notified",
