@@ -80,7 +80,7 @@ export default function Home() {
           display: 'grid',
           gridTemplateColumns: '1.05fr 0.95fr',
           gap: 56,
-          alignItems: 'start',
+          alignItems: 'stretch',
         }}
         className="hero-grid-responsive"
       >
@@ -121,15 +121,26 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="card elev-md" style={{ padding: 'var(--space-5) var(--space-5) var(--space-4)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-            <div className="card-title" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 15 }}>
-              {t('landing.previewTitle')}
+        <div
+          className="card elev-md"
+          style={{
+            padding: 'var(--space-5) var(--space-5) var(--space-4)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            height: '100%',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+              <div className="card-title" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 15 }}>
+                {t('landing.previewTitle')}
+              </div>
+              <span className="tag tag-accent">{t('landing.previewTag')}</span>
             </div>
-            <span className="tag tag-accent">{t('landing.previewTag')}</span>
+            <PipelinePreview steps={t('landing.previewSteps')} />
           </div>
-          <PipelinePreview steps={t('landing.previewSteps')} />
-          <button className="btn btn-block" onClick={goFileDispute} style={{ marginTop: 6 }}>
+          <button className="btn btn-block" onClick={goFileDispute} style={{ marginTop: 24 }}>
             {t('landing.previewCta')}
           </button>
         </div>
