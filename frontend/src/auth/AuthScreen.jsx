@@ -47,24 +47,12 @@ export default function AuthScreen() {
   return (
     <section className="fade-in" style={{ maxWidth: 440, margin: '48px auto' }}>
       <div className="card card-pad">
-        <div className="flex gap" style={{ marginBottom: 18 }}>
-          <button
-            type="button"
-            className={`btn ${mode === 'login' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ flex: 1 }}
-            onClick={() => setMode('login')}
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            className={`btn ${mode === 'signup' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ flex: 1 }}
-            onClick={() => setMode('signup')}
-          >
-            Create account
-          </button>
-        </div>
+        <h2 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 22, marginBottom: 6 }}>
+          {mode === 'login' ? 'Sign in to DigiNyaya' : 'Create your account'}
+        </h2>
+        <p className="sub" style={{ marginBottom: 20 }}>
+          {mode === 'login' ? 'Welcome back — file, track, and resolve disputes.' : 'Free to start, takes about a minute.'}
+        </p>
 
         <div className="flex gap" style={{ marginBottom: 18 }}>
           <button
@@ -100,6 +88,24 @@ export default function AuthScreen() {
             onVerify={handlePhoneVerify}
           />
         )}
+
+        <p className="sub" style={{ textAlign: 'center', marginTop: 20 }}>
+          {mode === 'login' ? (
+            <>
+              Don't have an account?{' '}
+              <button type="button" className="link-button" onClick={() => setMode('signup')}>
+                Create one
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{' '}
+              <button type="button" className="link-button" onClick={() => setMode('login')}>
+                Sign in
+              </button>
+            </>
+          )}
+        </p>
       </div>
     </section>
   )
