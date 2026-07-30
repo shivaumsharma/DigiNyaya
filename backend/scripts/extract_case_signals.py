@@ -64,7 +64,11 @@ def extract_signals(case: dict) -> dict | None:
     schema = (
         "{"
         '"claimant_evidence_count": <int 0-5, distinct evidence items/documents/witnesses the '
-        "CLAIMANT relies on, per the facts section only>, "
+        "CLAIMANT relies on, per the facts section only. A specific quantified claim resting on a "
+        "clear transactional instrument (an invoice, loan/hypothecation agreement, cheque, signed "
+        "contract) counts as at least 2, even if the facts section doesn't itemize every document "
+        "individually -- a quantified sum with a named instrument implies the paperwork behind it "
+        "was actually placed before the court, which a vague/unquantified grievance does not.>, "
         '"respondent_defense_summary": "<=30 words: what the respondent argued in their defense, '
         'from the facts/arguments section only>", '
         '"respondent_legal_ground": "<the SPECIFIC named legal doctrine or procedural ground the '
@@ -75,6 +79,18 @@ def extract_signals(case: dict) -> dict | None:
         "proved'. Name the DOCTRINE/GROUND itself, not just the underlying facts -- e.g. if the "
         "respondent argued the suit was filed too late, write 'limitation', not a restatement of the "
         "dates. null if the defense is a plain factual denial with no such named ground.>\", "
+        '"respondent_ground_has_specific_support": <true ONLY if the arguments section states the '
+        "SPECIFIC FACT THAT WOULD SATISFY the named ground's own conditions -- not merely that a rule "
+        "or doctrine was invoked BY NAME. Naming 'Order 23 Rule 1' is NOT support by itself; stating "
+        "that this suit follows an earlier WITHDRAWN suit on the same claim IS. Naming 'limitation' is "
+        "NOT support; stating the specific date the cause of action arose and the date of filing IS. "
+        "Naming 'lack of jurisdiction' is NOT support; stating the specific claimed amount against the "
+        "specific pecuniary threshold IS. If the respondent's own defense effort itself collapsed "
+        "procedurally (e.g. they sought an extension/condonation but then failed to complete a "
+        "required step, like paying costs or filing on time), treat that as false, NOT true -- a "
+        "defense that failed on its own terms is not 'supported'. false if only a doctrine's NAME or "
+        "a general legal conclusion is stated with no underlying fact satisfying its own conditions. "
+        "null if no ground was named at all (respondent_legal_ground is null).>, "
         '"respondent_accepts_liability": <true only if the respondent explicitly admitted/conceded '
         "the claim in their pleadings -- not if the court later ruled against them>, "
         '"respondent_offered_settlement_amount": <number or null -- ONLY if the facts state the '
@@ -133,7 +149,8 @@ def main() -> int:
             print(
                 f"evidence={signals.get('claimant_evidence_count')} "
                 f"accepts_liability={signals.get('respondent_accepts_liability')} "
-                f"counter={signals.get('respondent_offered_settlement_amount')}"
+                f"counter={signals.get('respondent_offered_settlement_amount')} "
+                f"ground_supported={signals.get('respondent_ground_has_specific_support')}"
             )
             case["signals"] = signals
         enriched.append(case)
