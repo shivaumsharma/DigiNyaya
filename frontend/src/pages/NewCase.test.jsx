@@ -127,6 +127,8 @@ describe('NewCase', () => {
         { document_id: 'DOC-1', filename: 'resume.pdf', relevant: false, looks_like: 'a resume', note: 'This does not look like proof of a loan.' },
       ],
       case_strength_note: "What you've uploaded doesn't look like it supports this claim.",
+      description_review: { detailed_enough: true, note: '' },
+      winnability: { score: 20, label: 'weak', reasons: ['No relevant evidence on file'] },
     })
     api.submitCase.mockResolvedValue({ case_id: 'case-42', status: 'awaiting_response' })
     renderNewCase()

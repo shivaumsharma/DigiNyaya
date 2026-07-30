@@ -4,6 +4,7 @@ import { api } from '../api.js'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { Clock, ArrowRight, Bot } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
+import CaseStrengthPanel from '../components/CaseStrengthPanel.jsx'
 
 export default function Respondent() {
   const { id } = useParams()
@@ -14,9 +15,15 @@ export default function Respondent() {
   const [counter, setCounter] = useState('')
   const [accepts, setAccepts] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [claimantReview, setClaimantReview] = useState(null)
 
   useEffect(() => {
     api.getCase(id).then(setCaseData).catch(() => {})
+    // Re-runs the same advisory check shown to the claimant before filing --
+    // lets the respondent see the claimant's evidence and how strong their
+    // case looks, rather than replying blind. Best-effort: if it fails,
+    // the reply form still works without it.
+    api.preliminaryReview(id).then(setClaimantReview).catch(() => {})
   }, [id])
 
   async function loadSampleResponse() {
@@ -59,6 +66,17 @@ export default function Respondent() {
           {caseData ? t('respondent.notice', { name: caseData.respondent?.name, id }) : t('respondent.loading')}
         </p>
       </div>
+
+      {claimantReview && (
+        <div className="card elev-sm card-pad" style={{ marginBottom: 22 }}>
+          <CaseStrengthPanel
+            review={claimantReview}
+            title={t('caseStrength.respondentAgentTitle')}
+            subtitle={t('caseStrength.respondentAgentDetail')}
+            t={t}
+          />
+        </div>
+      )}
 
       <div className="flex gap" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div className="card elev-sm card-pad" style={{ flex: 1, minWidth: 340, maxWidth: 560 }}>

@@ -123,9 +123,44 @@ def run(ctx: CaseContext) -> AgentResult:
     return finalize(ctx, out)
 
 
-def finalize(ctx: CaseContext, findings_text: str | None) -> AgentResult:
-    """Build the order from (optional) LLM findings text + deterministic figures."""
+def compute_composite_confidence(ctx: CaseContext) -> tuple[dict, list[dict], list[str], str]:
+    """Citation selection/verification + the composite confidence score --
+    pulled out of finalize() so the orchestrator can safety-gate-check
+    (app.core.safety_gate condition 2) BEFORE spending time on the slow
+    LLM-streamed findings draft in resolve_node. None of this depends on the
+    findings text itself, only on ingestion/research/analysis/mediation
+    outputs that are already on the blackboard by this point."""
     precedents = ctx.research.precedents if ctx.research else []
+    med = ctx.mediation
+    retrieved_ids = [p.id for p in precedents]
+    proposed_ids, citation_engine = _select_citations(ctx, precedents)
+    cite_ids = rag.verify_citations(proposed_ids, retrieved_ids)
+    cited = [
+        {"citation": p.citation, "principle": p.principle}
+        for p in precedents if p.id in cite_ids
+    ]
+    composite = confidence_module.composite(
+        ingestion_confidence=ctx.ingestion.confidence if ctx.ingestion else 0.5,
+        retrieval_coverage=ctx.research.coverage_score if ctx.research else 0.5,
+        validator_notes=med.validator_notes if med else [],
+        n_proposed_citations=len(proposed_ids),
+        n_verified_citations=len(cite_ids),
+        citation_engine=citation_engine,
+    )
+    return composite, cited, cite_ids, citation_engine
+
+
+def finalize(
+    ctx: CaseContext,
+    findings_text: str | None,
+    precomputed: tuple[dict, list[dict], list[str], str] | None = None,
+) -> AgentResult:
+    """Build the order from (optional) LLM findings text + deterministic figures.
+
+    ``precomputed`` is the (composite, cited, cite_ids, citation_engine) tuple
+    from compute_composite_confidence(), when the caller already ran it for
+    the early safety-gate check -- avoids a second (possibly LLM-backed)
+    citation selection call."""
     med = ctx.mediation
     amount = med.amount if med else ctx.claim_amount
     compliance_days = med.compliance_days if med else 30
@@ -136,22 +171,7 @@ def finalize(ctx: CaseContext, findings_text: str | None) -> AgentResult:
     today = datetime.utcnow().date()
     deadline = today + timedelta(days=compliance_days)
 
-    retrieved_ids = [p.id for p in precedents]
-    proposed_ids, citation_engine = _select_citations(ctx, precedents)
-    cite_ids = rag.verify_citations(proposed_ids, retrieved_ids)
-    cited = [
-        {"citation": p.citation, "principle": p.principle}
-        for p in precedents if p.id in cite_ids
-    ]
-
-    composite = confidence_module.composite(
-        ingestion_confidence=ctx.ingestion.confidence if ctx.ingestion else 0.5,
-        retrieval_coverage=ctx.research.coverage_score if ctx.research else 0.5,
-        validator_notes=med.validator_notes if med else [],
-        n_proposed_citations=len(proposed_ids),
-        n_verified_citations=len(cite_ids),
-        citation_engine=citation_engine,
-    )
+    composite, cited, cite_ids, _citation_engine = precomputed or compute_composite_confidence(ctx)
 
     subtype = ctx.ingestion.dispute_subtype if ctx.ingestion else nlp.dispute_label(ctx.dispute_type)
     dismissed = bool(med and med.type == "dismissed")

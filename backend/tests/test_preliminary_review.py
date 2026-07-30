@@ -86,6 +86,55 @@ class TestPreliminaryReview(unittest.TestCase):
         result = preliminary_review.run_preliminary_review(case_id)
         self.assertIn("documentary proof supporting the claim", result["case_strength_note"])
 
+    def test_vague_description_flagged_as_not_detailed_enough(self):
+        case_id = "DN-PRELIM-VAGUE"
+        _make_case(case_id, description="he robbed me of my money i dont have any proof but i know it")
+        result = preliminary_review.run_preliminary_review(case_id)
+        self.assertFalse(result["description_review"]["detailed_enough"])
+        self.assertTrue(result["description_review"]["note"])
+
+    def test_specific_description_with_amount_and_dates_passes(self):
+        case_id = "DN-PRELIM-SPECIFIC"
+        _make_case(
+            case_id,
+            description=(
+                "I lent Rs 4,00,000 to the respondent via bank transfer on 10 Jan 2024 as an "
+                "interest-free personal loan, repayable within 6 months. He has repaid nothing "
+                "and stopped responding to messages since March 2024."
+            ),
+        )
+        result = preliminary_review.run_preliminary_review(case_id)
+        self.assertTrue(result["description_review"]["detailed_enough"])
+
+    def test_winnability_score_present_and_low_for_empty_case(self):
+        case_id = "DN-PRELIM-WINEMPTY"
+        _make_case(case_id, description="he robbed me, no proof but i know it")
+        result = preliminary_review.run_preliminary_review(case_id)
+        self.assertIn("score", result["winnability"])
+        self.assertIn("label", result["winnability"])
+        self.assertLessEqual(result["winnability"]["score"], 40)
+        self.assertEqual(result["winnability"]["label"], "weak")
+
+    def test_winnability_score_higher_with_relevant_evidence_and_detail(self):
+        case_id = "DN-PRELIM-WINSTRONG"
+        _make_case(
+            case_id,
+            description=(
+                "I lent Rs 4,00,000 to the respondent via bank transfer on 10 Jan 2024 as an "
+                "interest-free personal loan, repayable within 6 months. He has repaid nothing."
+            ),
+        )
+        _make_document("DOC-1", case_id, "Bank transfer receipt for Rs 4,00,000 dated 10-Jan-2024.")
+        # DIGINYAYA_USE_LLM=0 for this module -> document relevance is
+        # "uncertain" (None), not "relevant" (True), since that check also
+        # needs the LLM -- so the scripted winnability fallback here can only
+        # credit the longer description, not the (unassessed) document.
+        result = preliminary_review.run_preliminary_review(case_id)
+        empty_case_id = "DN-PRELIM-WINEMPTY2"
+        _make_case(empty_case_id, description="he robbed me, no proof but i know it")
+        empty_result = preliminary_review.run_preliminary_review(empty_case_id)
+        self.assertGreater(result["winnability"]["score"], empty_result["winnability"]["score"])
+
 
 if __name__ == "__main__":
     unittest.main()

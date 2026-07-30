@@ -151,6 +151,14 @@
     "addMoreEvidence": "Add more evidence",
     "backToEvidence": "Back to evidence"
   },
+  "caseStrength": {
+    "doneTag": "done",
+    "caseSuffix": "case",
+    "claimantAgentTitle": "Agent · Case Strength Review",
+    "claimantAgentDetail": "Reviewed your description and evidence for how they'd likely hold up.",
+    "respondentAgentTitle": "Agent · Claimant's Case Review",
+    "respondentAgentDetail": "Here's how the claimant's case looks based on what they've filed so far."
+  },
   "respondent": {
     "title": "Respondent notified",
     "notice": "{{name}} has been served digitally for case {{id}} and has 72 hours to respond. For the demo, act as the respondent below — or let the window lapse.",
@@ -178,8 +186,9 @@
     "escalated": {
       "checkpointLabel": "Checkpoint:",
       "checkpointPre": "before agents ran",
-      "checkpointPost": "after resolution drafted",
+      "checkpointPost": "case readiness check, before drafting",
       "caseLabel": "Case",
+      "reasonLabel": "Why this case needs human review:",
       "reviewNotice": "A member of our legal team will review this case. No AI-generated settlement or order has been issued."
     },
     "errorTitle": "Something interrupted the workflow.",

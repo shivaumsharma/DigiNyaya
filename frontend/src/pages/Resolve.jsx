@@ -345,6 +345,18 @@ function EscalationPanel({ escalation, t }) {
           {escalation.case_id && <span className="chip">{t('resolve.escalated.caseLabel')} {escalation.case_id}</span>}
         </div>
       )}
+      {escalation?.details && Object.keys(escalation.details).length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: 6 }}>
+            {t('resolve.escalated.reasonLabel')}
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.88rem', lineHeight: 1.6 }}>
+            {Object.values(escalation.details).map((reason, i) => (
+              <li key={i}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="muted" style={{ fontSize: '0.85rem', marginTop: 12 }}>
         {t('resolve.escalated.reviewNotice')}
       </p>

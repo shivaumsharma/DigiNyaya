@@ -73,6 +73,108 @@ def _document_relevance(case_description: str, dispute_type: str, doc: dict) -> 
     }
 
 
+def _scripted_description_note(description: str) -> dict:
+    """No-LLM fallback: a length/specificity heuristic. Deliberately
+    conservative -- only flags a description as thin when it's genuinely
+    short, never invents a judgment about content it can't actually read."""
+    text = description.strip()
+    has_digit = any(ch.isdigit() for ch in text)
+    if len(text) < 60 or not has_digit:
+        return {
+            "detailed_enough": False,
+            "note": (
+                "We looked at your description and it may not be detailed enough yet. For a higher "
+                "chance of winning, clearly describe what happened, when, and how much money or loss "
+                "was involved -- as specifically as possible."
+            ),
+        }
+    return {"detailed_enough": True, "note": ""}
+
+
+def _assess_description(description: str, dispute_type: str) -> dict:
+    """LLM check on the claim narrative itself (distinct from _document_relevance,
+    which checks the EVIDENCE) -- catches the case where a claimant writes
+    something as thin as "he robbed me, no proof but I know it" with nothing
+    concrete for any agent to reason about later."""
+    text = description.strip()
+    if not text:
+        return {"detailed_enough": False, "note": "No description was entered yet."}
+    if not llm.is_available():
+        return _scripted_description_note(text)
+
+    schema = '{"detailed_enough": <true|false>, "note": "<=35 words, plain language, encouraging tone"}'
+    prompt = (
+        f"A citizen is filing a {nlp.dispute_label(dispute_type)}. Their description of what happened:\n"
+        f"{wrap_untrusted('CLAIM', text)}\n\n"
+        "Is this description detailed enough to give a case a real chance (does it say what happened, "
+        "roughly when, how much money/loss was involved, and what they want)? If not, say so plainly and "
+        "tell them what to add for a higher chance of winning -- do not lecture, just help. Return JSON only, "
+        f"matching this schema: {schema}"
+    )
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=150)
+    if not data:
+        return _scripted_description_note(text)
+    return {
+        "detailed_enough": bool(data.get("detailed_enough")),
+        "note": str(data.get("note") or "").strip(),
+    }
+
+
+def _scripted_winnability(description: str, doc_reviews: list[dict], evidence_count: int) -> dict:
+    """No-LLM fallback score -- mirrors the shape of the same
+    scripted-baseline-then-LLM-enrichment pattern used elsewhere in this
+    codebase (see app.agents.discrepancy), just simpler since there's no
+    deterministic ground truth to narrow toward here."""
+    score = 20
+    if len(description.strip()) >= 120:
+        score += 15
+    relevant = sum(1 for r in doc_reviews if r["relevant"] is True)
+    score += min(relevant, 3) * 20
+    if evidence_count == 0:
+        score = min(score, 25)
+    score = max(0, min(100, score))
+    label = "weak" if score < 40 else "moderate" if score < 70 else "strong"
+    return {"score": score, "label": label, "reasons": []}
+
+
+def _assess_winnability(description: str, dispute_type: str, doc_reviews: list[dict], evidence_count: int) -> dict:
+    """Holistic 0-100 estimate from the description + how the evidence
+    assessed above. Advisory only, same as the rest of this module -- shown
+    to the claimant before filing AND to the respondent (re-running the same
+    check on the filed case) so both sides see the same honest read."""
+    if not llm.is_available():
+        return _scripted_winnability(description, doc_reviews, evidence_count)
+
+    doc_summary = "; ".join(
+        f"{d.get('filename')}: {'supports the claim' if d['relevant'] else 'does not appear relevant' if d['relevant'] is False else 'not yet assessable'}"
+        for d in doc_reviews
+    ) or "no evidence submitted"
+
+    schema = (
+        '{"score": <integer 0-100>, "label": "weak|moderate|strong", '
+        '"reasons": [<=3 short strings, <=15 words each, plain language]}'
+    )
+    prompt = (
+        f"Estimate how strong this {nlp.dispute_label(dispute_type)} claim looks on the record so far. "
+        f"Description: {wrap_untrusted('CLAIM', description)}\n"
+        f"Evidence on file: {doc_summary}\n\n"
+        "0 means essentially no case (no evidence, vague description); 100 means a very strong, "
+        "well-documented case. Be honest and conservative -- a claim with no evidence or a vague "
+        "description should score low regardless of how sympathetic it sounds. Return JSON only, "
+        f"matching this schema: {schema}"
+    )
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=200)
+    if not data:
+        return _scripted_winnability(description, doc_reviews, evidence_count)
+    try:
+        score = max(0, min(100, int(data.get("score", 0))))
+    except (TypeError, ValueError):
+        return _scripted_winnability(description, doc_reviews, evidence_count)
+    label = str(data.get("label") or "").strip() or ("weak" if score < 40 else "moderate" if score < 70 else "strong")
+    reasons = [str(r).strip() for r in (data.get("reasons") or []) if str(r).strip()][:3]
+    return {"score": score, "label": label, "reasons": reasons}
+
+
 def run_preliminary_review(case_id: str) -> dict:
     case = db.get_case(case_id) or {}
     dispute_type = case.get("dispute_type", "consumer_dispute")
@@ -109,4 +211,12 @@ def run_preliminary_review(case_id: str) -> dict:
             "non-binding look -- the real review happens once the respondent replies."
         )
 
-    return {"documents": doc_reviews, "case_strength_note": strength_note}
+    description_review = _assess_description(description, dispute_type)
+    winnability = _assess_winnability(description, dispute_type, doc_reviews, len(docs))
+
+    return {
+        "documents": doc_reviews,
+        "case_strength_note": strength_note,
+        "description_review": description_review,
+        "winnability": winnability,
+    }
