@@ -304,6 +304,12 @@ def embed(text: Union[str, List[str]]) -> Optional[Union[List[float], List[List[
     return provider.embed(text)
 
 
+_STATUS_CACHE_TTL = 20.0  # seconds
+_status_cache: Optional[Dict[str, Any]] = None
+_status_cache_at = 0.0
+_status_cache_lock = threading.Lock()
+
+
 def status() -> Dict[str, Any]:
     """
     Return provider diagnostics. Never raises: an explicitly-configured
@@ -312,15 +318,32 @@ def status() -> Dict[str, Any]:
     LLMFactory.create() with an uncaught RuntimeError, which propagated all
     the way to a 500 on GET /api/ai-status. That's a read-only diagnostics
     endpoint; it should report "unavailable", not crash the request.
+
+    Cached for _STATUS_CACHE_TTL seconds: the underlying provider call makes
+    a real network round-trip to Sarvam (see SarvamProvider.is_available()),
+    and the frontend calls this once on every page load -- with several
+    concurrent users, that was a fresh live network call per page view for
+    a value that's genuinely fine to be a few seconds stale.
     """
+    global _status_cache, _status_cache_at
+    now = time.monotonic()
+    with _status_cache_lock:
+        if _status_cache is not None and (now - _status_cache_at) < _STATUS_CACHE_TTL:
+            return _status_cache
+
     try:
-        return get_provider().status()
+        result = get_provider().status()
     except Exception as exc:
-        return {
+        result = {
             "provider": config.provider,
             "available": False,
             "error": str(exc),
         }
+
+    with _status_cache_lock:
+        _status_cache = result
+        _status_cache_at = now
+    return result
 
 
 def is_available() -> bool:
