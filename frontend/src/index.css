@@ -191,6 +191,23 @@ button { font-family: var(--font-body); cursor: pointer; border: none; backgroun
 .aadhaar-badge { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--text-dim);
   margin-top: 16px; padding: 11px 14px; background: var(--color-success-soft); border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent); }
 
+/* Generic secondary/subtext line -- .login-card .sub above is scoped to a
+   retired page and doesn't apply to the current auth screens, which use
+   plain "card card-pad" and need this unscoped. */
+.sub { color: var(--text-dim); font-size: 0.9rem; }
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-accent-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.link-button:hover { color: var(--color-accent); }
+
 /* ---------- Forms ---------- */
 .field { margin-bottom: var(--space-3); }
 .field label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 6px; font-weight: 500; }
