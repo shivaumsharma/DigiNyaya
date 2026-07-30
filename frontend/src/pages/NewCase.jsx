@@ -3,9 +3,10 @@ import { useNavigate, useParams, Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
-import { ArrowLeft, ArrowRight, Receipt, Check, AlertTriangle, Clock } from '../icons.jsx'
+import { ArrowLeft, ArrowRight, Receipt, Clock } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
 import EvidenceDropzone from '../components/EvidenceDropzone.jsx'
+import CaseStrengthPanel from '../components/CaseStrengthPanel.jsx'
 
 export default function NewCase() {
   const { type } = useParams()
@@ -219,39 +220,12 @@ export default function NewCase() {
           {reviewErr && <p style={{ color: 'var(--red)', fontSize: '0.85rem' }}>{reviewErr}</p>}
 
           {review && !reviewLoading && (
-            <>
-              <div className={`review-note ${review.documents.some((d) => d.relevant === true) ? 'ok' : 'warn'}`}>
-                {review.documents.some((d) => d.relevant === true) ? (
-                  <Check width={18} height={18} style={{ flexShrink: 0, color: 'var(--green)' }} />
-                ) : (
-                  <AlertTriangle width={18} height={18} style={{ flexShrink: 0, color: 'var(--color-accent-700)' }} />
-                )}
-                <span>{review.case_strength_note}</span>
-              </div>
-
-              {review.documents.length > 0 && (
-                <div className="ev-list">
-                  {review.documents.map((d) => (
-                    <div className="review-doc" key={d.document_id}>
-                      {d.relevant === true ? (
-                        <Check width={16} height={16} style={{ flexShrink: 0, marginTop: 2, color: 'var(--green)' }} />
-                      ) : d.relevant === false ? (
-                        <AlertTriangle width={16} height={16} style={{ flexShrink: 0, marginTop: 2, color: 'var(--red)' }} />
-                      ) : (
-                        <Clock width={16} height={16} style={{ flexShrink: 0, marginTop: 2, color: 'var(--text-dim)' }} />
-                      )}
-                      <div>
-                        <div>
-                          <strong>{d.filename}</strong>
-                          {d.looks_like && <span className="looks-like">{d.looks_like}</span>}
-                        </div>
-                        {d.note && <p className="sub" style={{ margin: '3px 0 0' }}>{d.note}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+            <CaseStrengthPanel
+              review={review}
+              title={t('caseStrength.claimantAgentTitle')}
+              subtitle={t('caseStrength.claimantAgentDetail')}
+              t={t}
+            />
           )}
 
           {err && <p style={{ color: 'var(--red)', fontSize: '0.85rem', marginTop: 14 }}>{err}</p>}
