@@ -161,6 +161,12 @@ class CaseContext(BaseModel):
     research_retries: int = 0
     via_mediation: bool = True  # set when resolution is triggered
 
+    # Set by resolve_node (app.core.graph) right before Agent 5's slow
+    # LLM-streamed draft, so app.core.safety_gate's Checkpoint B (which needs
+    # this score) can run -- and potentially skip the draft entirely -- BEFORE
+    # that draft happens, not only after. See resolution.compute_composite_confidence.
+    composite_confidence: dict[str, Any] = Field(default_factory=dict)
+
     # Agent results (the blackboard)
     ingestion: Optional[IngestionResult] = None
     research: Optional[ResearchResult] = None

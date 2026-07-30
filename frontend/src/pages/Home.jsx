@@ -74,7 +74,7 @@ export default function Home() {
       {/* ---------- Hero ---------- */}
       <section
         style={{
-          maxWidth: 1180,
+          maxWidth: 1400,
           margin: '0 auto',
           padding: 'var(--space-8) var(--space-8) var(--space-6)',
           display: 'grid',
@@ -148,7 +148,7 @@ export default function Home() {
 
       {/* ---------- Trust strip ---------- */}
       <section style={{ borderTop: '1px solid var(--color-divider)', borderBottom: '1px solid var(--color-divider)', padding: 'var(--space-3) var(--space-8)' }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto', display: 'flex', flexWrap: 'wrap', gap: '10px 36px', fontSize: 13, opacity: 0.7 }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', flexWrap: 'wrap', gap: '10px 36px', fontSize: 13, opacity: 0.7 }}>
           {t('landing.trust').map((line) => (
             <span key={line}>{line}</span>
           ))}
@@ -156,7 +156,7 @@ export default function Home() {
       </section>
 
       {/* ---------- Tier comparison ---------- */}
-      <section style={{ maxWidth: 1180, margin: '0 auto', padding: 'var(--space-8)' }}>
+      <section style={{ maxWidth: 1400, margin: '0 auto', padding: 'var(--space-8)' }}>
         <div className="tag tag-outline" style={{ marginBottom: 14 }}>
           {t('landing.tiersEyebrow')}
         </div>
@@ -197,7 +197,7 @@ export default function Home() {
 
       {/* ---------- Agents ---------- */}
       <section id="agents" style={{ background: 'var(--color-surface)', padding: 'var(--space-8)' }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto' }}>
           <div className="tag tag-outline" style={{ marginBottom: 14 }}>
             {t('landing.agentsEyebrow')}
           </div>
@@ -215,7 +215,7 @@ export default function Home() {
       </section>
 
       {/* ---------- Lifecycle ---------- */}
-      <section id="lifecycle" style={{ maxWidth: 1180, margin: '0 auto', padding: 'var(--space-8)' }}>
+      <section id="lifecycle" style={{ maxWidth: 1400, margin: '0 auto', padding: 'var(--space-8)' }}>
         <div className="tag tag-outline" style={{ marginBottom: 14 }}>
           {t('landing.lifecycleEyebrow')}
         </div>
@@ -264,7 +264,7 @@ export default function Home() {
 
       {/* ---------- Metrics (dark) ---------- */}
       <section id="metrics" style={{ background: 'var(--color-neutral-900)', color: 'var(--color-neutral-100)', padding: 'var(--space-8)' }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto' }}>
           <div className="tag tag-outline" style={{ marginBottom: 14, borderColor: 'var(--color-accent-300)', color: 'var(--color-accent-300)' }}>
             {t('landing.metricsEyebrow')}
           </div>
@@ -291,7 +291,7 @@ export default function Home() {
 
       {/* ---------- Legal framework ---------- */}
       <section id="legal" style={{ padding: 'var(--space-8)' }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto' }}>
           <div className="tag tag-outline" style={{ marginBottom: 14 }}>
             {t('landing.legalEyebrow')}
           </div>
@@ -312,7 +312,7 @@ export default function Home() {
 
       {/* ---------- Advisory panel ---------- */}
       <section id="advisory" style={{ background: 'var(--color-surface)', padding: 'var(--space-8)' }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto' }}>
           <div className="tag tag-outline" style={{ marginBottom: 14 }}>
             {t('landing.advisoryEyebrow')}
           </div>
@@ -353,7 +353,7 @@ export default function Home() {
 
       {/* ---------- Closing CTA ---------- */}
       <section style={{ padding: 'var(--space-8)', borderTop: '1px solid var(--color-divider)' }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', textAlign: 'center' }}>
           <h2 style={{ fontWeight: 400, marginBottom: 14 }}>{t('landing.ctaTitle')}</h2>
           <p style={{ fontSize: '0.95rem', opacity: 0.7, margin: '0 auto 26px', maxWidth: '60ch' }}>
             {t('landing.ctaLede')}
@@ -365,7 +365,7 @@ export default function Home() {
       </section>
 
       <footer style={{ background: 'var(--color-neutral-900)', color: 'var(--color-neutral-300)', padding: 'var(--space-6) var(--space-8)', fontSize: 13 }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20 }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Logo width={18} height={18} />
             {t('landing.footerAddr')}

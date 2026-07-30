@@ -150,9 +150,22 @@ class DocumentReviewOut(BaseModel):
     note: str = ""
 
 
+class DescriptionReviewOut(BaseModel):
+    detailed_enough: bool
+    note: str = ""
+
+
+class WinnabilityOut(BaseModel):
+    score: int
+    label: str
+    reasons: list[str] = Field(default_factory=list)
+
+
 class PreliminaryReviewOut(BaseModel):
     documents: list[DocumentReviewOut]
     case_strength_note: str
+    description_review: DescriptionReviewOut
+    winnability: WinnabilityOut
 
 
 class DiscrepancyOut(BaseModel):

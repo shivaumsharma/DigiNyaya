@@ -154,24 +154,28 @@ def resolve_node(ctx: CaseContext) -> Iterator[dict]:
         yield make_event("orchestrator", agent="orchestrator", title=TITLES["orchestrator"], status="done",
                          detail="Mediation declined. Triggering autonomous resolution.", payload={"via_mediation": False})
 
+    yield _running("resolution", "Checking case readiness for a binding resolution…")
+    # Composite confidence, citation selection/verification -- everything
+    # Safety Gate CHECKPOINT B's three post-check conditions need -- depends
+    # only on ingestion/research/analysis/mediation, already on the
+    # blackboard by this point. Computing it now (before the slow streamed
+    # draft below) lets an escalating case skip that draft entirely, instead
+    # of paying for it and then discarding the result.
+    precomputed = resolution.compute_composite_confidence(ctx)
+    ctx.composite_confidence = precomputed[0]
+    escalation = safety_gate.check_escalation(ctx, ctx)
+    if escalation is not None:
+        yield _escalated_event(ctx, escalation)
+        return
+
     yield _running("resolution", "Drafting the binding resolution order…")
     # Stream the findings token-by-token for a live "watch it write" effect.
     acc = ""
     for delta in llm.generate_stream(resolution.findings_prompt(ctx), system=llm.SYSTEM_PROMPT, max_tokens=600):
         acc += delta
         yield make_event("token", agent="resolution", payload={"delta": delta})
-    res = resolution.finalize(ctx, acc or None)
+    res = resolution.finalize(ctx, acc or None, precomputed=precomputed)
     ctx.resolution = res.output
-
-    # Safety Gate CHECKPOINT B -- runs on the finished output of all five
-    # agents, before the resolution is ever yielded (and therefore before
-    # jobs.py persists or streams it). A trigger here discards the drafted
-    # resolution entirely: neither this event nor the "done"/"resolved"
-    # events below are emitted, so the AI's answer never reaches the user.
-    escalation = safety_gate.check_escalation(ctx, ctx)
-    if escalation is not None:
-        yield _escalated_event(ctx, escalation)
-        return
 
     yield _done("resolution", res, ctx)
     yield make_event(
