@@ -31,6 +31,25 @@ async function jsonFetch(path, options = {}) {
   return res.json()
 }
 
+async function uploadFetch(path, files) {
+  const body = new FormData()
+  for (const file of files) body.append('files', file)
+  const res = await fetch(BASE + path, { method: 'POST', headers: authHeaders(), body })
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`
+    try {
+      const data = await res.json()
+      if (data.detail) msg = data.detail
+    } catch {
+      // Response body wasn't JSON -- fall back to the generic message above.
+    }
+    const err = new Error(msg)
+    err.status = res.status
+    throw err
+  }
+  return res.json()
+}
+
 export const api = {
   aiStatus: () => jsonFetch('/ai-status'),
   languages: () => jsonFetch('/languages'),
@@ -39,6 +58,10 @@ export const api = {
   precedents: () => jsonFetch('/precedents'),
   createCase: (claim) => jsonFetch('/cases', { method: 'POST', body: JSON.stringify(claim) }),
   getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
+  submitCase: (id) => jsonFetch(`/cases/${id}/submit`, { method: 'POST' }),
+  uploadDocuments: (id, files) => uploadFetch(`/cases/${id}/documents`, files),
+  listDocuments: (id) => jsonFetch(`/cases/${id}/documents`),
+  preliminaryReview: (id) => jsonFetch(`/cases/${id}/preliminary-review`, { method: 'POST' }),
   respond: (id, submission) =>
     jsonFetch(`/cases/${id}/respond`, { method: 'POST', body: JSON.stringify(submission) }),
   skipResponse: (id) => jsonFetch(`/cases/${id}/skip-response`, { method: 'POST' }),

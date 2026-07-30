@@ -140,6 +140,21 @@ class DocumentDetailOut(DocumentOut):
     cleaned_text: Optional[str] = None
 
 
+class DocumentReviewOut(BaseModel):
+    document_id: str
+    filename: Optional[str] = None
+    # None means "couldn't assess yet" (no text extracted, or the LLM call
+    # failed) -- deliberately distinct from False, never a false accusation.
+    relevant: Optional[bool] = None
+    looks_like: Optional[str] = None
+    note: str = ""
+
+
+class PreliminaryReviewOut(BaseModel):
+    documents: list[DocumentReviewOut]
+    case_strength_note: str
+
+
 class DiscrepancyOut(BaseModel):
     id: str
     document_ids: list[str]
