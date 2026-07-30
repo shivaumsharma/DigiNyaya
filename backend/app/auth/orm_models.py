@@ -36,6 +36,11 @@ class User(Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     preferred_language: Mapped[str] = mapped_column(String(10), default="en", server_default="en")
+    # Human reviewer for escalated (safety-gate-blocked / Tier 2) cases --
+    # never set via the API; bootstrapped via scripts/promote_reviewer.py.
+    # No general admin role exists yet, this is deliberately narrow to just
+    # the one capability the review workflow needs.
+    is_reviewer: Mapped[bool] = mapped_column(default=False, server_default="0")
     # Unicode, no fixed length assumption that would truncate/break Indic scripts.
     full_name: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
