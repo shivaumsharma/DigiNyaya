@@ -318,7 +318,11 @@ def create_case(submission: ClaimSubmission, user: User = Depends(current_user))
     case = {
         "case_id": case_id,
         "owner_id": user.id,
-        "status": "awaiting_response",
+        # Not "awaiting_response" yet -- creating the case is no longer the
+        # same moment as notifying the respondent. The claimant can attach
+        # evidence and get a preliminary review first; POST .../submit is
+        # the real "file & notify" action (see that endpoint below).
+        "status": "draft",
         "tier": tier,
         "tier_label": tier_label,
         "dispute_type": submission.dispute_type.value,
@@ -341,7 +345,6 @@ def create_case(submission: ClaimSubmission, user: User = Depends(current_user))
         "tier": tier,
         "tier_label": tier_label,
         "created_at": case["created_at"],
-        "respondent_deadline_hours": 72,
     }
 
 
@@ -351,6 +354,20 @@ def _load_owned(case_id: str, owner_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Case not found")
     ensure_owner(case, owner_id)
     return case
+
+
+@app.post("/api/cases/{case_id}/submit")
+def submit_case(case_id: str, user: User = Depends(current_user)):
+    """The real "file & notify respondent" action -- separate from case
+    creation so a claimant can attach evidence and get a preliminary review
+    first (see /preliminary-review) without the 72-hour response window
+    starting, or the respondent being notified, before they're ready.
+    """
+    case = _load_owned(case_id, user.id)
+    if case.get("status") != "draft":
+        raise HTTPException(status_code=409, detail="Case has already been filed")
+    db.update_case(case_id, status="awaiting_response")
+    return {"case_id": case_id, "status": "awaiting_response", "respondent_deadline_hours": 72}
 
 
 @app.get("/api/cases/{case_id}")

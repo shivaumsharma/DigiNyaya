@@ -19,10 +19,11 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from .. import db, jobs
+from ..agents.preliminary_review import run_preliminary_review
 from ..auth.deps import current_user
 from ..auth.orm_models import User
 from ..documents.validation import validate_upload
-from ..models import DiscrepancyOut, DocumentDetailOut, DocumentOut
+from ..models import DiscrepancyOut, DocumentDetailOut, DocumentOut, PreliminaryReviewOut
 from ..security import ensure_owner
 from ..storage import get_storage
 from ..storage.config import config as storage_config
@@ -104,6 +105,16 @@ def get_document(case_id: str, document_id: str, user: User = Depends(current_us
     if doc is None or doc["case_id"] != case_id:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
+
+
+@router.post("/preliminary-review", response_model=PreliminaryReviewOut)
+def preliminary_review(case_id: str, user: User = Depends(current_user)):
+    """Advisory-only check on a draft case's evidence -- not the real
+    adjudication (that's the 5-agent pipeline, which only runs after the
+    respondent replies). Re-runnable any number of times before filing.
+    """
+    _load_owned(case_id, user.id)
+    return run_preliminary_review(case_id)
 
 
 @router.post("/discrepancy-check")
