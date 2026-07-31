@@ -224,6 +224,44 @@ class TestSubmitDecision:
         assert r.status_code == 409
 
 
+class TestReviewerAllowlist:
+    """DIGINYAYA_REVIEWER_EMAILS -- the redeploy-durable alternative to
+    scripts/promote_reviewer.py's direct DB write (see app.auth.deps'
+    _ensure_reviewer_allowlisted). Applied on every authenticated request,
+    not just at signup, so it also self-heals a user who already existed
+    before the env var was set."""
+
+    def test_allowlisted_email_is_promoted_on_first_authenticated_request(self, client, db_session, monkeypatch):
+        monkeypatch.setenv("DIGINYAYA_REVIEWER_EMAILS", "vip@example.com, other@example.com")
+        token = _signup(client, "vip@example.com")
+
+        r = client.get("/api/reviews/queue", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+
+        user = db_session.query(User).filter(User.email == "vip@example.com").first()
+        assert user.is_reviewer is True
+
+    def test_non_allowlisted_email_still_gets_403(self, client, db_session, monkeypatch):
+        monkeypatch.setenv("DIGINYAYA_REVIEWER_EMAILS", "vip@example.com")
+        token = _signup(client, "notvip@example.com")
+
+        r = client.get("/api/reviews/queue", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+
+    def test_preexisting_user_is_promoted_once_env_var_is_set(self, client, db_session, monkeypatch):
+        # Simulates the real scenario: account already existed (e.g. signed
+        # up before the env var was configured, or re-signed-up after an
+        # ephemeral-disk wipe) -- the allowlist check must not only apply at
+        # signup time.
+        token = _signup(client, "latecomer@example.com")
+        r = client.get("/api/reviews/queue", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+
+        monkeypatch.setenv("DIGINYAYA_REVIEWER_EMAILS", "latecomer@example.com")
+        r = client.get("/api/reviews/queue", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+
+
 class TestReviewDetail:
     def test_non_reviewer_cannot_view_detail(self, client, db_session):
         owner_token = _signup(client, "owner12@example.com")
