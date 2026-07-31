@@ -4,6 +4,15 @@ No admin UI exists for this on purpose -- there's no general admin role in
 this app, just the one narrow capability the human-review workflow needs
 (see app/routers/reviews.py). Run this once per new reviewer.
 
+NOTE for this app's current deployment: this writes directly to the SQLite
+file, which on Render's free tier lives on ephemeral disk and is wiped on
+every redeploy/restart -- so a grant made this way will silently vanish the
+next time anything merges to main. For a grant that needs to actually stick,
+set DIGINYAYA_REVIEWER_EMAILS (comma-separated) in Render's environment
+variables instead -- app.auth.deps._ensure_reviewer_allowlisted re-applies it
+on every authenticated request, so it survives redeploys. This script is
+still the right tool for a persistent database, or a one-off local grant.
+
 Usage (from the backend folder):
     python -m scripts.promote_reviewer someone@example.com
     python -m scripts.promote_reviewer someone@example.com --revoke
