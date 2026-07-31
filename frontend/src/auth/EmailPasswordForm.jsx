@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { ArrowRight } from '../icons.jsx'
 import PasswordInput from './PasswordInput.jsx'
 
 // Shared by signup (needs full_name + preferred_language) and login (just
@@ -83,7 +82,7 @@ export default function EmailPasswordForm({ mode, languages, onSubmit, onForgotP
       )}
       {err && <p style={{ color: 'var(--red)', fontSize: '0.85rem', marginBottom: 12 }}>{err}</p>}
       <button className="btn btn-primary btn-block btn-lg" disabled={loading}>
-        {loading ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'} <ArrowRight />
+        {loading ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'}
       </button>
       {!isSignup && onForgotPassword && (
         <button

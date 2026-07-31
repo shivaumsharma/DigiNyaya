@@ -59,6 +59,17 @@ class TestPreliminaryReview(unittest.TestCase):
         self.assertEqual(len(result["documents"]), 1)
         self.assertIsNone(result["documents"][0]["relevant"])
         self.assertIn("No readable text", result["documents"][0]["note"])
+        # Authenticity is a *separate* claim from relevance -- no text means
+        # no assessment either way, not a fabrication accusation.
+        self.assertIsNone(result["documents"][0]["authenticity_flag"])
+
+    def test_llm_unavailable_authenticity_also_defaults_to_uncertain(self):
+        case_id = "DN-PRELIM-NOLLM-AUTH"
+        _make_case(case_id)
+        _make_document("DOC-1", case_id, "Some document text with actual content in it.")
+        result = preliminary_review.run_preliminary_review(case_id)
+        self.assertIsNone(result["documents"][0]["authenticity_flag"])
+        self.assertEqual(result["documents"][0]["authenticity_note"], "")
 
     def test_llm_unavailable_falls_back_to_uncertain_not_false_accusation(self):
         # DIGINYAYA_USE_LLM=0 makes llm.generate_json return falsy -- this

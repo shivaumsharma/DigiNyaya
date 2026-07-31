@@ -31,8 +31,17 @@ _EXPECTED_EVIDENCE_BY_TYPE = {
 def _document_relevance(case_description: str, dispute_type: str, doc: dict) -> dict:
     """Ask the LLM whether one uploaded document plausibly supports this
     claim, or is clearly something else entirely (a resume, an unrelated
-    photo, a blank scan). Falls back to "can't tell yet" -- never a false
-    accusation -- when there's no text or the LLM is unavailable."""
+    photo, a blank scan) -- and, separately, whether the document's TEXT
+    shows any obvious internal red flag (placeholder-like content,
+    self-contradictory dates/amounts, a template that was never filled in).
+
+    This is NOT forgery/tampering detection -- it only ever reads the OCR'd
+    or extracted text, never the original image/PDF, so it cannot see a
+    doctored image, an altered scan, or a forged signature. It exists only
+    to catch the crude, textually-obvious cases. Defaults to "no concern
+    raised" (None/False), never a false accusation, when the model can't
+    point to something specific -- see authenticity_flag below.
+    """
     text = (doc.get("cleaned_text") or "").strip()
     base = {"document_id": doc["id"], "filename": doc.get("original_filename")}
     if not text:
@@ -41,35 +50,51 @@ def _document_relevance(case_description: str, dispute_type: str, doc: dict) -> 
             "relevant": None,
             "looks_like": None,
             "note": "No readable text could be extracted from this file yet.",
+            "authenticity_flag": None,
+            "authenticity_note": "",
         }
 
     schema = (
         '{"relevant": <true|false>, '
         '"looks_like": "<=6 words naming what this document actually appears to be, e.g. '
         '\'a resume\', \'a bank transfer receipt\', \'a rental agreement\'>", '
-        '"note": "<=25 words, plain language, no legal jargon>"}'
+        '"note": "<=25 words, plain language, no legal jargon>", '
+        '"authenticity_flag": <true|false>, '
+        '"authenticity_note": "<=25 words -- REQUIRED and specific if authenticity_flag is true, '
+        'else empty string>"}'
     )
     prompt = (
         f"A citizen filed a {nlp.dispute_label(dispute_type)} describing: "
         f"{wrap_untrusted('CLAIM', case_description)}\n\n"
         f"They uploaded this as supporting evidence:\n{wrap_untrusted('DOCUMENT', text[:3000])}\n\n"
         "Does this document plausibly support THIS claim, or is it something unrelated entirely "
-        "(e.g. a resume, an unrelated photo, a document for a different matter)? Return JSON only, "
+        "(e.g. a resume, an unrelated photo, a document for a different matter)?\n\n"
+        "Separately: does the TEXT of this document show any CLEAR, SPECIFIC sign of being fabricated "
+        "or inconsistent -- e.g. placeholder/lorem-ipsum-like content, a template that was never filled "
+        "in, or dates/amounts that contradict each other within the same document? Only set "
+        "authenticity_flag to true if you can name the specific issue. Being informal, short, or simply "
+        "worded is NOT a red flag -- do not flag genuine-looking documents just because they're plain. "
+        "You are only reading extracted text, not the original image, so you cannot detect a doctored "
+        "photo or an altered scan -- do not claim to. Return JSON only, "
         f"matching this schema: {schema}"
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=200)
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=250)
     if not data:
         return {
             **base,
             "relevant": None,
             "looks_like": None,
             "note": "Couldn't assess this document right now -- it will still be reviewed properly once you file.",
+            "authenticity_flag": None,
+            "authenticity_note": "",
         }
     return {
         **base,
         "relevant": bool(data.get("relevant")),
         "looks_like": str(data.get("looks_like") or "").strip() or None,
         "note": str(data.get("note") or "").strip(),
+        "authenticity_flag": bool(data.get("authenticity_flag")),
+        "authenticity_note": str(data.get("authenticity_note") or "").strip(),
     }
 
 

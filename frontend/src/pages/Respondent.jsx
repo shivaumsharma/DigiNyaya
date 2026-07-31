@@ -74,6 +74,7 @@ export default function Respondent() {
             title={t('caseStrength.respondentAgentTitle')}
             subtitle={t('caseStrength.respondentAgentDetail')}
             t={t}
+            showStrength={false}
           />
         </div>
       )}
