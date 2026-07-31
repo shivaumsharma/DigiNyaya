@@ -37,6 +37,7 @@ from .auth.router import me_router as auth_me_router, router as auth_router
 from .core.events import TERMINAL, bus, stream_from_queue
 from .core.logging import configure_app_logging
 from .routers.documents import router as documents_router
+from .routers.reviews import router as reviews_router
 from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
 from .language.config import (
     SUPPORTED_LANGUAGES,
@@ -83,6 +84,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(auth_me_router)
 app.include_router(documents_router)
+app.include_router(reviews_router)
 
 
 SAMPLE_CLAIM = {
@@ -396,6 +398,25 @@ def skip_response(case_id: str, user: User = Depends(current_user)):
     _load_owned(case_id, user.id)
     db.update_case(case_id, respondent_submission=None, status="ready")
     return {"status": "ready", "case_id": case_id, "uncontested": True}
+
+
+@app.post("/api/cases/{case_id}/request-review")
+def request_review(case_id: str, user: User = Depends(current_user)):
+    """Manual human-review escalation -- distinct from app.core.safety_gate's
+    AUTOMATIC escalation. Tier 1 (consumer_dispute) cases are otherwise never
+    seen by a human at all: they resolve fully autonomously, with no
+    countersignature step the way Tier 2 has. This gives either party a way
+    to say "I want a human to look at this" regardless of tier or how
+    confident the AI was, rather than only ever getting human eyes on a case
+    when the AI itself decides to escalate.
+    """
+    case = _load_owned(case_id, user.id)
+    if case.get("status") == "draft":
+        raise HTTPException(status_code=409, detail="File the case before requesting a review")
+    if case.get("human_review_requested"):
+        raise HTTPException(status_code=409, detail="A human review has already been requested for this case")
+    db.update_case(case_id, human_review_requested=True, human_review_requested_at=datetime.utcnow().isoformat())
+    return {"case_id": case_id, "human_review_requested": True}
 
 
 @app.post("/api/cases/{case_id}/run")
