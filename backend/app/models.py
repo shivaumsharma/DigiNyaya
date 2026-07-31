@@ -148,6 +148,12 @@ class DocumentReviewOut(BaseModel):
     relevant: Optional[bool] = None
     looks_like: Optional[str] = None
     note: str = ""
+    # Text-only heuristic, NOT forgery/tampering detection (see
+    # app.agents.preliminary_review._document_relevance). None = couldn't
+    # assess; False = no specific concern found; True = a specific,
+    # nameable issue was found (authenticity_note explains it).
+    authenticity_flag: Optional[bool] = None
+    authenticity_note: str = ""
 
 
 class DescriptionReviewOut(BaseModel):

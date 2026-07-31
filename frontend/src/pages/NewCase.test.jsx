@@ -124,7 +124,11 @@ describe('NewCase', () => {
     api.createCase.mockResolvedValue({ case_id: 'case-42', status: 'draft' })
     api.preliminaryReview.mockResolvedValue({
       documents: [
-        { document_id: 'DOC-1', filename: 'resume.pdf', relevant: false, looks_like: 'a resume', note: 'This does not look like proof of a loan.' },
+        {
+          document_id: 'DOC-1', filename: 'resume.pdf', relevant: false, looks_like: 'a resume',
+          note: 'This does not look like proof of a loan.',
+          authenticity_flag: true, authenticity_note: 'Date 45/25/2024 is not a valid calendar date',
+        },
       ],
       case_strength_note: "What you've uploaded doesn't look like it supports this claim.",
       description_review: { detailed_enough: true, note: '' },
@@ -142,6 +146,7 @@ describe('NewCase', () => {
     expect(await screen.findByText(/doesn't look like it supports this claim/i)).toBeInTheDocument()
     expect(screen.getByText('resume.pdf')).toBeInTheDocument()
     expect(screen.getByText('a resume')).toBeInTheDocument()
+    expect(screen.getByText(/Date 45\/25\/2024 is not a valid calendar date/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /file claim/i }))
 

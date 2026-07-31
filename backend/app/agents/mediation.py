@@ -141,7 +141,28 @@ def run(ctx: CaseContext) -> AgentResult:
     # than the best comparable case did).
     lo, hi = 0.0, min(prec_max, 1.0)
     clamped_ratio = min(max(proposed_ratio, lo), hi)
-    if abs(clamped_ratio - proposed_ratio) > 1e-6:
+
+    # Deterministic enforcement of the SAME rule already given to the LLM
+    # above ("if the respondent's case is as strong as or stronger, use
+    # outcome_type 'dismissed' and relief_ratio 0.0") -- until now nothing
+    # actually checked whether the model followed it. Real-judgment testing
+    # found the model sometimes proposes partial relief while its own
+    # rationale text acknowledges the respondent's case is stronger; the
+    # precedent-band clamp above doesn't catch this since a mid-range ratio
+    # is still "within band". This closes that gap regardless of which
+    # engine (scripted default or LLM) produced proposed_ratio.
+    if r_strength >= c_strength and clamped_ratio > 0:
+        validator_notes.append(
+            f"Relief ratio forced from {round(clamped_ratio, 2)} to 0.0: respondent's case strength "
+            f"({int(r_strength * 100)}%) is at least as strong as the claimant's ({int(c_strength * 100)}%)."
+        )
+        clamped_ratio = 0.0
+        # The LLM's own rationale text (if any) was written for the relief
+        # ratio it originally proposed -- now overridden -- so it no longer
+        # matches the actual outcome. Discard it; the scripted dismissed
+        # explanation below (`if not explanation:`) takes over instead.
+        explanation = ""
+    elif abs(clamped_ratio - proposed_ratio) > 1e-6:
         validator_notes.append(
             f"Relief ratio adjusted from {round(proposed_ratio,2)} to {round(clamped_ratio,2)} to stay within the precedent band."
         )
