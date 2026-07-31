@@ -78,6 +78,11 @@ export default function App() {
             </select>
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {user.is_reviewer && (
+                  <Link to="/reviewer" className="btn btn-ghost">
+                    Review queue
+                  </Link>
+                )}
                 <div className="user-chip" style={{ borderLeft: '1px solid var(--color-divider)', paddingLeft: 16 }}>
                   <span className="avatar">{initial}</span>
                   <span>{user.full_name}</span>

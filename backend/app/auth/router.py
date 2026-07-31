@@ -143,6 +143,7 @@ def _to_profile(user: User) -> UserProfile:
         preferred_language=user.preferred_language,
         email_verified=user.email_verified_at is not None,
         phone_verified=user.phone_verified_at is not None,
+        is_reviewer=user.is_reviewer,
         created_at=user.created_at,
     )
 

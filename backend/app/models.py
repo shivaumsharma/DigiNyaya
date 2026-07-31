@@ -210,4 +210,29 @@ class CaseView(BaseModel):
     resolution: Optional[dict[str, Any]] = None
     # Set when app.core.safety_gate blocked this case -- see EscalationResult.to_dict().
     escalation: Optional[dict[str, Any]] = None
+    # Manual human-review escalation (POST /api/cases/{id}/request-review),
+    # distinct from the automatic safety_gate one above -- see app/routers/reviews.py.
+    human_review_requested: bool = False
+    reviewer_decision: Optional[dict[str, Any]] = None
     created_at: datetime
+
+
+class ReviewQueueItemOut(BaseModel):
+    case_id: str
+    dispute_type: str
+    claimant: Optional[str] = None
+    respondent: Optional[str] = None
+    claim_amount: float
+    status: str
+    reason: str
+    created_at: Optional[str] = None
+
+
+class ReviewDecisionIn(BaseModel):
+    approve: bool
+    note: str = ""
+    # Only meaningful when approve=False (or the case had no AI resolution to
+    # countersign at all, e.g. a safety-gate escalation) -- the reviewer's own
+    # relief figure becomes the final ruling. None = the AI's own resolution
+    # amount stands unchanged (a straightforward Tier 2 countersignature).
+    relief_amount: Optional[float] = None

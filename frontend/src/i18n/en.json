@@ -184,6 +184,11 @@
     "subtitle": "Five specialised agents, coordinated by an orchestrator, are resolving case {{id}} in real time.",
     "resolvedBadge": "Case resolved",
     "escalatedBadge": "Escalated to human review",
+    "summary": {
+      "claimantLabel": "{{name}} alleges",
+      "respondentLabel": "{{name}} responds",
+      "uncontested": "No response was filed within the 72-hour window -- the case proceeds uncontested."
+    },
     "escalatedTitle": "This case needs human review",
     "escalatedDefaultMessage": "This case cannot be resolved through automated mediation and requires review by a qualified human legal authority.",
     "escalated": {
@@ -259,6 +264,10 @@
       "deadline": "Deadline {{date}}",
       "tier2Notice": "Tier 2 — order is provisional pending human counter-signature.",
       "autoEscalation": "Auto-escalation notice generated if the respondent fails to comply by the deadline.",
+      "humanReviewTitle": "Human review",
+      "humanReviewDetail": "Not satisfied with the AI's read on this case? Either party can ask a human reviewer to look at it directly, regardless of tier.",
+      "humanReviewButton": "Request human review",
+      "humanReviewRequested": "A human review has been requested for this case. A reviewer will look at it and issue a decision.",
       "timeSaved": "Time saved",
       "timeSavedHere": "~4 minutes",
       "timeSavedVs": "6–24 months",

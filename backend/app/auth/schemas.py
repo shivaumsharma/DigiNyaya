@@ -107,6 +107,7 @@ class UserProfile(BaseModel):
     preferred_language: str
     email_verified: bool
     phone_verified: bool
+    is_reviewer: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

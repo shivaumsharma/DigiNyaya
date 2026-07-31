@@ -68,6 +68,11 @@ export const api = {
   runPipeline: (id) => jsonFetch(`/cases/${id}/run`, { method: 'POST' }),
   mediationDecision: (id, accept) =>
     jsonFetch(`/cases/${id}/mediation`, { method: 'POST', body: JSON.stringify({ accept }) }),
+  requestReview: (id) => jsonFetch(`/cases/${id}/request-review`, { method: 'POST' }),
+  reviewQueue: () => jsonFetch('/reviews/queue'),
+  reviewDetail: (id) => jsonFetch(`/reviews/${id}`),
+  submitReviewDecision: (id, decision) =>
+    jsonFetch(`/reviews/${id}/decision`, { method: 'POST', body: JSON.stringify(decision) }),
 }
 
 // Stream Server-Sent Events. Calls onEvent for every parsed event object,
