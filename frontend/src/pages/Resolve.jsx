@@ -124,6 +124,15 @@ export default function Resolve() {
     }
   }
 
+  async function requestReview() {
+    try {
+      await api.requestReview(id)
+      setCaseData((c) => (c ? { ...c, human_review_requested: true } : c))
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const mediation = agents.mediation?.status === 'done' ? agents.mediation.payload : null
   const resolution = agents.resolution?.status === 'done' ? agents.resolution.payload : null
   const visibleAgents = AGENT_ORDER.filter((a) => agents[a])
@@ -158,6 +167,8 @@ export default function Resolve() {
         </div>
       )}
 
+      {caseData && <ClaimSummary caseData={caseData} t={t} />}
+
       <div className="theatre">
         <div className="agent-stream" style={{ maxHeight: 640, overflowY: 'auto', paddingRight: 4 }}>
           {agents.orchestrator && <AgentRow agent="orchestrator" data={agents.orchestrator} t={t} />}
@@ -179,9 +190,34 @@ export default function Resolve() {
           {(phase === 'resolving' || phase === 'resolved') && resolution && <ResolutionDoc doc={resolution} />}
         </div>
 
-        <SidePanel caseData={caseData} phase={phase} resolution={resolution} t={t} />
+        <SidePanel caseData={caseData} phase={phase} resolution={resolution} t={t} onRequestReview={requestReview} />
       </div>
     </section>
+  )
+}
+
+// Plain-language "what is this case actually about" summary -- neither side's
+// own words were shown anywhere on this page before, only structured agent
+// payloads further down (ingestion signals, analysis strength scores etc.),
+// which don't give a reviewer quick context on what's actually being alleged
+// and contested.
+function ClaimSummary({ caseData, t }) {
+  const responded = Boolean(caseData.respondent_submission)
+  return (
+    <div className="card elev-sm card-pad" style={{ marginBottom: 22 }}>
+      <div className="field" style={{ marginBottom: responded ? 14 : 0 }}>
+        <label>{t('resolve.summary.claimantLabel', { name: caseData.claimant?.name })}</label>
+        <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{caseData.description}</p>
+      </div>
+      {responded ? (
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>{t('resolve.summary.respondentLabel', { name: caseData.respondent?.name })}</label>
+          <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{caseData.respondent_submission.statement}</p>
+        </div>
+      ) : (
+        <p className="sub" style={{ marginTop: 14, marginBottom: 0 }}>{t('resolve.summary.uncontested')}</p>
+      )}
+    </div>
   )
 }
 
@@ -404,7 +440,7 @@ function MediationPanel({ proposal, onDecide, t }) {
   )
 }
 
-function SidePanel({ caseData, phase, resolution, t }) {
+function SidePanel({ caseData, phase, resolution, t, onRequestReview }) {
   if (!caseData) return <div className="side" />
   const statusLabel = {
     loading: t('resolve.status.loading'),
@@ -414,6 +450,7 @@ function SidePanel({ caseData, phase, resolution, t }) {
     resolved: t('resolve.status.resolved'),
     escalated: t('resolve.status.escalated'),
   }[phase]
+  const canRequestReview = phase !== 'escalated' && phase !== 'loading' && !caseData.human_review_requested
   return (
     <div className="side">
       <div className="card card-pad">
@@ -426,6 +463,20 @@ function SidePanel({ caseData, phase, resolution, t }) {
         <div className="kv"><span className="k">{t('resolve.side.claimAmount')}</span><span className="v">₹{Number(caseData.claim_amount).toLocaleString('en-IN')}</span></div>
         <div className="kv"><span className="k">{t('resolve.side.evidence')}</span><span className="v">{t('resolve.side.itemsCount', { n: caseData.evidence?.length })}</span></div>
         <div className="kv"><span className="k">{t('resolve.side.response')}</span><span className="v">{caseData.respondent_submission ? t('resolve.side.filed') : t('resolve.side.uncontested')}</span></div>
+      </div>
+
+      <div className="card card-pad">
+        <div className="mini-head">{t('resolve.side.humanReviewTitle')}</div>
+        {caseData.human_review_requested ? (
+          <p className="sub" style={{ fontSize: '0.85rem' }}>{t('resolve.side.humanReviewRequested')}</p>
+        ) : (
+          <>
+            <p className="sub" style={{ fontSize: '0.85rem', marginBottom: 10 }}>{t('resolve.side.humanReviewDetail')}</p>
+            <button className="btn btn-block" disabled={!canRequestReview} onClick={onRequestReview}>
+              {t('resolve.side.humanReviewButton')}
+            </button>
+          </>
+        )}
       </div>
 
       {resolution && (
