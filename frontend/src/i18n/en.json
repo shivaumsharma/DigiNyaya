@@ -156,8 +156,11 @@
     "caseSuffix": "case",
     "claimantAgentTitle": "Agent · Case Strength Review",
     "claimantAgentDetail": "Reviewed your description and evidence for how they'd likely hold up.",
-    "respondentAgentTitle": "Agent · Claimant's Case Review",
-    "respondentAgentDetail": "Here's how the claimant's case looks based on what they've filed so far."
+    "respondentAgentTitle": "Agent · Evidence Filed Against You",
+    "respondentAgentDetail": "Here's what the claimant has submitted so far, and whether it holds up.",
+    "authenticityPrefix": "Possible issue:",
+    "authenticityCaveat": "This only checks the document's text for obvious inconsistencies -- it can't detect a doctored image or an altered scan, and isn't a substitute for real verification.",
+    "noEvidenceFiled": "No documents have been submitted as evidence in this case."
   },
   "respondent": {
     "title": "Respondent notified",
