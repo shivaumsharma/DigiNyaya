@@ -15,6 +15,7 @@ import os
 import threading
 import uuid
 from datetime import datetime, timedelta
+from typing import Optional
 
 # Load backend/.env before importing modules that read config at import time
 # (e.g. the llm client and security secret). Shell env vars take precedence.
@@ -31,6 +32,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from . import db, jobs, llm
+from .agents.preliminary_review import suggest_dispute_type
 from .auth.db import get_db, init_auth_db
 from .auth.deps import current_user
 from .auth.orm_models import User
@@ -54,6 +56,8 @@ from .language.logging import configure_language_logging
 from .models import (
     CaseSummaryOut,
     ClaimSubmission,
+    DisputeTypeSuggestionOut,
+    DisputeTypeSuggestionRequest,
     LanguageOption,
     MediationDecision,
     RespondentSubmission,
@@ -94,32 +98,118 @@ app.include_router(documents_router)
 app.include_router(reviews_router)
 
 
-SAMPLE_CLAIM = {
-    "claimant_name": "Ananya Sharma",
-    "respondent_name": "QuickShop Online Pvt. Ltd.",
-    "dispute_type": "consumer_dispute",
-    "claim_amount": 42999,
-    "description": (
-        "I ordered a laptop worth Rs. 42,999 from QuickShop Online on 12/03/2024. "
-        "The amount was debited from my account immediately. The order was never "
-        "delivered despite the app showing 'delivered' on 20/03/2024. I have raised "
-        "the issue with their customer care five times but received no response. "
-        "I am seeking a full refund of the amount paid online for goods I never received."
-    ),
-    "evidence": [
-        {"filename": "order_invoice.pdf", "kind": "invoice", "note": "Tax invoice for Rs. 42,999"},
-        {"filename": "bank_debit_statement.pdf", "kind": "receipt", "note": "Bank debit confirmation"},
-        {"filename": "chat_with_support.png", "kind": "screenshot", "note": "5 unanswered support tickets"},
-    ],
-}
-
-SAMPLE_RESPONSE = {
-    "statement": (
-        "The order was handed to our logistics partner. We are unable to confirm "
-        "delivery and our courier has not responded. We can offer store credit."
-    ),
-    "accepts_liability": False,
-    "counter_offer": 20000,
+SAMPLE_CLAIMS = {
+    "consumer_dispute": {
+        "claim": {
+            "claimant_name": "Ananya Sharma",
+            "respondent_name": "QuickShop Online Pvt. Ltd.",
+            "dispute_type": "consumer_dispute",
+            "claim_amount": 42999,
+            "description": (
+                "I ordered a laptop worth Rs. 42,999 from QuickShop Online on 12/03/2024. "
+                "The amount was debited from my account immediately. The order was never "
+                "delivered despite the app showing 'delivered' on 20/03/2024. I have raised "
+                "the issue with their customer care five times but received no response. "
+                "I am seeking a full refund of the amount paid online for goods I never received."
+            ),
+            "evidence": [
+                {"filename": "order_invoice.pdf", "kind": "invoice", "note": "Tax invoice for Rs. 42,999"},
+                {"filename": "bank_debit_statement.pdf", "kind": "receipt", "note": "Bank debit confirmation"},
+                {"filename": "chat_with_support.png", "kind": "screenshot", "note": "5 unanswered support tickets"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "The order was handed to our logistics partner. We are unable to confirm "
+                "delivery and our courier has not responded. We can offer store credit."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 20000,
+        },
+    },
+    "money_recovery": {
+        "claim": {
+            "claimant_name": "Rohan Verma",
+            "respondent_name": "Karan Mehta",
+            "dispute_type": "money_recovery",
+            "claim_amount": 150000,
+            "description": (
+                "I lent Rs. 1,50,000 to Karan Mehta via bank transfer on 05/01/2024 as an "
+                "interest-free personal loan, repayable within 6 months as agreed over WhatsApp. "
+                "The repayment date (05/07/2024) has passed and he has repaid nothing. He "
+                "acknowledged the loan in writing at the time but has since stopped responding "
+                "to calls and messages. I am seeking recovery of the full amount lent."
+            ),
+            "evidence": [
+                {"filename": "bank_transfer_receipt.pdf", "kind": "receipt", "note": "NEFT transfer confirmation, Rs. 1,50,000"},
+                {"filename": "whatsapp_agreement.png", "kind": "screenshot", "note": "Chat acknowledging the loan and repayment terms"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "I did borrow the money but I've lost my job and can't repay the full amount "
+                "right now. I can pay in installments over the next year."
+            ),
+            "accepts_liability": True,
+            "counter_offer": 75000,
+        },
+    },
+    "contract_breach": {
+        "claim": {
+            "claimant_name": "Priya Nair",
+            "respondent_name": "BuildRight Interiors",
+            "dispute_type": "contract_breach",
+            "claim_amount": 80000,
+            "description": (
+                "I signed a written agreement with BuildRight Interiors on 01/02/2024 for "
+                "home renovation work, paying an advance of Rs. 80,000 out of a total "
+                "Rs. 2,00,000 contract value. The agreement specified work would begin within "
+                "2 weeks and complete within 6 weeks. No work has started as of 15/04/2024, "
+                "over two months later, and they are not responding to requests to either "
+                "start the work or refund the advance."
+            ),
+            "evidence": [
+                {"filename": "signed_agreement.pdf", "kind": "contract", "note": "Signed renovation contract with timeline"},
+                {"filename": "advance_payment_receipt.pdf", "kind": "receipt", "note": "Rs. 80,000 advance payment receipt"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "There were delays due to material shortages beyond our control. We intend to "
+                "complete the work and are not willing to refund the advance."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 0,
+        },
+    },
+    "cheque_bounce": {
+        "claim": {
+            "claimant_name": "Vikram Desai",
+            "respondent_name": "Suresh Traders",
+            "dispute_type": "cheque_bounce",
+            "claim_amount": 250000,
+            "description": (
+                "Suresh Traders issued a cheque for Rs. 2,50,000 dated 10/03/2024 to settle an "
+                "outstanding supply debt. The cheque was dishonoured on presentation on "
+                "12/03/2024 with the reason 'insufficient funds'. I sent a legal demand notice "
+                "under Section 138 of the Negotiable Instruments Act on 18/03/2024, giving 15 "
+                "days to pay. No payment has been made and the notice period has expired."
+            ),
+            "evidence": [
+                {"filename": "dishonoured_cheque.pdf", "kind": "document", "note": "Copy of the bounced cheque"},
+                {"filename": "bank_return_memo.pdf", "kind": "document", "note": "Bank's cheque-return memo citing insufficient funds"},
+                {"filename": "demand_notice.pdf", "kind": "document", "note": "Section 138 legal demand notice, sent 18/03/2024"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "We had a temporary cash flow issue at the time. We are willing to reissue "
+                "payment but dispute the exact amount owed."
+            ),
+            "accepts_liability": True,
+            "counter_offer": 200000,
+        },
+    },
 }
 
 
@@ -290,7 +380,21 @@ def dispute_types():
 # LLM-cost-bearing endpoints -- see auth.rate_limit.enforce_call_limit's
 # docstring. Limits are generous relative to real usage; they bound an
 # unbounded/scripted client, not ordinary use.
+_CLASSIFY_LIMIT, _CLASSIFY_WINDOW = 60, timedelta(minutes=10)
 _CREATE_CASE_LIMIT, _CREATE_CASE_WINDOW = 20, timedelta(hours=1)
+
+
+@app.post("/api/classify-dispute-type", response_model=Optional[DisputeTypeSuggestionOut])
+def classify_dispute_type(
+    payload: DisputeTypeSuggestionRequest, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+):
+    """Advisory-only: called live while a claimant types their description
+    on the filing form, to catch them being on the wrong category page
+    (e.g. describing a bounced cheque under Consumer Dispute). Never blocks
+    filing -- returns null when there's nothing worth suggesting."""
+    enforce_call_limit(auth_db, user.id, "classify_dispute_type", limit=_CLASSIFY_LIMIT, window=_CLASSIFY_WINDOW)
+    result = suggest_dispute_type(payload.description, payload.selected_type.value)
+    return result
 
 
 @app.get("/api/precedents")
@@ -311,8 +415,9 @@ def languages():
 
 
 @app.get("/api/sample-claim")
-def sample_claim():
-    return {"claim": SAMPLE_CLAIM, "response": SAMPLE_RESPONSE}
+def sample_claim(dispute_type: str = "consumer_dispute"):
+    sample = SAMPLE_CLAIMS.get(dispute_type, SAMPLE_CLAIMS["consumer_dispute"])
+    return {"claim": sample["claim"], "response": sample["response"]}
 
 
 # ----------------------------- cases (authed) ----------------------------- #

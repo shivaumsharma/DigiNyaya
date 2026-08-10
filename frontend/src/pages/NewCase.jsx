@@ -1,34 +1,100 @@
-import { useState } from 'react'
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
-import { ArrowLeft, ArrowRight, Receipt, Clock } from '../icons.jsx'
+import { ArrowLeft, ArrowRight, Receipt, Clock, AlertTriangle, XCircle } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
 import EvidenceDropzone from '../components/EvidenceDropzone.jsx'
 import CaseStrengthPanel from '../components/CaseStrengthPanel.jsx'
+
+const CATEGORY_CHECK_DEBOUNCE_MS = 1000
 
 export default function NewCase() {
   const { type } = useParams()
   const { user } = useAuth()
   const { t } = useLanguage()
   const navigate = useNavigate()
+  const location = useLocation()
 
   // 'details' -> 'evidence' -> 'review', matching the backend's real
   // draft -> (upload/preliminary-review, repeatable) -> submit lifecycle.
   const [step, setStep] = useState('details')
   const [caseId, setCaseId] = useState(null)
 
+  // Category-specific copy (title, example placeholder) -- previously this
+  // page always showed generic "consumer dispute" wording regardless of
+  // which category was actually clicked on /disputes, since `type` (the
+  // route param, correctly used for the actual case payload) was never used
+  // to drive any of the displayed text. Same source of truth /disputes
+  // already uses (api.disputeTypes()), so the label/examples always match.
+  const [disputeType, setDisputeType] = useState(null)
+  useEffect(() => {
+    api.disputeTypes().then((types) => {
+      setDisputeType(types.find((d) => d.id === type) || null)
+    }).catch(() => {})
+  }, [type])
+
+  // Prefilled from router state when the claimant arrived here by accepting
+  // a category-mismatch suggestion (see categorySuggestion below) -- so
+  // switching category doesn't throw away what they already typed.
+  const carriedForm = location.state?.carriedForm
   const [form, setForm] = useState({
-    claimant_name: user?.full_name || '',
-    respondent_name: '',
-    claim_amount: '',
-    description: '',
+    claimant_name: carriedForm?.claimant_name || user?.full_name || '',
+    respondent_name: carriedForm?.respondent_name || '',
+    claim_amount: carriedForm?.claim_amount || '',
+    description: carriedForm?.description || '',
   })
   const [demoEvidence, setDemoEvidence] = useState([])
   const [documents, setDocuments] = useState([])
   const [creating, setCreating] = useState(false)
   const [err, setErr] = useState('')
+
+  // Live category-mismatch check: as the claimant types their description,
+  // ask whether it actually sounds like a different category than the one
+  // selected (e.g. describing a bounced cheque while on the Consumer
+  // Dispute form) and suggest switching. Advisory only -- never blocks
+  // filing. Debounced so it doesn't fire on every keystroke, and guarded
+  // against out-of-order responses (a slow early request resolving after a
+  // faster later one) via requestSeq.
+  const [categorySuggestion, setCategorySuggestion] = useState(null)
+  const [dismissedSuggestionId, setDismissedSuggestionId] = useState(null)
+  const categoryCheckTimer = useRef(null)
+  const categoryCheckSeq = useRef(0)
+
+  useEffect(() => {
+    clearTimeout(categoryCheckTimer.current)
+    const description = form.description
+    if (!description || description.trim().length < 40) {
+      setCategorySuggestion(null)
+      return
+    }
+    const seq = ++categoryCheckSeq.current
+    categoryCheckTimer.current = setTimeout(() => {
+      api.classifyDisputeType(description, type)
+        .then((suggestion) => {
+          if (seq !== categoryCheckSeq.current) return // a newer check has since started
+          setCategorySuggestion(suggestion || null)
+        })
+        .catch(() => {
+          if (seq === categoryCheckSeq.current) setCategorySuggestion(null)
+        })
+    }, CATEGORY_CHECK_DEBOUNCE_MS)
+    return () => clearTimeout(categoryCheckTimer.current)
+  }, [form.description, type])
+
+  function switchToSuggestedCategory() {
+    if (!categorySuggestion) return
+    navigate(`/file/${categorySuggestion.suggested_type_id}`, { state: { carriedForm: form } })
+  }
+
+  function dismissSuggestion() {
+    setDismissedSuggestionId(categorySuggestion?.suggested_type_id)
+    setCategorySuggestion(null)
+  }
+
+  const visibleSuggestion =
+    categorySuggestion && categorySuggestion.suggested_type_id !== dismissedSuggestionId ? categorySuggestion : null
 
   const [review, setReview] = useState(null)
   const [reviewLoading, setReviewLoading] = useState(false)
@@ -40,7 +106,7 @@ export default function NewCase() {
   }
 
   async function loadSample() {
-    const { claim } = await api.sampleClaim()
+    const { claim } = await api.sampleClaim(type)
     setForm({
       claimant_name: claim.claimant_name,
       respondent_name: claim.respondent_name,
@@ -116,7 +182,9 @@ export default function NewCase() {
         <>
           <div className="page-head between flex">
             <div>
-              <h1 style={{ fontWeight: 400, marginBottom: 8 }}>{t('newCase.title')}</h1>
+              <h1 style={{ fontWeight: 400, marginBottom: 8 }}>
+                {disputeType ? t('newCase.titleFor', { category: disputeType.label }) : t('newCase.title')}
+              </h1>
               <p style={{ fontSize: '0.95rem', margin: 0 }}>{t('newCase.subtitle')}</p>
             </div>
             <button className="btn btn-ghost" onClick={loadSample} type="button">
@@ -163,10 +231,39 @@ export default function NewCase() {
                 className="textarea"
                 value={form.description}
                 onChange={(e) => set('description', e.target.value)}
-                placeholder={t('newCase.placeholderDescription')}
+                placeholder={
+                  disputeType?.examples?.length
+                    ? t('newCase.placeholderDescriptionExample', { example: disputeType.examples[0] })
+                    : t('newCase.placeholderDescription')
+                }
                 required
               />
             </div>
+
+            {visibleSuggestion && (
+              <div className="review-note warn" style={{ marginBottom: 16, alignItems: 'flex-start' }}>
+                <AlertTriangle width={18} height={18} style={{ flexShrink: 0, marginTop: 2, color: 'var(--color-accent-700)' }} />
+                <div style={{ flex: 1 }}>
+                  <span>{t('newCase.categorySuggestion', { category: visibleSuggestion.suggested_type_label })}</span>
+                  {visibleSuggestion.reason && (
+                    <p className="sub" style={{ margin: '4px 0 0' }}>{visibleSuggestion.reason}</p>
+                  )}
+                  <div className="flex gap" style={{ marginTop: 10 }}>
+                    <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: '0.82rem' }} onClick={switchToSuggestedCategory}>
+                      {t('newCase.categorySuggestionSwitch', { category: visibleSuggestion.suggested_type_label })}
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissSuggestion}
+                  aria-label={t('newCase.categorySuggestionDismiss')}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0, color: 'var(--text-dim)' }}
+                >
+                  <XCircle width={16} height={16} />
+                </button>
+              </div>
+            )}
 
             {demoEvidence.length > 0 && (
               <div className="field">

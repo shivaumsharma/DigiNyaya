@@ -24,8 +24,17 @@ vi.mock('../api.js', () => ({
     uploadDocuments: vi.fn(),
     listDocuments: vi.fn(),
     preliminaryReview: vi.fn(),
+    disputeTypes: vi.fn(),
+    classifyDisputeType: vi.fn(),
   },
 }))
+
+const DISPUTE_TYPES = [
+  { id: 'consumer_dispute', label: 'Consumer Dispute', examples: ['Received a defective or counterfeit item'] },
+  { id: 'money_recovery', label: 'Money Recovery / Loan Dispute', examples: ['Lent money to someone who is not repaying it'] },
+  { id: 'contract_breach', label: 'Simple Contract Breach', examples: ["The other party didn't fulfil their side of a written agreement"] },
+  { id: 'cheque_bounce', label: 'Cheque Bounce', examples: ['A cheque issued to settle a debt bounced due to insufficient funds'] },
+]
 
 function renderNewCase() {
   return render(
@@ -49,11 +58,47 @@ async function fillDetailsAndContinue(user) {
 describe('NewCase', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    api.disputeTypes.mockResolvedValue(DISPUTE_TYPES)
+    // Default: no suggestion. Individual tests override this when they
+    // specifically want to exercise the category-mismatch banner.
+    api.classifyDisputeType.mockResolvedValue(null)
   })
 
   it('pre-fills the claimant name from the logged-in user', () => {
     renderNewCase()
     expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument()
+  })
+
+  it('shows the actual selected category in the title, not always "consumer dispute"', async () => {
+    // Regression test: the title used to be a hardcoded "File your consumer
+    // dispute" string regardless of which category was clicked on
+    // /disputes, since :type (correctly used for the case payload) was
+    // never used to drive the displayed copy. renderNewCase() renders at
+    // /new/money_recovery, so this must show "Money Recovery" wording.
+    renderNewCase()
+    expect(await screen.findByRole('heading', { name: /money recovery/i })).toBeInTheDocument()
+  })
+
+  it('uses a category-specific example in the description placeholder', async () => {
+    renderNewCase()
+    await waitFor(() =>
+      expect(screen.getByLabelText(/describe your dispute/i).placeholder).toMatch(/lent money/i),
+    )
+  })
+
+  it('requests the sample claim for the current category, not always the default', async () => {
+    const user = userEvent.setup()
+    api.sampleClaim.mockResolvedValue({
+      claim: {
+        claimant_name: 'Rohan Verma', respondent_name: 'Karan Mehta',
+        claim_amount: 150000, description: 'Loan not repaid.', evidence: [],
+      },
+    })
+    renderNewCase()
+
+    await user.click(screen.getByRole('button', { name: /load demo/i }))
+
+    await waitFor(() => expect(api.sampleClaim).toHaveBeenCalledWith('money_recovery'))
   })
 
   it('loads a sample claim and populates the form + a read-only evidence preview', async () => {
@@ -152,5 +197,75 @@ describe('NewCase', () => {
 
     await waitFor(() => expect(api.submitCase).toHaveBeenCalledWith('case-42'))
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/case/case-42/respond'))
+  })
+
+  describe('category-mismatch suggestion', () => {
+    const LONG_CHEQUE_DESCRIPTION =
+      'Suresh Traders issued a cheque for Rs 2,50,000 to settle a debt and it bounced due to insufficient funds.'
+
+    it('does not call the classifier for a short, still-being-typed description', async () => {
+      const user = userEvent.setup()
+      renderNewCase()
+      await user.type(screen.getByLabelText(/describe your dispute/i), 'too short')
+      await new Promise((r) => setTimeout(r, 1200))
+      expect(api.classifyDisputeType).not.toHaveBeenCalled()
+    })
+
+    it('shows a suggestion banner after the debounce when the description sounds like another category', async () => {
+      const user = userEvent.setup()
+      api.classifyDisputeType.mockResolvedValue({
+        suggested_type_id: 'cheque_bounce',
+        suggested_type_label: 'Cheque Bounce',
+        reason: 'Describes a bounced cheque and Section 138 notice.',
+      })
+      renderNewCase()
+
+      await user.type(screen.getByLabelText(/describe your dispute/i), LONG_CHEQUE_DESCRIPTION)
+
+      await waitFor(
+        () => expect(api.classifyDisputeType).toHaveBeenCalledWith(LONG_CHEQUE_DESCRIPTION, 'money_recovery'),
+        { timeout: 2000 },
+      )
+      expect(await screen.findByText(/cheque bounce case/i)).toBeInTheDocument()
+      expect(screen.getByText(/section 138 notice/i)).toBeInTheDocument()
+    })
+
+    it('switching category navigates to the suggested type and carries the typed form over', async () => {
+      const user = userEvent.setup()
+      api.classifyDisputeType.mockResolvedValue({
+        suggested_type_id: 'cheque_bounce',
+        suggested_type_label: 'Cheque Bounce',
+        reason: 'Describes a bounced cheque.',
+      })
+      renderNewCase()
+
+      await user.type(screen.getByLabelText(/opposing party/i), 'Suresh Traders')
+      await user.type(screen.getByLabelText(/describe your dispute/i), LONG_CHEQUE_DESCRIPTION)
+      await screen.findByText(/cheque bounce case/i, {}, { timeout: 2000 })
+
+      await user.click(screen.getByRole('button', { name: /switch to cheque bounce/i }))
+
+      expect(navigateSpy).toHaveBeenCalledWith(
+        '/file/cheque_bounce',
+        { state: { carriedForm: expect.objectContaining({ respondent_name: 'Suresh Traders', description: LONG_CHEQUE_DESCRIPTION }) } },
+      )
+    })
+
+    it('dismissing the suggestion hides the banner', async () => {
+      const user = userEvent.setup()
+      api.classifyDisputeType.mockResolvedValue({
+        suggested_type_id: 'cheque_bounce',
+        suggested_type_label: 'Cheque Bounce',
+        reason: 'Describes a bounced cheque.',
+      })
+      renderNewCase()
+
+      await user.type(screen.getByLabelText(/describe your dispute/i), LONG_CHEQUE_DESCRIPTION)
+      await screen.findByText(/cheque bounce case/i, {}, { timeout: 2000 })
+
+      await user.click(screen.getByLabelText(/dismiss suggestion/i))
+
+      expect(screen.queryByText(/cheque bounce case/i)).not.toBeInTheDocument()
+    })
   })
 })

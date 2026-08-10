@@ -106,9 +106,25 @@
     "tier1Desc": "Fully resolved by DigiNyaya",
     "tier2Desc": "AI-drafted, human countersigned"
   },
+  "myCases": {
+    "title": "My cases",
+    "subtitle": "Every dispute you've filed, in one place.",
+    "loading": "Loading your cases…",
+    "empty": "You haven't filed any cases yet.",
+    "fileFirst": "File your first case",
+    "status": {
+      "draft": "Draft",
+      "awaiting_response": "Awaiting response",
+      "ready": "Ready for resolution",
+      "mediation_proposed": "Mediation proposed",
+      "resolved": "Resolved",
+      "escalated": "Escalated to human review"
+    }
+  },
   "newCase": {
     "backLink": "Back to categories",
-    "title": "File your consumer dispute",
+    "title": "File your claim",
+    "titleFor": "File your {{category}} claim",
     "subtitle": "Describe what happened and attach your evidence. The AI does the rest.",
     "loadDemo": "Load demo case",
     "fieldClaimant": "Your name (Claimant)",
@@ -116,7 +132,11 @@
     "placeholderRespondent": "Seller / business name",
     "fieldAmount": "Claim amount (₹)",
     "fieldDescription": "Describe your dispute",
-    "placeholderDescription": "What did you buy, what went wrong, what outcome do you want?",
+    "placeholderDescription": "What happened, what went wrong, what outcome do you want?",
+    "placeholderDescriptionExample": "e.g. {{example}}",
+    "categorySuggestion": "This sounds like it might be a {{category}} case.",
+    "categorySuggestionSwitch": "Switch to {{category}}",
+    "categorySuggestionDismiss": "Dismiss suggestion",
     "fieldEvidence": "Evidence",
     "placeholderEvidence": "e.g. order_invoice.pdf",
     "addEvidence": "Add",
@@ -136,7 +156,7 @@
     "title": "Add your evidence",
     "subtitle": "Drop the documents that support your claim. Our AI checks them before you file, so you can fix anything missing first.",
     "dropTitle": "Drag & drop files here, or click to choose",
-    "dropHint": "PDF or image files. You can add more than one.",
+    "dropHint": "PDF, image, or audio files (voice notes, call recordings). You can add more than one.",
     "uploading": "Uploading…",
     "statusPending": "processing…",
     "statusReady": "ready",
