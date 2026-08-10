@@ -38,6 +38,7 @@ from .auth.rate_limit import enforce_call_limit
 from .auth.router import me_router as auth_me_router, router as auth_router
 from .core.events import TERMINAL, bus, stream_from_queue
 from .core.logging import configure_app_logging
+from .core.versioning import ApiVersionRewriteMiddleware
 from .routers.documents import router as documents_router
 from .routers.reviews import router as reviews_router
 from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
@@ -83,6 +84,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# See app.core.versioning's docstring: makes every /api/... route also
+# reachable at /api/v1/... with zero duplicate route declarations.
+app.add_middleware(ApiVersionRewriteMiddleware)
 
 app.include_router(auth_router)
 app.include_router(auth_me_router)
