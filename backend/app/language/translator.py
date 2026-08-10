@@ -45,6 +45,7 @@ from typing import Any
 
 import requests
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.language.config import (
     LanguageConfig,
     config as language_config,
@@ -52,6 +53,13 @@ from app.language.config import (
 )
 
 logger = logging.getLogger("diginyaya.language.translator")
+
+# Own breaker, independent of detector.py's -- see that module's comment on
+# why LID and translation don't share one. Without this, a sustained Sarvam
+# outage means every inbound/outbound translation on the live request path
+# pays the full retry_attempts x timeout loop below (~90s worst case at
+# defaults) before degrading to untranslated passthrough text.
+_breaker = CircuitBreaker(name="language_translate")
 
 # Sarvam Mayura's hard per-request input cap is exposed as
 # config.max_chunk_chars (default 1000) so it can be tuned without a code
@@ -278,6 +286,13 @@ class Translator:
         source_lang: str,
         target_lang: str,
     ) -> dict[str, Any] | None:
+        if not _breaker.allow():
+            logger.info(
+                "translation circuit breaker open; skipping call",
+                extra={"event": "translation_breaker_open"},
+            )
+            return None
+
         headers = {
             "api-subscription-key": self.settings.sarvam_api_key,
             "Content-Type": "application/json",
@@ -301,6 +316,7 @@ class Translator:
                     timeout=self.settings.timeout,
                 )
                 response.raise_for_status()
+                _breaker.record_success()
                 return response.json()
             except (requests.RequestException, ValueError) as exc:
                 last_error = exc
@@ -318,6 +334,7 @@ class Translator:
                 if attempt < attempts:
                     time.sleep(self.settings.retry_delay * attempt)
 
+        _breaker.record_failure()
         logger.error(
             "sarvam translate call exhausted retries",
             extra={
