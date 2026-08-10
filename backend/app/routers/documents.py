@@ -41,6 +41,13 @@ _PRELIM_REVIEW_LIMIT, _PRELIM_REVIEW_WINDOW = 30, timedelta(minutes=10)
 router = APIRouter(prefix="/api/cases/{case_id}", tags=["documents"])
 
 _MAX_UPLOAD_BYTES = storage_config.max_upload_mb * 1024 * 1024
+# Each document costs at least one LLM relevance-check call in BOTH the
+# pre-filing preliminary review and the real pipeline's ingestion agent (see
+# app.agents.preliminary_review.document_relevance) -- with no cap, a case
+# with dozens of files means dozens of sequential LLM calls just to ingest
+# it, an unbounded cost/latency vector found during the production-readiness
+# review (2026-08-06). 15 is generous for any real dispute's actual evidence.
+_MAX_EVIDENCE_PER_CASE = 15
 
 
 def _load_owned(case_id: str, owner_id: str) -> dict:
@@ -68,6 +75,16 @@ async def upload_documents(
     case = _load_owned(case_id, user.id)
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+
+    existing_count = len(db.list_documents(case_id))
+    if existing_count + len(files) > _MAX_EVIDENCE_PER_CASE:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This case already has {existing_count} evidence file(s); the maximum is "
+                f"{_MAX_EVIDENCE_PER_CASE} per case."
+            ),
+        )
 
     storage = get_storage()
     created: list[dict] = []
