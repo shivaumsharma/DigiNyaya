@@ -280,3 +280,60 @@ class TestReviewDetail:
         r = client.get("/api/reviews/DN-REVIEW-VIEWABLE", headers={"Authorization": f"Bearer {reviewer_token}"})
         assert r.status_code == 200
         assert r.json()["case_id"] == "DN-REVIEW-VIEWABLE"
+
+
+class TestAuditVerify:
+    """GET /api/reviews/{id}/audit-verify -- lets a reviewer confirm a
+    case's event hash chain (app.db.verify_case_events) is intact before
+    relying on it for a decision."""
+
+    def test_non_reviewer_gets_403(self, client, db_session):
+        owner_token = _signup(client, "owner14@example.com")
+        owner_id = client.get("/me", headers={"Authorization": f"Bearer {owner_token}"}).json()["id"]
+        _make_case("DN-AUDIT-1", owner_id, status="escalated")
+        r = client.get("/api/reviews/DN-AUDIT-1/audit-verify", headers={"Authorization": f"Bearer {owner_token}"})
+        assert r.status_code == 403
+
+    def test_unknown_case_404s(self, client, db_session):
+        token = _signup(client, "reviewer14@example.com")
+        _promote(db_session, "reviewer14@example.com")
+        r = client.get("/api/reviews/DN-NOPE/audit-verify", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 404
+
+    def test_untampered_chain_reports_verified(self, client, db_session):
+        owner_token = _signup(client, "owner15@example.com")
+        owner_id = client.get("/me", headers={"Authorization": f"Bearer {owner_token}"}).json()["id"]
+        _make_case("DN-AUDIT-2", owner_id, status="escalated")
+        db.append_event("DN-AUDIT-2", {"type": "ingestion", "agent": "ingestion", "status": "done", "title": "t", "detail": "", "payload": {}, "ts": 1.0})
+        db.append_event("DN-AUDIT-2", {"type": "analysis", "agent": "analysis", "status": "done", "title": "t", "detail": "", "payload": {}, "ts": 2.0})
+
+        reviewer_token = _signup(client, "reviewer15@example.com")
+        _promote(db_session, "reviewer15@example.com")
+        r = client.get("/api/reviews/DN-AUDIT-2/audit-verify", headers={"Authorization": f"Bearer {reviewer_token}"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["verified"] is True
+        assert body["event_count"] == 2
+        assert body["verified_count"] == 2
+        assert body["first_break_seq"] is None
+
+    def test_tampered_event_is_detected(self, client, db_session):
+        owner_token = _signup(client, "owner16@example.com")
+        owner_id = client.get("/me", headers={"Authorization": f"Bearer {owner_token}"}).json()["id"]
+        _make_case("DN-AUDIT-3", owner_id, status="escalated")
+        seq = db.append_event("DN-AUDIT-3", {"type": "ingestion", "agent": "ingestion", "status": "done", "title": "original", "detail": "", "payload": {}, "ts": 1.0})
+
+        import sqlite3
+        conn = sqlite3.connect(db._DB_PATH)
+        conn.execute("UPDATE events SET title=? WHERE seq=?", ("tampered", seq))
+        conn.commit()
+        conn.close()
+
+        reviewer_token = _signup(client, "reviewer16@example.com")
+        _promote(db_session, "reviewer16@example.com")
+        r = client.get("/api/reviews/DN-AUDIT-3/audit-verify", headers={"Authorization": f"Bearer {reviewer_token}"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["verified"] is False
+        assert body["first_break_seq"] == seq
+

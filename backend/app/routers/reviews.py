@@ -62,6 +62,18 @@ def review_queue(user: User = Depends(current_reviewer)):
     ]
 
 
+@router.get("/{case_id}/audit-verify")
+def audit_verify(case_id: str, user: User = Depends(current_reviewer)):
+    """Recompute this case's event hash chain (app.db.verify_case_events)
+    and report whether it's intact -- lets a reviewer confirm the audit
+    trail they're about to rely on for a decision hasn't been altered.
+    """
+    case = db.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return db.verify_case_events(case_id)
+
+
 @router.get("/{case_id}")
 def review_detail(case_id: str, user: User = Depends(current_reviewer)):
     case = db.get_case(case_id)
