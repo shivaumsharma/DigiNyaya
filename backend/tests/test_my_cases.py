@@ -87,3 +87,31 @@ class TestMyCases:
     def test_requires_authentication(self, client, db_session):
         r = client.get("/api/cases")
         assert r.status_code == 401
+
+
+class TestCreateCaseRateLimit:
+    """POST /api/cases is one of the LLM-cost-bearing endpoints guarded by
+    app.auth.rate_limit.enforce_call_limit (2026-08-06 roadmap item) --
+    exercised through the real endpoint (not db.save_case directly) so this
+    actually proves the wiring, not just the limiter function in isolation
+    (see tests/test_rate_limit.py for that)."""
+
+    def _payload(self, i):
+        return {
+            "claimant_name": "Rate Test", "respondent_name": f"Respondent {i}",
+            "dispute_type": "consumer_dispute", "claim_amount": 1000,
+            "description": "A short test claim for rate-limit coverage.",
+        }
+
+    def test_blocks_after_the_limit(self, client, db_session):
+        from app.main import _CREATE_CASE_LIMIT
+
+        token = _signup(client, "ratelimitcase@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        for i in range(_CREATE_CASE_LIMIT):
+            r = client.post("/api/cases", json=self._payload(i), headers=headers)
+            assert r.status_code == 200, r.text
+
+        r = client.post("/api/cases", json=self._payload("over"), headers=headers)
+        assert r.status_code == 429

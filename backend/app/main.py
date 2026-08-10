@@ -14,7 +14,7 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Load backend/.env before importing modules that read config at import time
 # (e.g. the llm client and security secret). Shell env vars take precedence.
@@ -28,11 +28,13 @@ except Exception:
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from . import db, jobs, llm
-from .auth.db import init_auth_db
+from .auth.db import get_db, init_auth_db
 from .auth.deps import current_user
 from .auth.orm_models import User
+from .auth.rate_limit import enforce_call_limit
 from .auth.router import me_router as auth_me_router, router as auth_router
 from .core.events import TERMINAL, bus, stream_from_queue
 from .core.logging import configure_app_logging
@@ -281,6 +283,12 @@ def dispute_types():
     return DISPUTE_TYPES
 
 
+# LLM-cost-bearing endpoints -- see auth.rate_limit.enforce_call_limit's
+# docstring. Limits are generous relative to real usage; they bound an
+# unbounded/scripted client, not ordinary use.
+_CREATE_CASE_LIMIT, _CREATE_CASE_WINDOW = 20, timedelta(hours=1)
+
+
 @app.get("/api/precedents")
 def precedents():
     return load_precedents()
@@ -332,7 +340,8 @@ def list_my_cases(user: User = Depends(current_user)):
 
 
 @app.post("/api/cases")
-def create_case(submission: ClaimSubmission, user: User = Depends(current_user)):
+def create_case(submission: ClaimSubmission, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
+    enforce_call_limit(auth_db, user.id, "create_case", limit=_CREATE_CASE_LIMIT, window=_CREATE_CASE_WINDOW)
     case_id = "DN-" + datetime.utcnow().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
     tier, tier_label = _tier_for(submission.dispute_type.value)
     gw = get_language_gateway()

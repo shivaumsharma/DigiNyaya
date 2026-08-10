@@ -15,18 +15,28 @@ circular import (main.py will import and mount this router).
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
 from .. import db, jobs
 from ..agents.preliminary_review import run_preliminary_review
+from ..auth.db import get_db
 from ..auth.deps import current_user
 from ..auth.orm_models import User
+from ..auth.rate_limit import enforce_call_limit
 from ..documents.validation import validate_upload
 from ..models import DiscrepancyOut, DocumentDetailOut, DocumentOut, PreliminaryReviewOut
 from ..security import ensure_owner
 from ..storage import get_storage
 from ..storage.config import config as storage_config
+
+# See auth.rate_limit.enforce_call_limit's docstring -- re-runnable by
+# design ("any number of times before filing"), so this stays generous
+# relative to real usage; it exists to bound a scripted client, not to
+# police normal iteration on evidence.
+_PRELIM_REVIEW_LIMIT, _PRELIM_REVIEW_WINDOW = 30, timedelta(minutes=10)
 
 router = APIRouter(prefix="/api/cases/{case_id}", tags=["documents"])
 
@@ -108,12 +118,13 @@ def get_document(case_id: str, document_id: str, user: User = Depends(current_us
 
 
 @router.post("/preliminary-review", response_model=PreliminaryReviewOut)
-def preliminary_review(case_id: str, user: User = Depends(current_user)):
+def preliminary_review(case_id: str, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
     """Advisory-only check on a draft case's evidence -- not the real
     adjudication (that's the 5-agent pipeline, which only runs after the
     respondent replies). Re-runnable any number of times before filing.
     """
     _load_owned(case_id, user.id)
+    enforce_call_limit(auth_db, user.id, "preliminary_review", limit=_PRELIM_REVIEW_LIMIT, window=_PRELIM_REVIEW_WINDOW)
     return run_preliminary_review(case_id)
 
 
