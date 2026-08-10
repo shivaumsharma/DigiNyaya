@@ -16,10 +16,23 @@ SIGNAL_LEXICON: dict[str, list[str]] = {
     "refund": ["refund", "money back", "return my money", "reimburse"],
     "replacement": ["replace", "replacement", "exchange"],
     "counterfeit": ["fake", "counterfeit", "duplicate", "not genuine", "first copy"],
-    "misrepresentation": ["misled", "misleading", "false", "misrepresent", "not as described", "different from", "refurbished"],
+    # "false" and "different from" were removed -- both are generic enough to
+    # match completely unrelated text (e.g. "the defendant filed false
+    # complaints" -- nothing to do with a product being misrepresented) and
+    # were confirmed, via a real case in scripts/judge_real_outcomes.py's
+    # eval set, to inject a fabricated "product misrepresentation" narrative
+    # into Agent 3/5's prompts for a case that was never about a product at
+    # all (a construction-firm profit-sharing dispute). See
+    # [[diginyaya_real_judgment_eval]] memory / IK-EVAL-125730407.
+    "misrepresentation": ["misled", "misleading", "misrepresent", "not as described", "refurbished"],
     "warranty": ["warranty", "guarantee", "guaranteed"],
     "ecommerce": ["online", "website", "app", "ecommerce", "e-commerce", "marketplace", "ordered online"],
-    "service_deficiency": ["service", "support", "customer care", "no response", "ignored", "deficiency"],
+    # Bare "support" removed -- confirmed, via a real case, to false-positive
+    # on generic uses that have nothing to do with customer support (e.g. a
+    # hostile respondent reply "why do you support such application" --
+    # "support" there means "endorse", not "customer support"). "customer
+    # support"/"technical support" are specific enough phrases to keep.
+    "service_deficiency": ["service", "customer support", "technical support", "customer care", "no response", "ignored", "deficiency"],
     "repair_delay": ["repair", "service centre", "service center", "repair delay", "delay in repair", "waiting for repair"],
     "banking": ["bank", "account", "debit", "atm", "upi", "transaction"],
     "unauthorized_transaction": ["unauthorized", "unauthorised", "fraudulent", "without my consent", "didn't authorise"],
@@ -27,10 +40,19 @@ SIGNAL_LEXICON: dict[str, list[str]] = {
     "subscription": ["subscription", "auto-renew", "auto renew", "recurring", "renewed"],
     "insurance": ["insurance", "policy", "claim repudiat", "premium"],
     "food_delivery": ["food", "restaurant", "contaminated", "stale", "spoiled"],
-    "travel": ["flight", "ticket", "airline", "cancelled flight", "booking", "hotel"],
+    # "booking" and "hotel" removed -- both confirmed, via real cases, to
+    # false-positive well outside travel (an apartment "booking amount" in a
+    # real-estate refund case; a "5-star hotel" as the property TYPE in a
+    # land-allotment-cancellation case, nothing to do with a travel
+    # booking). "flight"/"ticket"/"airline" are specific enough to keep.
+    "travel": ["flight", "ticket", "airline", "cancelled flight"],
     "real_estate": ["flat", "apartment", "builder", "possession", "property"],
     "electronics": ["laptop", "phone", "mobile", "tv", "television", "electronic", "gadget", "appliance"],
-    "automobile": ["car", "vehicle", "bike", "automobile", "engine"],
+    # Bare "car" removed -- confirmed to false-positive on "car park" (a
+    # property-dispute case describing a building's parking facility, not a
+    # vehicle dispute). "vehicle"/"automobile"/"engine"/"bike" don't share
+    # this specific collision and are kept.
+    "automobile": ["vehicle", "bike", "automobile", "engine"],
     "furniture": ["furniture", "sofa", "table", "chair", "bed"],
     # Money recovery / contract breach / cheque bounce signals.
     "loan_default": ["loan", "lent", "lend", "borrowed", "friendly loan", "promissory note", "iou", "did not repay", "failed to repay", "hasn't repaid", "has not repaid"],
@@ -136,10 +158,16 @@ _RELIEF_TYPE_LEXICON: list[tuple[str, tuple[str, ...]]] = [
     # to a monetary compensation figure real Labour Courts didn't award in
     # multiple sampled cases (they ordered reinstatement + back wages, or
     # nothing, not a lump-sum payment).
+    # NOTE: bare "reinstate"/"reinstatement"/"reinstated" deliberately
+    # excluded -- confirmed, via a real case (IK-EVAL-172879753, a housing
+    # refund dispute), to false-positive on non-employment senses of the
+    # same word ("...cancellations and reinstatements of sanctioned plans by
+    # [a development authority]" -- reinstating an administrative approval,
+    # not a person). The phrases below are specific enough to real Labour
+    # Court terminology that they don't share this risk.
     ("reinstatement", (
-        "reinstate", "reinstatement", "reinstated", "did not reinstate",
-        "seeking reinstatement", "restore him to his post", "restore her to her post",
-        "continuity of service", "back wages",
+        "did not reinstate", "seeking reinstatement", "restore him to his post",
+        "restore her to her post", "continuity of service", "back wages",
     )),
     ("possession", ("vacant possession", "hand over possession", "eviction", "evict", "recover possession")),
     ("injunction", ("injunction", "restrain", "restraining order", "stop the respondent", "cease and desist", "remove the", "removal of the")),
@@ -297,14 +325,25 @@ def score_defense_substance(text: str) -> float:
     return 0.9
 
 
+# Word-boundary versions of every SIGNAL_LEXICON trigger, compiled once at
+# import time rather than per call. Plain substring matching (the previous
+# implementation) let short/generic triggers match inside unrelated words --
+# confirmed via a real case where "app" (meant for "mobile app") matched
+# inside "appeals" and "applications", words that appear in nearly every
+# legal document, injecting a fabricated "ecommerce" signal into an
+# unrelated property dispute. \b works correctly for multi-word triggers
+# too (e.g. "cheque bounce") since it only anchors the start/end of the
+# whole phrase, not each internal word.
+_SIGNAL_PATTERNS: dict[str, re.Pattern[str]] = {
+    signal: re.compile(r"\b(?:" + "|".join(re.escape(t) for t in triggers) + r")\b")
+    for signal, triggers in SIGNAL_LEXICON.items()
+}
+
+
 def extract_signals(text: str) -> list[str]:
     """Return the domain signals present in a block of free text."""
     lowered = text.lower()
-    found: list[str] = []
-    for signal, triggers in SIGNAL_LEXICON.items():
-        if any(trigger in lowered for trigger in triggers):
-            found.append(signal)
-    return found
+    return [signal for signal, pattern in _SIGNAL_PATTERNS.items() if pattern.search(lowered)]
 
 
 def extract_amounts(text: str) -> list[float]:
