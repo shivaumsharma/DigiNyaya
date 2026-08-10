@@ -100,6 +100,7 @@ export default function NewCase() {
   const [reviewLoading, setReviewLoading] = useState(false)
   const [reviewErr, setReviewErr] = useState('')
   const [filing, setFiling] = useState(false)
+  const [confirmedAccurate, setConfirmedAccurate] = useState(false)
 
   function set(k, v) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -163,7 +164,7 @@ export default function NewCase() {
     setFiling(true)
     setErr('')
     try {
-      await api.submitCase(caseId)
+      await api.submitCase(caseId, confirmedAccurate)
       navigate(`/case/${caseId}/respond`)
     } catch (ex) {
       setErr(ex.message)
@@ -327,11 +328,26 @@ export default function NewCase() {
 
           {err && <p style={{ color: 'var(--red)', fontSize: '0.85rem', marginTop: 14 }}>{err}</p>}
 
-          <div className="flex gap" style={{ marginTop: 22, justifyContent: 'space-between' }}>
+          <label className="flex gap" style={{ alignItems: 'flex-start', marginTop: 18, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={confirmedAccurate}
+              onChange={(e) => setConfirmedAccurate(e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span style={{ fontSize: '0.85rem' }}>{t('review.confirmAccurate')}</span>
+          </label>
+
+          <div className="flex gap" style={{ marginTop: 14, justifyContent: 'space-between' }}>
             <button type="button" className="btn btn-ghost" onClick={() => setStep('evidence')}>
               {t('review.addMoreEvidence')}
             </button>
-            <button type="button" className="btn btn-primary btn-lg" onClick={fileClaim} disabled={filing || reviewLoading}>
+            <button
+              type="button"
+              className="btn btn-primary btn-lg"
+              onClick={fileClaim}
+              disabled={filing || reviewLoading || !confirmedAccurate}
+            >
               {filing ? t('newCase.filing') : t('newCase.fileClaim')} <ArrowRight />
             </button>
           </div>

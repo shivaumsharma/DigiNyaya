@@ -193,9 +193,15 @@ describe('NewCase', () => {
     expect(screen.getByText('a resume')).toBeInTheDocument()
     expect(screen.getByText(/Date 45\/25\/2024 is not a valid calendar date/)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /file claim/i }))
+    const fileClaimButton = screen.getByRole('button', { name: /file claim/i })
+    expect(fileClaimButton).toBeDisabled()
 
-    await waitFor(() => expect(api.submitCase).toHaveBeenCalledWith('case-42'))
+    await user.click(screen.getByRole('checkbox'))
+    expect(fileClaimButton).toBeEnabled()
+
+    await user.click(fileClaimButton)
+
+    await waitFor(() => expect(api.submitCase).toHaveBeenCalledWith('case-42', true))
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/case/case-42/respond'))
   })
 

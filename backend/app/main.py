@@ -54,6 +54,7 @@ from .language.config import (
 from .language.gateway import UnsupportedLanguageError, get_language_gateway
 from .language.logging import configure_language_logging
 from .models import (
+    CaseSubmitConfirmation,
     CaseSummaryOut,
     ClaimSubmission,
     DisputeTypeSuggestionOut,
@@ -537,16 +538,40 @@ def _load_owned(case_id: str, owner_id: str) -> dict:
 
 
 @app.post("/api/cases/{case_id}/submit")
-def submit_case(case_id: str, user: User = Depends(current_user)):
+def submit_case(case_id: str, confirmation: CaseSubmitConfirmation, user: User = Depends(current_user)):
     """The real "file & notify respondent" action -- separate from case
     creation so a claimant can attach evidence and get a preliminary review
     first (see /preliminary-review) without the 72-hour response window
     starting, or the respondent being notified, before they're ready.
+
+    Requires confirmed_accurate=True: the claimant must affirmatively
+    confirm the claim is accurate before it actually files, mirroring a
+    real court e-filing "verification" -- enforced here, not just in the
+    frontend, and recorded on the case (plus an audit-log event) with a
+    timestamp so it's part of the case's permanent record.
     """
     case = _load_owned(case_id, user.id)
     if case.get("status") != "draft":
         raise HTTPException(status_code=409, detail="Case has already been filed")
-    db.update_case(case_id, status="awaiting_response")
+    if not confirmation.confirmed_accurate:
+        raise HTTPException(
+            status_code=400,
+            detail="You must confirm the information in this claim is accurate before filing.",
+        )
+    filing_confirmation = {"confirmed_accurate": True, "confirmed_at": datetime.utcnow().isoformat()}
+    db.update_case(case_id, status="awaiting_response", filing_confirmation=filing_confirmation)
+    db.append_event(
+        case_id,
+        {
+            "type": "filing_confirmed",
+            "agent": "system",
+            "status": "info",
+            "title": "Claimant confirmed accuracy before filing",
+            "detail": "",
+            "payload": filing_confirmation,
+            "ts": datetime.utcnow().timestamp(),
+        },
+    )
     return {"case_id": case_id, "status": "awaiting_response", "respondent_deadline_hours": 72}
 
 
