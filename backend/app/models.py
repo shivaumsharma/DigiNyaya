@@ -228,6 +228,23 @@ class ReviewQueueItemOut(BaseModel):
     created_at: Optional[str] = None
 
 
+class CaseSummaryOut(BaseModel):
+    """One row of a claimant's own case list (GET /api/cases). Filed-by-me
+    only -- a case's respondent is identified by name, not by user id, so
+    there's no way yet to also list "cases filed against me" here; that
+    needs the respondent-identity gap closed first (see README's known
+    issues / the notification-delivery gap)."""
+
+    case_id: str
+    dispute_type: str
+    respondent: Optional[str] = None
+    claim_amount: float
+    status: str
+    tier: int
+    tier_label: str
+    created_at: Optional[str] = None
+
+
 class ReviewDecisionIn(BaseModel):
     approve: bool
     note: str = ""

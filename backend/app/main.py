@@ -49,6 +49,7 @@ from .language.config import (
 from .language.gateway import UnsupportedLanguageError, get_language_gateway
 from .language.logging import configure_language_logging
 from .models import (
+    CaseSummaryOut,
     ClaimSubmission,
     LanguageOption,
     MediationDecision,
@@ -308,6 +309,26 @@ def _tier_for(dispute_type: str) -> tuple[int, str]:
     if dt:
         return dt["tier"], dt["tier_label"]
     return 1, "Tier 1 — Fully Autonomous AI Resolution"
+
+
+@app.get("/api/cases", response_model=list[CaseSummaryOut])
+def list_my_cases(user: User = Depends(current_user)):
+    """Cases the current user filed (owner_id == user.id) -- filed-by-me
+    only, newest first. See CaseSummaryOut's docstring for why this can't
+    yet also list cases filed against the user."""
+    return [
+        CaseSummaryOut(
+            case_id=c["case_id"],
+            dispute_type=c.get("dispute_type", ""),
+            respondent=(c.get("respondent") or {}).get("name"),
+            claim_amount=c.get("claim_amount", 0.0),
+            status=c.get("status", ""),
+            tier=c.get("tier", 1),
+            tier_label=c.get("tier_label", ""),
+            created_at=c.get("created_at"),
+        )
+        for c in db.list_cases_by_owner(user.id)
+    ]
 
 
 @app.post("/api/cases")

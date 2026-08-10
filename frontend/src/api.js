@@ -56,6 +56,7 @@ export const api = {
   disputeTypes: () => jsonFetch('/dispute-types'),
   sampleClaim: () => jsonFetch('/sample-claim'),
   precedents: () => jsonFetch('/precedents'),
+  myCases: () => jsonFetch('/cases'),
   createCase: (claim) => jsonFetch('/cases', { method: 'POST', body: JSON.stringify(claim) }),
   getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
   submitCase: (id) => jsonFetch(`/cases/${id}/submit`, { method: 'POST' }),
