@@ -84,6 +84,26 @@ class LLMConfig:
     )
 
     # ------------------------------------------------------------------
+    # OpenAI -- only used by scripts/panel_review.py's multi-model panel
+    # today, never by the live pipeline (app.llm.factory only instantiates
+    # this when explicitly asked -- see get_panel_provider()). No key set =
+    # simply unavailable, same graceful-degradation convention as everywhere
+    # else in this module.
+    # ------------------------------------------------------------------
+
+    openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
+    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+    # ------------------------------------------------------------------
+    # Anthropic -- same "panel-only, never the live pipeline" scope as OpenAI above.
+    # ------------------------------------------------------------------
+
+    anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY")
+    anthropic_base_url: str = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
+    anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+
+    # ------------------------------------------------------------------
     # Generation Defaults
     # ------------------------------------------------------------------
 
