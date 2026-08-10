@@ -64,7 +64,8 @@ export const api = {
       body: JSON.stringify({ description, selected_type: selectedType }),
     }),
   getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
-  submitCase: (id) => jsonFetch(`/cases/${id}/submit`, { method: 'POST' }),
+  submitCase: (id, confirmedAccurate) =>
+    jsonFetch(`/cases/${id}/submit`, { method: 'POST', body: JSON.stringify({ confirmed_accurate: confirmedAccurate }) }),
   uploadDocuments: (id, files) => uploadFetch(`/cases/${id}/documents`, files),
   listDocuments: (id) => jsonFetch(`/cases/${id}/documents`),
   preliminaryReview: (id) => jsonFetch(`/cases/${id}/preliminary-review`, { method: 'POST' }),

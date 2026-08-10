@@ -169,7 +169,8 @@
     "subtitle": "A quick, non-binding AI check of your evidence -- the real review happens after the respondent replies.",
     "loading": "Reviewing your evidence…",
     "addMoreEvidence": "Add more evidence",
-    "backToEvidence": "Back to evidence"
+    "backToEvidence": "Back to evidence",
+    "confirmAccurate": "I confirm the information in this claim is accurate to the best of my knowledge, and I am filing this dispute in good faith."
   },
   "caseStrength": {
     "doneTag": "done",
