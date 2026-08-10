@@ -24,10 +24,21 @@ class LLMFactory:
     def create() -> BaseLLMProvider:
 
         provider = config.provider.lower()
+        # Host/model shown here must reflect whichever provider is actually
+        # about to be instantiated below -- this always printed Ollama's
+        # config regardless of `provider`, which was actively misleading
+        # with DIGINYAYA_LLM_PROVIDER=sarvam (banner claimed an Ollama
+        # host/model while the app went on to use Sarvam for real).
+        if provider == "sarvam":
+            host, model = config.sarvam_base_url, config.sarvam_fast_model
+        elif provider == "mock":
+            host, model = "n/a", "mock"
+        else:
+            host, model = config.ollama_host, config.ollama_chat_model
         print("=" * 60)
         print("Provider :", config.provider)
-        print("Host     :", config.ollama_host)
-        print("Model    :", config.ollama_chat_model)
+        print("Host     :", host)
+        print("Model    :", model)
         print("=" * 60)
         # -----------------------------
         # Explicit Provider Selection
