@@ -448,6 +448,45 @@ def list_my_cases(user: User = Depends(current_user)):
     ]
 
 
+@app.get("/api/me/data-export")
+def export_my_data(user: User = Depends(current_user)):
+    """Self-service data export (DPDP Act 2023 access/portability principle)
+    -- every case the user filed, in full, plus that case's documents
+    (including extracted text -- it's their evidence) and event log.
+
+    Deliberately NOT paired with a self-service delete: case records
+    doubling as evidentiary/audit records is the whole point of the
+    tamper-evident event log (see app.db.verify_case_events) -- deciding
+    what's safe to actually erase vs. must be retained is a legal/product
+    policy question, not one this endpoint should silently resolve by
+    letting a user delete their own dispute history.
+
+    storage_path is deliberately omitted from each document -- that's an
+    internal server implementation detail, not something the user gave us.
+    """
+    cases = []
+    for case in db.list_cases_by_owner(user.id):
+        case_id = case["case_id"]
+        documents = [
+            {k: v for k, v in doc.items() if k != "storage_path"}
+            for doc in db.list_documents(case_id)
+        ]
+        cases.append({**case, "documents": documents, "events": db.get_events(case_id)})
+
+    return {
+        "exported_at": datetime.utcnow().isoformat(),
+        "profile": {
+            "id": user.id,
+            "email": user.email,
+            "phone": user.phone,
+            "full_name": user.full_name,
+            "preferred_language": user.preferred_language,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        },
+        "cases": cases,
+    }
+
+
 @app.post("/api/cases")
 def create_case(submission: ClaimSubmission, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
     enforce_call_limit(auth_db, user.id, "create_case", limit=_CREATE_CASE_LIMIT, window=_CREATE_CASE_WINDOW)
