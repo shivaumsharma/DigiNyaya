@@ -29,15 +29,30 @@ def utcnow() -> datetime:
     """
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+def _sqlalchemy_url(raw: str) -> str:
+    """DIGINYAYA_DB has historically always been a raw sqlite file path, but
+    needs to become a full connection string once a real Postgres instance
+    is configured. A value already containing "://" is used as-is (any
+    SQLAlchemy-supported URL, e.g. postgresql://...); anything else is
+    treated as a sqlite file path, matching this module's previous
+    hardcoded-`sqlite:///` behavior exactly.
+    """
+    if "://" in raw:
+        return raw
+    return f"sqlite:///{raw}"
+
+
 _DB_PATH = os.getenv(
     "DIGINYAYA_DB",
     os.path.join(os.path.dirname(__file__), "..", "..", "diginyaya.db"),
 )
+_DATABASE_URL = _sqlalchemy_url(_DB_PATH)
 
-engine = create_engine(
-    f"sqlite:///{_DB_PATH}",
-    connect_args={"check_same_thread": False},
-)
+# check_same_thread is a sqlite3-DBAPI-specific pyfunc arg; passing it to a
+# non-sqlite dialect (e.g. psycopg2) raises a TypeError at connect time.
+_connect_args = {"check_same_thread": False} if _DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(_DATABASE_URL, connect_args=_connect_args)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
