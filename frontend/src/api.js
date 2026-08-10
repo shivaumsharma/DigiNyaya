@@ -54,10 +54,15 @@ export const api = {
   aiStatus: () => jsonFetch('/ai-status'),
   languages: () => jsonFetch('/languages'),
   disputeTypes: () => jsonFetch('/dispute-types'),
-  sampleClaim: () => jsonFetch('/sample-claim'),
+  sampleClaim: (disputeType) => jsonFetch(`/sample-claim${disputeType ? `?dispute_type=${encodeURIComponent(disputeType)}` : ''}`),
   precedents: () => jsonFetch('/precedents'),
   myCases: () => jsonFetch('/cases'),
   createCase: (claim) => jsonFetch('/cases', { method: 'POST', body: JSON.stringify(claim) }),
+  classifyDisputeType: (description, selectedType) =>
+    jsonFetch('/classify-dispute-type', {
+      method: 'POST',
+      body: JSON.stringify({ description, selected_type: selectedType }),
+    }),
   getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
   submitCase: (id) => jsonFetch(`/cases/${id}/submit`, { method: 'POST' }),
   uploadDocuments: (id, files) => uploadFetch(`/cases/${id}/documents`, files),

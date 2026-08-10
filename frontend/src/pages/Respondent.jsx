@@ -27,7 +27,7 @@ export default function Respondent() {
   }, [id])
 
   async function loadSampleResponse() {
-    const { response } = await api.sampleClaim()
+    const { response } = await api.sampleClaim(caseData?.dispute_type)
     setStatement(response.statement)
     setCounter(response.counter_offer != null ? String(response.counter_offer) : '')
     setAccepts(response.accepts_liability)
