@@ -4,13 +4,24 @@ Parses the claim + evidence into structured facts and produces a *confidence*
 in its classification and a *recommended tier*. The orchestrator uses these to
 route the case (Tier 1 autonomous vs. escalate) — so this agent's output is no
 longer cosmetic; it actually steers the workflow.
+
+Evidence RELEVANCE, not just evidence COUNT, feeds the confidence/tier
+decision (via document_relevance, shared with app.agents.preliminary_review).
+This closes a real gap found via a live test case (2026-08-05): a claim
+("amazon scammed me of my 10000") with two attached PDFs that were the
+claimant's own school marksheets — completely unrelated to the dispute —
+still scored 95% ingestion confidence and routed to fully autonomous Tier 1,
+because the old formula only counted how many files were attached, never
+whether they actually supported the claim.
 """
 
 from __future__ import annotations
 
+from .. import db
 from ..core.context import CaseContext, IngestionResult
 from . import nlp
 from .base import AgentResult
+from .preliminary_review import document_relevance
 
 SUBTYPE_LABELS = {
     "non_delivery": "Non-delivery of paid goods",
@@ -55,25 +66,44 @@ def run(ctx: CaseContext) -> AgentResult:
     subtype = SUBTYPE_LABELS.get(subtype_key) or f"General {nlp.dispute_label(ctx.dispute_type)}"
     evidence_kinds = sorted({e.get("kind", "document") for e in evidence})
 
+    # Evidence RELEVANCE, not just count (see module docstring): a document
+    # that doesn't actually relate to the claim must not earn the same
+    # confidence credit as one that does.
+    complete_docs = [d for d in db.list_documents(ctx.case_id) if d.get("extraction_status") == "complete"]
+    doc_reviews = [
+        document_relevance(
+            claim_text, ctx.dispute_type, d,
+            claimant_name=ctx.claimant_name, respondent_name=ctx.respondent_name,
+        )
+        for d in complete_docs
+    ]
+    relevant_evidence_count = sum(1 for r in doc_reviews if r["relevant"] is True)
+    irrelevant_evidence_count = sum(1 for r in doc_reviews if r["relevant"] is False)
+
     # Confidence: driven by how clearly the case presents (recognised subtype,
-    # evidence on record, a quantified claim). This is a real routing signal.
+    # RELEVANT evidence on record, a quantified claim). This is a real routing signal.
     conf = 0.4
     if subtype_key:
         conf += 0.25
-    if len(evidence) >= 2:
+    if relevant_evidence_count >= 2:
         conf += 0.2
-    elif len(evidence) == 1:
+    elif relevant_evidence_count == 1:
         conf += 0.1
     if ctx.claim_amount > 0:
         conf += 0.1
     if len(signals) >= 2:
         conf += 0.05
-    confidence = round(min(conf, 0.98), 2)
+    # Confidently-irrelevant evidence is a red flag on its own, not just a
+    # missed opportunity to help -- a case whose only attached files don't
+    # relate to the dispute at all is weaker than one with no evidence yet.
+    if irrelevant_evidence_count > 0 and relevant_evidence_count == 0:
+        conf -= 0.15
+    confidence = round(max(0.0, min(conf, 0.98)), 2)
 
     eligible = (
         ctx.dispute_type in TIER1_ELIGIBLE_TYPES
         and ctx.claim_amount > 0
-        and len(evidence) >= 1
+        and relevant_evidence_count >= 1
         and subtype_key is not None
         # A non-monetary ask (injunction/declaration/replacement/possession)
         # carries different, often larger real-world consequences than a
@@ -84,14 +114,22 @@ def run(ctx: CaseContext) -> AgentResult:
     )
     recommended_tier = 1 if (eligible and confidence >= 0.6) else 2
 
-    reason = (
-        f"Document-based {nlp.dispute_label(ctx.dispute_type)} with a quantified monetary claim, "
-        "supporting evidence and a clearly classified grievance — qualifies for fully autonomous "
-        "Tier 1 resolution."
-        if recommended_tier == 1
-        else "Classification confidence or evidence is insufficient for full autonomy — "
-        "recommend escalation to an AI-assisted human-reviewed tier."
-    )
+    if recommended_tier == 1:
+        reason = (
+            f"Document-based {nlp.dispute_label(ctx.dispute_type)} with a quantified monetary claim, "
+            "supporting evidence and a clearly classified grievance — qualifies for fully autonomous "
+            "Tier 1 resolution."
+        )
+    elif irrelevant_evidence_count > 0 and relevant_evidence_count == 0:
+        reason = (
+            "The evidence attached to this case does not appear to relate to the claim described — "
+            "recommend escalation to an AI-assisted human-reviewed tier."
+        )
+    else:
+        reason = (
+            "Classification confidence or evidence is insufficient for full autonomy — "
+            "recommend escalation to an AI-assisted human-reviewed tier."
+        )
 
     result = IngestionResult(
         dispute_subtype=subtype,
@@ -111,7 +149,9 @@ def run(ctx: CaseContext) -> AgentResult:
     )
 
     detail = (
-        f"Parsed {len(evidence)} evidence item(s) and the claim narrative. "
+        f"Parsed {len(evidence)} evidence item(s) and the claim narrative"
+        + (f" ({relevant_evidence_count} appear relevant to this claim)" if complete_docs else "")
+        + ". "
         f"Classified as '{subtype}' with {int(confidence * 100)}% confidence. "
         f"Detected {len(signals)} legal signal(s)."
         + (f" Relief sought: {relief_type_requested}." if relief_type_requested != "monetary" else "")
