@@ -58,6 +58,12 @@ export const FileText = (p) => (
     <path d="M14 2v6h6M9 13h6M9 17h6" />
   </svg>
 )
+export const Mic = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+    <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8" />
+  </svg>
+)
 export const Receipt = (p) => (
   <svg {...base} {...p}>
     <path d="M5 2v20l2-1.5L9 22l2-1.5L13 22l2-1.5L17 22l2-1.5V2l-2 1.5L15 2l-2 1.5L11 2 9 3.5 7 2z" />

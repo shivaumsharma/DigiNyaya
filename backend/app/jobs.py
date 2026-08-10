@@ -224,7 +224,9 @@ def run_extraction(document_id: str) -> Iterator[dict]:
         )
         return
 
-    result = doc_extraction.extract_document(raw, doc["mime_type"])
+    case = db.get_case(doc["case_id"])
+    language = (case or {}).get("source_language") or "en-IN"
+    result = doc_extraction.extract_document(raw, doc["mime_type"], language=language)
     if result.error:
         yield make_event(
             "document_extraction_failed", agent="documents", status="error",

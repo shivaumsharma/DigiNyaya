@@ -26,7 +26,7 @@ from ..auth.db import get_db
 from ..auth.deps import current_user
 from ..auth.orm_models import User
 from ..auth.rate_limit import enforce_call_limit
-from ..documents.validation import validate_upload
+from ..documents.validation import is_audio_mime_type, validate_upload
 from ..models import DiscrepancyOut, DocumentDetailOut, DocumentOut, PreliminaryReviewOut
 from ..security import ensure_owner
 from ..storage import get_storage
@@ -52,7 +52,11 @@ def _load_owned(case_id: str, owner_id: str) -> dict:
 
 
 def _evidence_kind(mime_type: str) -> str:
-    return "document" if mime_type == "application/pdf" else "photo"
+    if mime_type == "application/pdf":
+        return "document"
+    if is_audio_mime_type(mime_type):
+        return "audio"
+    return "photo"
 
 
 @router.post("/documents", response_model=list[DocumentOut])

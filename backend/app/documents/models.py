@@ -21,5 +21,5 @@ class ExtractionResult:
     is_scanned: bool = False
     # None for native-text documents (no OCR uncertainty); 0..1 for OCR'd ones.
     ocr_confidence: float | None = None
-    engine: str = "native"  # "native" | "tesseract"
+    engine: str = "native"  # "native" | "sarvam_doc_ai" | "tesseract" | "sarvam_stt"
     error: str | None = None

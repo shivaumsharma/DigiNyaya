@@ -12,10 +12,14 @@ email-validator>=2.2.0
 
 # Document ingestion / OCR (see README's "Document upload, OCR & discrepancy
 # detection" section -- Tesseract itself is a separate system binary, not
-# pip-installable)
+# pip-installable). Sarvam Document AI is the primary OCR path (cloud API,
+# no local binary needed); Tesseract is the fallback when no Sarvam key is
+# configured, the document exceeds Document AI's 10-page limit, or the API
+# call fails.
 pymupdf==1.28.0
 pytesseract==0.3.13
 pillow==12.1.1
+sarvamai>=0.1.30
 
 # --- dev/test only ---
 pytest>=8.3.4
