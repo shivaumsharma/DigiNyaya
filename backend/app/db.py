@@ -155,6 +155,15 @@ def all_cases() -> list[dict]:
     return [json.loads(r["data"]) for r in rows]
 
 
+def list_cases_by_owner(owner_id: str) -> list[dict]:
+    # idx_cases_owner already existed (added ahead of this endpoint, see its
+    # own comment) -- this is the first query that actually uses it.
+    rows = _connect().execute(
+        "SELECT data FROM cases WHERE owner_id=? ORDER BY created_at DESC", (owner_id,)
+    ).fetchall()
+    return [json.loads(r["data"]) for r in rows]
+
+
 def case_count() -> int:
     return _connect().execute("SELECT COUNT(*) c FROM cases").fetchone()["c"]
 

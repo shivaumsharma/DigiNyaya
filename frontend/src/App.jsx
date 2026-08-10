@@ -78,6 +78,9 @@ export default function App() {
             </select>
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <Link to="/my-cases" className="btn btn-ghost">
+                  My cases
+                </Link>
                 {user.is_reviewer && (
                   <Link to="/reviewer" className="btn btn-ghost">
                     Review queue
