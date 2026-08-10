@@ -76,6 +76,8 @@ export const api = {
     jsonFetch(`/cases/${id}/mediation`, { method: 'POST', body: JSON.stringify({ accept }) }),
   requestReview: (id) => jsonFetch(`/cases/${id}/request-review`, { method: 'POST' }),
   reviewQueue: () => jsonFetch('/reviews/queue'),
+  evalMetrics: () => jsonFetch('/reviews/eval-metrics'),
+  opsMetrics: () => jsonFetch('/reviews/ops-metrics'),
   reviewDetail: (id) => jsonFetch(`/reviews/${id}`),
   submitReviewDecision: (id, decision) =>
     jsonFetch(`/reviews/${id}/decision`, { method: 'POST', body: JSON.stringify(decision) }),
