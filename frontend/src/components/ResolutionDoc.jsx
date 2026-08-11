@@ -1,7 +1,9 @@
 import { Logo, Download, Check } from '../icons.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
+import { api } from '../api.js'
+import ListenButton from './ListenButton.jsx'
 
-export default function ResolutionDoc({ doc }) {
+export default function ResolutionDoc({ doc, caseId, lang }) {
   const { t } = useLanguage()
 
   function download() {
@@ -104,6 +106,7 @@ export default function ResolutionDoc({ doc }) {
         <button className="btn btn-primary" onClick={download}>
           <Download width={16} height={16} /> {t('resolutionDoc.download')}
         </button>
+        <ListenButton fetchAudio={() => api.resolutionAudio(caseId || doc.case_id, lang)} label={t('audio.listenToResolution')} />
         <span className="resolved-badge">
           <Check width={16} height={16} /> {t('resolutionDoc.binding')} · {doc.via_mediation ? t('resolutionDoc.byMediation') : t('resolutionDoc.autonomous')}
         </span>

@@ -200,6 +200,13 @@
     "noResponseText": "If the respondent ignores the notice, the case proceeds uncontested. The agents will treat the allegations as substantially admitted.",
     "skip": "Skip — proceed uncontested"
   },
+  "audio": {
+    "listenToProposal": "Listen to proposal",
+    "listenToResolution": "Listen to resolution",
+    "loading": "Loading audio…",
+    "listening": "Playing — tap to pause",
+    "unavailable": "Audio narration is unavailable right now"
+  },
   "resolve": {
     "title": "AI Resolution in progress",
     "subtitle": "Five specialised agents, coordinated by an orchestrator, are resolving case {{id}} in real time.",
