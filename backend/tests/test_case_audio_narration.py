@@ -1,13 +1,16 @@
 """Integration tests (via TestClient) for GET /api/cases/{id}/mediation/audio
 and GET /api/cases/{id}/resolution/audio -- read the mediation proposal or
-resolution order aloud via Sarvam's Bulbul TTS. synthesize_speech itself is
-mocked (see tests/test_tts.py for that call in isolation); these tests
-prove the endpoint wiring: ownership, 404-when-absent, and that the
-localized (not raw English) text is what actually gets narrated.
+resolution order aloud via Sarvam Bulbul, in whichever language the case
+response is already localized to.
+
+app.language.tts.synthesize_speech is mocked throughout (a live call would
+hit the real Sarvam API); these tests are about the endpoint's own
+wiring -- ownership, narration-text assembly, 404/503 handling, rate
+limiting -- not the TTS call itself (see tests/test_tts.py for that).
 """
 from __future__ import annotations
 
-from unittest import mock
+from unittest.mock import patch
 
 from app import db
 
@@ -34,10 +37,10 @@ def _make_case(case_id, owner_id, **overrides):
         "status": "resolved",
         "tier": 1,
         "tier_label": "Tier 1",
-        "created_at": "2026-01-01T00:00:00",
         "source_language": "en-IN",
         "mediation": None,
         "resolution": None,
+        "created_at": "2026-01-01T00:00:00",
     }
     case.update(overrides)
     db.init_db()
@@ -46,15 +49,15 @@ def _make_case(case_id, owner_id, **overrides):
 
 
 _MEDIATION = {
-    "type": "monetary",
+    "type": "refund",
     "amount": 5000.0,
     "amount_display": "Rs. 5,000",
     "compliance_days": 7,
-    "headline": "Respondent to pay Rs. 5,000",
-    "explanation": "The evidence supports the claim.",
-    "rationale": ["Invoice matches the claimed amount."],
+    "headline": "Settlement proposed: full refund",
+    "explanation": "The evidence supports the claimant's account.",
+    "rationale": ["The invoice matches the claimed amount.", "No response was filed."],
     "based_on": [],
-    "engine": "scripted",
+    "engine": "llm",
 }
 
 _RESOLUTION = {
@@ -65,16 +68,16 @@ _RESOLUTION = {
     "parties": {"claimant": "Ananya Sharma", "respondent": "QuickShop Online"},
     "basis": "Consumer Protection Act, 2019",
     "claim_amount_display": "Rs. 5,000",
-    "findings": ["The claimant provided a valid invoice."],
-    "order": ["Respondent shall pay Rs. 5,000 within 7 days."],
+    "findings": ["The order was not delivered as promised."],
+    "order": ["QuickShop Online shall pay Ananya Sharma Rs. 5,000."],
     "cited_precedents": [],
     "relief_amount": 5000.0,
     "relief_amount_display": "Rs. 5,000",
     "compliance_days": 7,
     "compliance_deadline": "2026-01-12",
     "via_mediation": True,
-    "engine": "scripted",
-    "footer": "Ordered.",
+    "engine": "llm",
+    "footer": "Ordered by DigiNyaya.",
 }
 
 
@@ -84,80 +87,81 @@ class TestMediationAudio:
         assert r.status_code == 401
 
     def test_cannot_access_someone_elses_case(self, client, db_session):
-        owner_token = _signup(client, "medowner1@example.com")
+        owner_token = _signup(client, "audioowner1@example.com")
         owner_id = client.get("/me", headers={"Authorization": f"Bearer {owner_token}"}).json()["id"]
-        _make_case("DN-MED-AUDIO-1", owner_id, mediation=_MEDIATION)
+        _make_case("DN-AUDIO-OTHER1", owner_id, mediation=_MEDIATION)
 
-        other_token = _signup(client, "medother1@example.com")
-        r = client.get("/api/cases/DN-MED-AUDIO-1/mediation/audio", headers={"Authorization": f"Bearer {other_token}"})
+        other_token = _signup(client, "audiostranger1@example.com")
+        r = client.get("/api/cases/DN-AUDIO-OTHER1/mediation/audio", headers={"Authorization": f"Bearer {other_token}"})
         assert r.status_code == 404
 
-    def test_404s_when_no_mediation_proposal_yet(self, client, db_session):
-        token = _signup(client, "medowner2@example.com")
+    def test_no_mediation_yet_404s(self, client, db_session):
+        token = _signup(client, "audioowner2@example.com")
         owner_id = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()["id"]
-        _make_case("DN-MED-AUDIO-2", owner_id, mediation=None)
+        _make_case("DN-AUDIO-NOMED", owner_id, mediation=None)
 
-        r = client.get("/api/cases/DN-MED-AUDIO-2/mediation/audio", headers={"Authorization": f"Bearer {token}"})
+        r = client.get("/api/cases/DN-AUDIO-NOMED/mediation/audio", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 404
 
-    def test_returns_audio_bytes_and_narrates_the_localized_headline(self, client, db_session):
-        token = _signup(client, "medowner3@example.com")
+    def test_returns_audio_bytes_on_success(self, client, db_session):
+        token = _signup(client, "audioowner3@example.com")
         owner_id = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()["id"]
-        _make_case("DN-MED-AUDIO-3", owner_id, mediation=_MEDIATION)
+        _make_case("DN-AUDIO-MED1", owner_id, mediation=_MEDIATION)
 
-        with mock.patch("app.main.synthesize_speech", return_value=b"fake-mp3") as mock_synth:
-            r = client.get("/api/cases/DN-MED-AUDIO-3/mediation/audio", headers={"Authorization": f"Bearer {token}"})
+        with patch("app.main.synthesize_speech", return_value=b"fake-mp3-bytes") as mock_tts:
+            r = client.get("/api/cases/DN-AUDIO-MED1/mediation/audio", headers={"Authorization": f"Bearer {token}"})
 
-        assert r.status_code == 200, r.text
+        assert r.status_code == 200
         assert r.headers["content-type"] == "audio/mpeg"
-        assert r.content == b"fake-mp3"
-        text_arg, lang_arg = mock_synth.call_args.args
-        assert "Respondent to pay Rs. 5,000" in text_arg
-        assert lang_arg == "en-IN"
+        assert r.content == b"fake-mp3-bytes"
+        mock_tts.assert_called_once()
+        narrated_text = mock_tts.call_args.args[0]
+        assert "full refund" in narrated_text
+        assert "invoice matches the claimed amount" in narrated_text
 
-    def test_unavailable_synthesis_returns_503_not_a_crash(self, client, db_session):
-        token = _signup(client, "medowner4@example.com")
+    def test_narration_unavailable_returns_503(self, client, db_session):
+        token = _signup(client, "audioowner4@example.com")
         owner_id = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()["id"]
-        _make_case("DN-MED-AUDIO-4", owner_id, mediation=_MEDIATION)
+        _make_case("DN-AUDIO-MED2", owner_id, mediation=_MEDIATION)
 
-        with mock.patch("app.main.synthesize_speech", return_value=None):
-            r = client.get("/api/cases/DN-MED-AUDIO-4/mediation/audio", headers={"Authorization": f"Bearer {token}"})
+        with patch("app.main.synthesize_speech", return_value=None):
+            r = client.get("/api/cases/DN-AUDIO-MED2/mediation/audio", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 503
 
 
 class TestResolutionAudio:
-    def test_404s_when_no_resolution_yet(self, client, db_session):
-        token = _signup(client, "resowner1@example.com")
+    def test_no_resolution_yet_404s(self, client, db_session):
+        token = _signup(client, "audioowner5@example.com")
         owner_id = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()["id"]
-        _make_case("DN-RES-AUDIO-1", owner_id, resolution=None)
+        _make_case("DN-AUDIO-NORES", owner_id, resolution=None)
 
-        r = client.get("/api/cases/DN-RES-AUDIO-1/resolution/audio", headers={"Authorization": f"Bearer {token}"})
+        r = client.get("/api/cases/DN-AUDIO-NORES/resolution/audio", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 404
 
-    def test_returns_audio_bytes_and_narrates_the_order(self, client, db_session):
-        token = _signup(client, "resowner2@example.com")
+    def test_returns_audio_bytes_on_success(self, client, db_session):
+        token = _signup(client, "audioowner6@example.com")
         owner_id = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()["id"]
-        _make_case("DN-RES-AUDIO-2", owner_id, resolution=_RESOLUTION)
+        _make_case("DN-AUDIO-RES1", owner_id, resolution=_RESOLUTION)
 
-        with mock.patch("app.main.synthesize_speech", return_value=b"fake-mp3") as mock_synth:
-            r = client.get("/api/cases/DN-RES-AUDIO-2/resolution/audio", headers={"Authorization": f"Bearer {token}"})
+        with patch("app.main.synthesize_speech", return_value=b"fake-mp3-bytes") as mock_tts:
+            r = client.get("/api/cases/DN-AUDIO-RES1/resolution/audio", headers={"Authorization": f"Bearer {token}"})
 
-        assert r.status_code == 200, r.text
-        assert r.content == b"fake-mp3"
-        text_arg, lang_arg = mock_synth.call_args.args
-        assert "Respondent shall pay Rs. 5,000 within 7 days." in text_arg
-        assert lang_arg == "en-IN"
+        assert r.status_code == 200
+        assert r.content == b"fake-mp3-bytes"
+        narrated_text = mock_tts.call_args.args[0]
+        assert "not delivered as promised" in narrated_text
+        assert "shall pay Ananya Sharma" in narrated_text
+        assert "Ordered by DigiNyaya" in narrated_text
 
-    def test_honors_an_explicit_lang_override(self, client, db_session):
-        token = _signup(client, "resowner3@example.com")
+    def test_language_passed_through_matches_lang_query_param(self, client, db_session):
+        token = _signup(client, "audioowner7@example.com")
         owner_id = client.get("/me", headers={"Authorization": f"Bearer {token}"}).json()["id"]
-        _make_case("DN-RES-AUDIO-3", owner_id, resolution=_RESOLUTION, source_language="en-IN")
+        _make_case("DN-AUDIO-RES2", owner_id, resolution=_RESOLUTION, source_language="en-IN")
 
-        with mock.patch("app.main.synthesize_speech", return_value=b"fake-mp3") as mock_synth:
+        with patch("app.main.synthesize_speech", return_value=b"fake-mp3-bytes") as mock_tts:
             r = client.get(
-                "/api/cases/DN-RES-AUDIO-3/resolution/audio?lang=hi-IN",
+                "/api/cases/DN-AUDIO-RES2/resolution/audio?lang=hi-IN",
                 headers={"Authorization": f"Bearer {token}"},
             )
         assert r.status_code == 200
-        _text_arg, lang_arg = mock_synth.call_args.args
-        assert lang_arg == "hi-IN"
+        assert mock_tts.call_args.args[1] == "hi-IN"
