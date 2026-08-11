@@ -14,7 +14,70 @@ actual current state of the code, not aspirational plans.
 
 ---
 
-## What's inside
+## Features
+
+- Five-agent AI pipeline (Ingestion → Research → Analysis → Mediation → Resolution),
+  coordinated by a hand-rolled orchestration state machine, not a linear script
+- Real-time, token-streamed resolution drafting over Server-Sent Events, durably
+  replayed from an append-only log so a page refresh never loses or duplicates a run
+- Two-checkpoint safety gate that routes weak, out-of-scope, or contested cases to a
+  human reviewer instead of letting the AI decide
+- Deterministic relief-amount clamping against a 120+ real-precedent corpus — no
+  hallucinated money, deadlines, or citations
+- Multi-provider LLM layer: **Sarvam AI** in production, with automatic fallback to a
+  local **Ollama** model or scripted logic if neither is reachable
+- OCR and audio transcription of evidence via **Sarvam Document AI** and
+  **Speech-to-Text** (with speaker diarization), Tesseract as a local OCR fallback
+- Text-to-speech narration of mediation proposals and resolutions via **Sarvam
+  Bulbul**, read aloud in the citizen's own filing language
+- Real-time UI and content translation across 11 Indian languages via **Sarvam
+  Mayura**
+- A real account system: email+password and phone+OTP signup/login, JWT access
+  tokens with rotating refresh tokens
+- Role-gated human review workflow with a reviewer queue, case detail view, and
+  decision audit trail
+- Tamper-evident, SHA-256 hash-chained event log for every case, with a live
+  reviewer-facing verification endpoint
+- Circuit breakers around every direct Sarvam call site, so one product outage
+  degrades gracefully instead of cascading
+- DPDP Act 2023-aligned self-service data export
+- A golden-case evaluation harness scored against real court judgments
+
+---
+
+## Screenshots
+
+_Screenshots to be added — placeholders below, filenames expected under `screenshots/`._
+
+| | |
+| --- | --- |
+| **Home** — dispute types, tiers, entry point | `screenshots/home.png` |
+| **New case filing** — draft → upload → review → submit | `screenshots/new-case.png` |
+| **Live multi-agent pipeline** — streamed agent-by-agent progress | `screenshots/pipeline.png` |
+| **Mediation proposal** — structured LLM proposal + Listen narration | `screenshots/mediation.png` |
+| **Resolution document** — final order, findings, citations | `screenshots/resolution.png` |
+| **Reviewer queue & ops dashboard** — case volume, tier split, eval metrics | `screenshots/reviewer-dashboard.png` |
+
+---
+
+## Tech Stack
+
+| Category | Technologies |
+| --- | --- |
+| Backend | Python, FastAPI, Uvicorn |
+| Database / ORM | SQLite, SQLAlchemy, Alembic |
+| AI / LLM | Sarvam AI (Sarvam-30B/105B chat, Document AI OCR, Speech-to-Text, Bulbul text-to-speech, Mayura translation), Ollama (local fallback + embeddings) |
+| Retrieval | Custom semantic (cosine over embeddings) + keyword-fallback precedent search |
+| Frontend | React, Vite |
+| Auth | JWT access tokens, rotating refresh tokens, email + phone/OTP |
+| Document processing | PyMuPDF (native-text PDFs), Tesseract OCR (fallback) |
+| Testing | pytest, Vitest, React Testing Library |
+| Deployment | Render (backend + frontend) |
+| Version Control | Git, GitHub |
+
+---
+
+## Project Structure
 
 ```
 DigiNyaya/
@@ -29,15 +92,17 @@ DigiNyaya/
 │       │   ├── context.py     Typed CaseContext "blackboard" + result models
 │       │   ├── graph.py       Hand-rolled state machine (routing/loop/escalation)
 │       │   ├── safety_gate.py Two-checkpoint escalation gate -- see below
+│       │   ├── circuit_breaker.py  Shared breaker around every direct Sarvam call site
+│       │   ├── versioning.py  /api/v1/... rewrite middleware
 │       │   └── events.py      Event model + in-memory pub/sub bus
 │       ├── llm/             Provider-agnostic LLM client (Sarvam live, Ollama local, scripted fallback)
 │       ├── rag/             Semantic retrieval + keyword fallback + citation verification
 │       ├── security/        Case-ownership (IDOR) checks, input sanitization
 │       ├── documents/       PDF/image/audio evidence extraction (PyMuPDF; OCR via Sarvam Document AI, Tesseract fallback; audio via Sarvam Speech-to-Text)
-│       ├── language/        Translation gateway (Sarvam Mayura) for non-English filings/UI
+│       ├── language/        Translation gateway (Sarvam Mayura) + text-to-speech narration (Sarvam Bulbul)
 │       ├── routers/
 │       │   ├── documents.py   Evidence upload, discrepancy check, pre-filing preliminary review
-│       │   └── reviews.py     Human-review queue/detail/decision endpoints
+│       │   └── reviews.py     Human-review queue/detail/decision, audit-verify, ops/eval metrics
 │       ├── agents/          The five agents (run(ctx) -> AgentResult) + NLP helpers
 │       │   ├── base.py             Agent contract + prompt-injection fence
 │       │   ├── ingestion.py         Agent 1 — parse, classify, confidence -> tier routing
@@ -60,15 +125,49 @@ DigiNyaya/
 │       ├── promote_reviewer.py       Grants/revokes is_reviewer on an existing account (CLI only)
 │       ├── translate_ui_strings.py   Regenerates one locale file from en.json via Sarvam
 │       ├── fill_missing_translations.py  Incrementally fills only the KEYS a locale file is missing
+│       ├── load_test.py              Concurrency/latency load testing + real-pipeline usage generation
 │       └── smoke_http.py             End-to-end HTTP + SSE smoke test
 └── frontend/                React (Vite) — the live demo UI
     └── src/
         ├── pages/           Home, Disputes, NewCase, Respondent, Resolve, ReviewerQueue, ReviewerCaseDetail
-        ├── components/      Stepper, ResolutionDoc, EvidenceDropzone, CaseStrengthPanel
+        ├── components/      Stepper, ResolutionDoc, EvidenceDropzone, CaseStrengthPanel, ListenButton
         ├── auth/            Signup/login screens, protected-route guards
         ├── i18n/             English + 10 Indic-language dictionaries
         └── api.js           REST client + auth + SSE streaming helper
 ```
+
+---
+
+## Key Engineering Highlights
+
+- **Hand-rolled orchestration state machine**, not a linear script — routes on
+  Agent 1's confidence, loops back to Research when precedent coverage is thin,
+  pauses for the mediation decision, and resumes correctly even across a page reload
+- **Deterministic guardrails around every LLM output**: relief amounts are clamped to
+  a precedent-derived band, dismissal is forced whenever the respondent's case is at
+  least as strong as the claimant's regardless of what the model proposed, and
+  citations are filtered to what was actually retrieved
+- **SHA-256 hash-chained, tamper-evident event log** — altering, removing, or
+  reordering a past event breaks the chain from that point forward, verifiable live
+  via `GET /api/reviews/{id}/audit-verify`
+- **Circuit breakers on every direct Sarvam call site** (chat, Document AI, Speech-to-
+  Text, Bulbul TTS, Mayura translation) so one product outage degrades to that
+  caller's existing fallback instead of cascading or hanging
+- **Streamed, durable resolution drafting** — the reasoned findings stream token-by-
+  token over SSE, backed by an append-only log that replays from a cursor on
+  reconnect, so a mid-resolution refresh never loses progress
+- **Rate-limited, cost-aware AI usage** on every LLM/Sarvam-cost-bearing endpoint,
+  independently tunable per feature
+- **Provider-agnostic LLM client** — swap between Sarvam, a local Ollama model, or
+  fully scripted fallback logic with a single environment variable, with automatic
+  cascading fallback if the configured provider is unreachable
+- **Zero-duplication API versioning** — every `/api/...` route is also reachable at
+  `/api/v1/...` via a single ASGI rewrite middleware (`app/core/versioning.py`)
+  rather than declaring each route twice
+
+---
+
+## How it works
 
 ### The multi-agent architecture
 
@@ -279,9 +378,14 @@ back in their own filing language is a genuine access-to-justice improvement, no
 
 ---
 
-## Running it locally
+## Installation
 
 You need **Python 3.10+** and **Node 18+**. Open two terminals.
+
+```bash
+git clone https://github.com/shivaumsharma/DigiNyaya.git
+cd DigiNyaya
+```
 
 ### 1. Backend (port 8000)
 
@@ -341,8 +445,9 @@ Reusing an already-rotated-out refresh token revokes every token descended from 
 | `DIGINYAYA_DB` | `backend/diginyaya.db` | One shared SQLite file for cases *and* auth tables |
 | `DIGINYAYA_FRONTEND_URL` | `http://localhost:5173` | Base URL for email-verification / password-reset links |
 
-SMS and email are provider-stub interfaces (`app/auth/sms.py`, `app/auth/mail.py`) — dev logs
-the OTP/link to the console instead of sending anything real.
+SMS and email are provider-stub interfaces (`app/auth/sms.py`, `app/auth/mail.py`) in local dev
+by default; a real transactional email provider (**Resend**) is wired up for production — see
+`DIGINYAYA_MAIL_FROM`/`RESEND_API_KEY` in `.env.example`.
 
 ### Migrations & tests
 
@@ -399,6 +504,25 @@ delete. See **Known issues** below for why that's an open decision, not an overs
 
 ---
 
+## Deployment
+
+The application is deployment-ready and currently deployed on **Render**:
+
+- **Backend** — FastAPI app deployed as a native Python buildpack (`python -m uvicorn app.main:app`).
+- **Frontend** — the Vite build deployed as a static site.
+- **AI provider** — Sarvam AI, reached over the network from the Render backend (no local model
+  or GPU needed in production).
+- **Email** — Resend, for verification/reset links and case notifications.
+
+Deployment architecture includes: environment-driven configuration (no secrets in code), a
+modular backend/frontend split deployable independently, and GitHub-integrated redeploys on push.
+
+The most important current limitation — Render's free tier gives the backend an **ephemeral**
+container disk, so the SQLite database is wiped on every redeploy and idle-timeout spin-down — is
+tracked in **Known issues** below, along with the Postgres migration that resolves it.
+
+---
+
 ## Known issues / technical debt
 
 - **No persistent database in production.** `diginyaya.db` lives on Render's free-tier
@@ -428,9 +552,11 @@ delete. See **Known issues** below for why that's an open decision, not an overs
 
 ---
 
-## Roadmap (beyond this prototype)
+## Future Enhancements
 
-- All four dispute types reaching real production traffic; a genuine persistent database.
+- A real, persistent production database (Postgres) — the single highest-priority item; see
+  **Known issues** above.
+- All four dispute types reaching real production traffic.
 - Tier 2 → Tier 3: complex civil and criminal matters with mandatory human sign-off.
 - Government ODR integration, High Court partnerships.
 - Batching Sarvam Document AI calls for PDFs over its 10-page limit (currently falls back to
@@ -438,6 +564,17 @@ delete. See **Known issues** below for why that's an open decision, not an overs
 - Scaling precedent retrieval to a dedicated vector DB (Qdrant/pgvector) once the corpus
   outgrows the in-process store in `app/rag/index.py` — the orchestrator, agent contract and
   API stay identical either way.
+- A self-service data deletion flow, once the legal retention-vs-erasure policy question
+  (see **Known issues**) is resolved.
+- A real SMS provider and cloud object storage (S3/GCS) for evidence uploads, replacing the
+  current local-disk/console-log stubs.
+
+---
+
+## Author
+
+**Shivaum Shekhar Sharma**
+Computer Science Engineering (Data Science), Manipal Institute of Technology, Bengaluru
 
 ---
 
