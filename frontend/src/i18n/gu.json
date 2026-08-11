@@ -206,7 +206,12 @@
       "photo": "ફોટો",
       "other": "અન્ય"
     },
-    "continueToEvidence": "પુરાવા ચાલુ રાખો"
+    "continueToEvidence": "પુરાવા ચાલુ રાખો",
+    "titleFor": "{{category}} દાવા ફોર્મ ભરો.",
+    "placeholderDescriptionExample": "{{example}}",
+    "categorySuggestion": "આ {{category}} નો કેસ લાગે છે.",
+    "categorySuggestionSwitch": "{{category}} પર સ્વિચ કરો.",
+    "categorySuggestionDismiss": "ઈન્કાર"
   },
   "respondent": {
     "title": "પ્રતિવાદીએ જાણ કરી",
@@ -363,7 +368,8 @@
     "subtitle": "તમારા પુરાવાઓની ઝડપી, બિન-બાઈન્ડીંગ એ.આઈ. તપાસ -- પ્રતિવાદીના જવાબો પછી વાસ્તવિક સમીક્ષા થાય છે.",
     "loading": "તમારા પુરાવાઓની સમીક્ષા કરી રહ્યા છીએ...",
     "addMoreEvidence": "વધુ પુરાવા ઉમેરો.",
-    "backToEvidence": "પુરાવા પર પાછા ફરો."
+    "backToEvidence": "પુરાવા પર પાછા ફરો.",
+    "confirmAccurate": "આ દાવામાં આપેલી માહિતી મારી જાણકારી મુજબ સચોટ છે અને હું આ વિવાદને નિષ્ઠાપૂર્વક દાખલ કરું છું."
   },
   "caseStrength": {
     "doneTag": "પૂર્ણ",
@@ -375,5 +381,27 @@
     "authenticityPrefix": "સંભવિત સમસ્યા:",
     "authenticityCaveat": "આ ફક્ત દસ્તાવેજના લખાણની સ્પષ્ટ અસંગતતાઓ માટે તપાસ કરે છે -- તે નકલી છબી અથવા બદલાયેલ સ્કેનને શોધી શકતું નથી, અને તે વાસ્તવિક ચકાસણીનો વિકલ્પ નથી.",
     "noEvidenceFiled": "આ કેસમાં પુરાવા તરીકે કોઈ દસ્તાવેજો રજૂ કરવામાં આવ્યા નથી."
+  },
+  "myCases": {
+    "title": "મારા કેસો",
+    "subtitle": "તમે જે પણ વિવાદ દાખલ કર્યો છે, તે એક જગ્યાએ.",
+    "loading": "તમારા કેસ લોડ થઈ રહ્યા છે...",
+    "empty": "તમે હજુ સુધી કોઈ કેસ દાખલ નથી કર્યો.",
+    "fileFirst": "તમારો પ્રથમ કેસ નોંધાવો.",
+    "status": {
+      "draft": "મુસદ્દો",
+      "awaiting_response": "પ્રતિભાવની પ્રતીક્ષા",
+      "ready": "સમાધાન માટે તૈયાર",
+      "mediation_proposed": "મધ્યસ્થતા प्रस्तावित",
+      "resolved": "સમાધાન થયેલ",
+      "escalated": "માનવ સમીક્ષા માટે આગળ વધારી દેવામાં આવી છે."
+    }
+  },
+  "audio": {
+    "listenToProposal": "દરખાસ્ત સાંભળો",
+    "listenToResolution": "ઠરાવ સાંભળો",
+    "loading": "ઓડિયો લોડ થઈ રહ્યો છે...",
+    "listening": "વગાડવું - વિરામ માટે ટેપ કરો",
+    "unavailable": "ઓડિયો વર્ણન અત્યારે ઉપલબ્ધ નથી."
   }
 }

@@ -243,14 +243,39 @@ not currently an env var) — each document costs at least one LLM relevance-che
 count is an unbounded cost/latency vector, not just a storage one.
 
 **Resilience against a Sarvam outage**: every direct Sarvam call site (chat/JSON generation,
-Document AI OCR, Speech-to-Text, translation, language detection) is guarded by its own
-`app/core/circuit_breaker.CircuitBreaker` instance. After 3 consecutive failures on one endpoint,
-that breaker opens for 30s and calls fail fast (no network attempt) instead of paying the full
-timeout/retry loop again — degrading to the same fallback behavior each caller already has
-(Tesseract for OCR, untranslated passthrough text for translation, scripted agent behavior for
-chat) just faster. Endpoints fail independently: a Document AI outage doesn't open the
-Speech-to-Text or translation breakers. See `scripts/load_test.py` (`light`/`pipeline` modes) for
-concurrency/latency load testing against a running backend.
+Document AI OCR, Speech-to-Text, Text-to-Speech, translation, language detection) is guarded by
+its own `app/core/circuit_breaker.CircuitBreaker` instance. After 3 consecutive failures on one
+endpoint, that breaker opens for 30s and calls fail fast (no network attempt) instead of paying
+the full timeout/retry loop again — degrading to the same fallback behavior each caller already
+has (Tesseract for OCR, untranslated passthrough text for translation, scripted agent behavior for
+chat, a hidden play control for narration) just faster. Endpoints fail independently: a Document
+AI outage doesn't open the Speech-to-Text or Text-to-Speech breakers. See `scripts/load_test.py`
+(`light`/`pipeline` modes) for concurrency/latency load testing against a running backend.
+
+---
+
+## Audio narration (text-to-speech)
+
+A claimant can listen to the mediation proposal and the final resolution order read aloud, in
+whichever language the case is being viewed in, via **Sarvam's Bulbul model** (`app/language/tts.py`).
+This is the counterpart to the Speech-to-Text audio-evidence support above — DigiNyaya's four other
+Sarvam product lines (chat/JSON generation, Document AI, Speech-to-Text, translation) were already
+in use; Bulbul was not, until this. The point isn't novelty for its own sake: a written legal
+resolution is a real accessibility barrier for claimants with limited literacy, and reading it
+back in their own filing language is a genuine access-to-justice improvement, not a gimmick.
+
+- `GET /api/cases/{id}/mediation/audio` and `GET /api/cases/{id}/resolution/audio` — reuse the same
+  ownership check and localization path as `GET /api/cases/{id}`, so what's narrated always matches
+  what's on screen (an explicit `?lang=` override is honored the same way). Returns `audio/mpeg`
+  bytes, or `404` if that stage hasn't happened yet, or `503` if Sarvam is unavailable.
+- No cross-request audio chunk-stitching: text over Bulbul's practical single-clip limit
+  (~1500 characters) is truncated at a sentence boundary rather than built out with chunking
+  infrastructure for a case (a resolution long enough to need it) that essentially never happens
+  in practice — resolution orders and mediation proposals are realistically a few sentences.
+  Rate-limited the same way as every other LLM-cost-bearing endpoint (20 calls / 10 min / user).
+- Frontend: a reusable `<ListenButton>` (`frontend/src/components/ListenButton.jsx`) lazily fetches
+  audio on first click — nothing plays, and no credits are spent, until a citizen actually asks to
+  listen — then toggles play/pause on the same clip.
 
 ---
 
@@ -346,6 +371,8 @@ python -m pytest -v
 | `POST` | `/api/cases/{id}/request-review` | Manually escalate to human review, any tier |
 | `POST` | `/api/cases/{id}/run` | Start the agent pipeline as a background job |
 | `POST` | `/api/cases/{id}/mediation` | Accept / decline mediation; starts resolution job |
+| `GET` | `/api/cases/{id}/mediation/audio` | Mediation proposal read aloud (Sarvam Bulbul TTS) |
+| `GET` | `/api/cases/{id}/resolution/audio` | Resolution order read aloud (Sarvam Bulbul TTS) |
 | `GET` | `/api/cases/{id}/events?after=<seq>` | SSE — replay from cursor + live stream (incl. tokens) |
 | `GET` | `/api/cases/{id}` | Full case view |
 | `GET` | `/api/ai-status` | Which engine is active |

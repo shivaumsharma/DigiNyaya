@@ -28,7 +28,7 @@ except Exception:
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from . import db, jobs, llm
@@ -53,6 +53,7 @@ from .language.config import (
 )
 from .language.gateway import UnsupportedLanguageError, get_language_gateway
 from .language.logging import configure_language_logging
+from .language.tts import synthesize_speech
 from .models import (
     CaseSubmitConfirmation,
     CaseSummaryOut,
@@ -579,6 +580,70 @@ def submit_case(case_id: str, confirmation: CaseSubmitConfirmation, user: User =
 def get_case(case_id: str, lang: str | None = None, user: User = Depends(current_user)):
     case = _load_owned(case_id, user.id)
     return _localize_case_response(case, lang)
+
+
+# LLM-cost-bearing (Sarvam Bulbul) -- see auth.rate_limit.enforce_call_limit's
+# docstring. A citizen might replay a resolution/proposal a few times while
+# reading along; generous relative to that, bounds a scripted client.
+_TTS_LIMIT, _TTS_WINDOW = 20, timedelta(minutes=10)
+
+
+def _mediation_narration_text(mediation: dict) -> str:
+    parts = [mediation.get("headline", ""), mediation.get("explanation", "")]
+    parts.extend(mediation.get("rationale") or [])
+    return " ".join(p for p in parts if p)
+
+
+def _resolution_narration_text(resolution: dict) -> str:
+    parts = [resolution.get("header", ""), resolution.get("subheader", ""), resolution.get("basis", "")]
+    parts.extend(resolution.get("findings") or [])
+    parts.extend(resolution.get("order") or [])
+    parts.append(resolution.get("footer", ""))
+    return " ".join(p for p in parts if p)
+
+
+@app.get("/api/cases/{case_id}/mediation/audio")
+def mediation_audio(
+    case_id: str, lang: str | None = None, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+):
+    """Read the mediation proposal aloud in the same language it's
+    displayed in -- localizes via the same path as GET /api/cases/{id}
+    before narrating, so what's read matches what's on screen.
+    """
+    case = _load_owned(case_id, user.id)
+    mediation = case.get("mediation")
+    if not mediation:
+        raise HTTPException(status_code=404, detail="No mediation proposal on this case yet")
+    enforce_call_limit(auth_db, user.id, "tts_narration", limit=_TTS_LIMIT, window=_TTS_WINDOW)
+
+    target_language = _resolve_target_language(case, lang)
+    localized = _localize_case_response(case, lang)
+    text = _mediation_narration_text(localized["mediation"])
+    audio = synthesize_speech(text, target_language)
+    if audio is None:
+        raise HTTPException(status_code=503, detail="Audio narration is unavailable right now")
+    return Response(content=audio, media_type="audio/mpeg")
+
+
+@app.get("/api/cases/{case_id}/resolution/audio")
+def resolution_audio(
+    case_id: str, lang: str | None = None, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+):
+    """Read the resolution order aloud in the same language it's displayed
+    in. Same rationale as mediation_audio above."""
+    case = _load_owned(case_id, user.id)
+    resolution = case.get("resolution")
+    if not resolution:
+        raise HTTPException(status_code=404, detail="No resolution on this case yet")
+    enforce_call_limit(auth_db, user.id, "tts_narration", limit=_TTS_LIMIT, window=_TTS_WINDOW)
+
+    target_language = _resolve_target_language(case, lang)
+    localized = _localize_case_response(case, lang)
+    text = _resolution_narration_text(localized["resolution"])
+    audio = synthesize_speech(text, target_language)
+    if audio is None:
+        raise HTTPException(status_code=503, detail="Audio narration is unavailable right now")
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @app.post("/api/cases/{case_id}/respond")

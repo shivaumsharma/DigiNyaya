@@ -5,6 +5,7 @@ import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { AGENT_ICONS, Check, Clock, Handshake, Gavel, Shield } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'
 import ResolutionDoc from '../components/ResolutionDoc.jsx'
+import ListenButton from '../components/ListenButton.jsx'
 
 const AGENT_ORDER = ['orchestrator', 'ingestion', 'research', 'analysis', 'mediation', 'resolution']
 
@@ -185,9 +186,9 @@ export default function Resolve() {
 
           {phase === 'escalated' && <EscalationPanel escalation={escalation} t={t} />}
 
-          {phase === 'mediation' && mediation && <MediationPanel proposal={mediation} onDecide={decide} t={t} />}
+          {phase === 'mediation' && mediation && <MediationPanel proposal={mediation} onDecide={decide} t={t} caseId={id} lang={lang} />}
 
-          {(phase === 'resolving' || phase === 'resolved') && resolution && <ResolutionDoc doc={resolution} />}
+          {(phase === 'resolving' || phase === 'resolved') && resolution && <ResolutionDoc doc={resolution} caseId={id} lang={lang} />}
         </div>
 
         <SidePanel caseData={caseData} phase={phase} resolution={resolution} t={t} onRequestReview={requestReview} />
@@ -400,12 +401,18 @@ function EscalationPanel({ escalation, t }) {
   )
 }
 
-function MediationPanel({ proposal, onDecide, t }) {
+function MediationPanel({ proposal, onDecide, t, caseId, lang }) {
   return (
     <div className="mediation-banner fade-in">
-      <h3>
-        <Handshake width={22} height={22} /> {t('resolve.mediation.panelTitle')}
-      </h3>
+      <div className="flex between" style={{ alignItems: 'flex-start' }}>
+        <h3>
+          <Handshake width={22} height={22} /> {t('resolve.mediation.panelTitle')}
+        </h3>
+        <ListenButton
+          fetchAudio={() => api.mediationAudio(caseId, lang)}
+          label={t('audio.listenToProposal')}
+        />
+      </div>
       <p className="headline-big">{proposal.headline}</p>
       {proposal.explanation && (
         <div className="llm-quote">
