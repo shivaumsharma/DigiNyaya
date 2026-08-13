@@ -26,7 +26,7 @@ resource "aws_elastic_beanstalk_application" "diginyaya" {
 resource "aws_elastic_beanstalk_environment" "backend" {
   name                = "diginyaya-backend-${var.environment}"
   application         = aws_elastic_beanstalk_application.diginyaya.name
-  solution_stack_name = "64bit Amazon Linux 2023 v4.3.5 running Docker" # check `aws elasticbeanstalk list-available-solution-stacks` for the current string before applying
+  solution_stack_name = "64bit Amazon Linux 2023 v4.13.6 running Docker" # confirmed current via `aws elasticbeanstalk list-available-solution-stacks --region eu-north-1`
 
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
@@ -110,7 +110,13 @@ resource "aws_elastic_beanstalk_environment" "backend" {
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "DIGINYAYA_FRONTEND_URL"
-    value     = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+    # Deliberately NOT a reference to aws_cloudfront_distribution.frontend --
+    # that would make this environment depend on CloudFront existing before
+    # it can be created, which defeats the point of standing the backend up
+    # independently while CloudFront waits on AWS account verification.
+    # Update this to the real CloudFront URL (a cheap, non-disruptive
+    # `terraform apply`) once that distribution exists.
+    value = var.frontend_url_override
   }
 
   setting {

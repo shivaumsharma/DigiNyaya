@@ -51,3 +51,9 @@ variable "jwt_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "frontend_url_override" {
+  description = "DIGINYAYA_FRONTEND_URL for the backend's CORS config. Empty until the CloudFront distribution exists (see elastic_beanstalk.tf) -- set to https://<cloudfront-domain> once it's created, via terraform.tfvars or -var."
+  type        = string
+  default     = ""
+}
