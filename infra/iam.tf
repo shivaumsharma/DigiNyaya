@@ -96,8 +96,7 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      # Replace <github-org>/<repo> with the real values before applying.
-      values = ["repo:<github-org>/DigiNyaya:ref:refs/heads/main"]
+      values = ["repo:shivaumsharma/DigiNyaya:ref:refs/heads/main"]
     }
   }
 }

@@ -8,16 +8,15 @@ terraform {
     }
   }
 
-  # One-time manual bootstrap required first -- see README.md. Uncomment and
-  # fill in the bucket name once that bucket exists; Terraform can't create
-  # its own state backend.
-  # backend "s3" {
-  #   bucket       = "diginyaya-terraform-state-<your-account-id>"
-  #   key          = "diginyaya/terraform.tfstate"
-  #   region       = "eu-north-1"
-  #   encrypt      = true
-  #   use_lockfile = true
-  # }
+  # Bootstrapped manually (see README.md) -- account 753779157603's state
+  # bucket, versioning enabled.
+  backend "s3" {
+    bucket       = "diginyaya-terraform-state-753779157603"
+    key          = "diginyaya/terraform.tfstate"
+    region       = "eu-north-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
