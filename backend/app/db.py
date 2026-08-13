@@ -1,24 +1,36 @@
-"""SQLite persistence: durable cases + an append-only event log (audit trail).
+"""Postgres/SQLite-portable persistence via SQLAlchemy Core: durable cases +
+an append-only event log (audit trail).
 
 Replaces the volatile in-memory dict. The events table is append-only and is
 both the audit record (essential for a justice system) and the source for
 replay-on-refresh.
 
-Concurrency model: each thread gets its OWN sqlite3.Connection (thread-local,
-lazily opened) rather than every thread sharing one connection serialized
-behind a single global lock. WAL mode (enabled below) natively supports one
-writer + many concurrent readers at the SQLite level -- the old single-lock
-design serialized every read behind every write and every other read too,
-which is exactly what WAL mode exists to avoid. busy_timeout makes SQLite
-retry internally on write contention between threads instead of raising
-"database is locked" immediately.
+Rewritten from raw sqlite3 (2026-08-08) to SQLAlchemy Core so the same code
+runs against a real Postgres instance (DIGINYAYA_DB=postgresql+psycopg://...)
+as well as local/test SQLite -- see backend/app/db_url.py for how that env
+var is resolved, and the AWS migration plan for why. Kept as Core rather than
+a full ORM rewrite: the schema is already parameterized SQL against named
+tables/columns, which maps onto Table/select/insert/update almost 1:1
+without forcing every row into a mapped class.
+
+Concurrency model: SQLAlchemy's connection pool replaces the old thread-
+local sqlite3.Connection cache -- each call below opens a short-lived pooled
+connection via engine.begin() rather than reusing one per thread. WAL mode
+(enabled below, sqlite only) still gives one writer + many concurrent
+readers at the SQLite level. On Postgres, MVCC provides the same property
+natively and neither WAL nor busy_timeout apply.
 
 The one place this still needs an explicit lock is update_case()'s
 read-modify-write (SELECT the current JSON blob, mutate it, UPDATE it back):
 that's two separate statements, so without a lock two threads updating the
 SAME case_id could interleave and one update's changes silently overwrite the
-other's ("lost update"). Every other function here is a single INSERT/SELECT
-statement, which doesn't have that race and needs no lock at all.
+other's ("lost update"). This is a Python-process-level race (uvicorn's
+single worker + jobs.py's background threads), not a database one, so the
+same threading.Lock is correct regardless of which database engine is behind
+it -- this migration deliberately runs exactly one backend instance (see the
+AWS migration plan), so a single in-process lock is still sufficient. Every
+other function here is a single INSERT/SELECT statement, which doesn't have
+that race and needs no lock at all.
 """
 
 from __future__ import annotations
@@ -26,12 +38,124 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sqlite3
 import threading
+from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Float,
+    Integer,
+    String,
+    Table,
+    Text,
+    create_engine,
+    event,
+    func,
+    select,
+)
+from sqlalchemy.pool import StaticPool
+
+from .auth.db import Base
+from .db_url import resolve_db_url
+
 _DB_PATH = os.getenv("DIGINYAYA_DB", os.path.join(os.path.dirname(__file__), "..", "diginyaya.db"))
-_local = threading.local()
+_DATABASE_URL = resolve_db_url(_DB_PATH)
+
+_is_sqlite = _DATABASE_URL.startswith("sqlite")
+_is_sqlite_memory = _is_sqlite and (":memory:" in _DATABASE_URL or _DATABASE_URL == "sqlite://")
+
+_engine_kwargs: dict = {"connect_args": {"check_same_thread": False}} if _is_sqlite else {}
+if _is_sqlite_memory:
+    # A plain sqlite:///:memory: engine hands each new pooled connection its
+    # OWN fresh, empty database -- fine for sqlite3's single persistent
+    # connection this file used to keep, but SQLAlchemy's pool opens/closes
+    # connections per checkout by default, so without StaticPool (one
+    # connection, reused, never closed) every call would see an empty DB.
+    # Only tests use ":memory:" (see tests/conftest.py's DIGINYAYA_DB=":memory:").
+    _engine_kwargs["poolclass"] = StaticPool
+
+engine = create_engine(_DATABASE_URL, **_engine_kwargs)
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:
+    if not _is_sqlite:
+        return
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.close()
+
+
+# Shared with app/auth/db.py's ORM models (Base.metadata) so both subsystems'
+# tables live on one MetaData -- the one alembic/env.py points target_metadata
+# at, keeping every table (auth or case-management) visible to migrations.
+metadata = Base.metadata
+
+cases = Table(
+    "cases",
+    metadata,
+    Column("case_id", String, primary_key=True),
+    Column("owner_id", String),
+    Column("data", Text, nullable=False),
+    Column("created_at", Text),
+    Column("updated_at", Text),
+)
+
+events = Table(
+    "events",
+    metadata,
+    Column("seq", Integer, primary_key=True, autoincrement=True),
+    Column("case_id", String, nullable=False),
+    Column("type", Text),
+    Column("agent", Text),
+    Column("status", Text),
+    Column("title", Text),
+    Column("detail", Text),
+    Column("payload", Text),
+    Column("ts", Float),
+    Column("created_at", Text),
+    Column("hash", Text),
+    Column("prev_hash", Text),
+)
+
+documents = Table(
+    "documents",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("case_id", String, nullable=False),
+    Column("original_filename", Text),
+    Column("storage_path", Text),
+    Column("mime_type", Text),
+    Column("file_size", Integer),
+    Column("is_scanned", Boolean),
+    Column("raw_ocr_text", Text),
+    Column("cleaned_text", Text),
+    Column("extraction_status", Text, server_default="pending"),
+    Column("ocr_confidence", Float),
+    Column("ocr_engine", Text),
+    Column("error_message", Text),
+    Column("uploaded_at", Text),
+    Column("updated_at", Text),
+)
+
+discrepancies = Table(
+    "discrepancies",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("case_id", String, nullable=False),
+    Column("document_ids", Text, nullable=False),
+    Column("discrepancy_type", Text, nullable=False),
+    Column("severity", Text, nullable=False),
+    Column("confidence_score", Float, nullable=False),
+    Column("explanation", Text),
+    Column("source_location", Text),
+    Column("flagged_for_review", Boolean, nullable=False, default=False, server_default="0"),
+    Column("created_at", Text),
+)
+
 # Guards ONLY update_case()'s read-modify-write -- see module docstring.
 # Every other function here is a single statement and doesn't need this.
 _update_lock = threading.Lock()
@@ -45,42 +169,24 @@ _update_lock = threading.Lock()
 _event_lock = threading.Lock()
 
 # Sentinel prev_hash for a case's first hashed event, and for the event
-# immediately following an unhashed "legacy" event (see the migration in
-# init_db() and verify_case_events() below) -- distinguishes "nothing to
-# chain from yet" from a real prior hash without needing a nullable
-# comparison at every verification step.
+# immediately following an unhashed "legacy" event (see verify_case_events()
+# below) -- distinguishes "nothing to chain from yet" from a real prior hash
+# without needing a nullable comparison at every verification step.
 _EVENT_CHAIN_GENESIS = "0" * 64
 
 
-def _connect() -> sqlite3.Connection:
-    conn = getattr(_local, "conn", None)
-    if conn is None:
-        conn = sqlite3.connect(_DB_PATH, check_same_thread=True)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        _local.conn = conn
-    return conn
-
-
-def _ensure_events_hash_columns(conn: sqlite3.Connection) -> None:
-    """Add hash/prev_hash to an events table created before the tamper-
-    evident audit log (added 2026-08-08). SQLite's ADD COLUMN is safe on a
-    live table with real rows -- existing rows just get NULL for both new
-    columns, which verify_case_events() treats as "predates hashing",
-    never as tampering. CREATE TABLE IF NOT EXISTS above is a no-op on an
-    existing table, so this is the actual migration path for any database
-    that already had an events table before this column existed.
+def _now_iso() -> str:
+    """Python-computed timestamp string for the free-text created_at/
+    updated_at columns above (they're Text, not a typed DateTime -- nothing
+    else in the app parses them, see the AWS migration plan). Computed in
+    Python rather than via a DB-side now()/CURRENT_TIMESTAMP function so the
+    stored format is identical regardless of which database is behind this
+    engine.
     """
-    existing = {row["name"] for row in conn.execute("PRAGMA table_info(events)").fetchall()}
-    if "hash" not in existing:
-        conn.execute("ALTER TABLE events ADD COLUMN hash TEXT")
-    if "prev_hash" not in existing:
-        conn.execute("ALTER TABLE events ADD COLUMN prev_hash TEXT")
-    conn.commit()
+    return datetime.now(timezone.utc).isoformat()
 
 
-def _compute_event_hash(case_id: str, event: dict, ts: float, prev_hash: str) -> str:
+def _compute_event_hash(case_id: str, event_data: dict, ts: float, prev_hash: str) -> str:
     """Deterministic hash covering everything append_event() persists for
     this row plus the previous event's hash, forming a per-case hash chain:
     changing any stored field of ANY past event, or removing/reordering one,
@@ -90,12 +196,12 @@ def _compute_event_hash(case_id: str, event: dict, ts: float, prev_hash: str) ->
     canonical = json.dumps(
         {
             "case_id": case_id,
-            "type": event.get("type", ""),
-            "agent": event.get("agent", ""),
-            "status": event.get("status", ""),
-            "title": event.get("title", ""),
-            "detail": event.get("detail", ""),
-            "payload": event.get("payload", {}),
+            "type": event_data.get("type", ""),
+            "agent": event_data.get("agent", ""),
+            "status": event_data.get("status", ""),
+            "title": event_data.get("title", ""),
+            "detail": event_data.get("detail", ""),
+            "payload": event_data.get("payload", {}),
             "ts": ts,
             "prev_hash": prev_hash,
         },
@@ -106,184 +212,144 @@ def _compute_event_hash(case_id: str, event: dict, ts: float, prev_hash: str) ->
 
 
 def init_db() -> None:
-    conn = _connect()
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS cases (
-            case_id TEXT PRIMARY KEY,
-            owner_id TEXT,
-            data TEXT NOT NULL,
-            created_at TEXT,
-            updated_at TEXT
-        )"""
-    )
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS events (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_id TEXT NOT NULL,
-            type TEXT,
-            agent TEXT,
-            status TEXT,
-            title TEXT,
-            detail TEXT,
-            payload TEXT,
-            ts REAL,
-            created_at TEXT DEFAULT (datetime('now')),
-            hash TEXT,
-            prev_hash TEXT
-        )"""
-    )
-    _ensure_events_hash_columns(conn)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_case ON events(case_id, seq)")
-    # No endpoint queries WHERE owner_id=... yet (every lookup today is by
-    # case_id, then an in-app ownership check -- see security/auth.py's
-    # ensure_owner). Added ahead of a "my disputes" listing endpoint,
-    # which doesn't exist yet either; free and harmless to have in place.
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cases_owner ON cases(owner_id)")
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS documents (
-            id TEXT PRIMARY KEY,
-            case_id TEXT NOT NULL,
-            original_filename TEXT,
-            storage_path TEXT,
-            mime_type TEXT,
-            file_size INTEGER,
-            is_scanned INTEGER,
-            raw_ocr_text TEXT,
-            cleaned_text TEXT,
-            extraction_status TEXT DEFAULT 'pending',
-            ocr_confidence REAL,
-            ocr_engine TEXT,
-            error_message TEXT,
-            uploaded_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now'))
-        )"""
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_case ON documents(case_id)")
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS discrepancies (
-            id TEXT PRIMARY KEY,
-            case_id TEXT NOT NULL,
-            document_ids TEXT NOT NULL,
-            discrepancy_type TEXT NOT NULL,
-            severity TEXT NOT NULL,
-            confidence_score REAL NOT NULL,
-            explanation TEXT,
-            source_location TEXT,
-            flagged_for_review INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now'))
-        )"""
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_discrepancies_case ON discrepancies(case_id)")
-    conn.commit()
+    # create_all is idempotent (CREATE TABLE IF NOT EXISTS-equivalent per
+    # dialect) -- schema evolution from here on happens via Alembic
+    # migrations (see alembic/versions/), not by editing the Table defs
+    # above and relying on this call to pick up the change.
+    metadata.create_all(engine, tables=[cases, events, documents, discrepancies])
 
 
 # ----------------------------- cases ----------------------------- #
 def save_case(case: dict) -> None:
-    conn = _connect()
-    conn.execute(
-        "INSERT OR REPLACE INTO cases(case_id, owner_id, data, created_at, updated_at) "
-        "VALUES(?,?,?,?,datetime('now'))",
-        (case["case_id"], case.get("owner_id", ""), json.dumps(case), case.get("created_at", "")),
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    values = {
+        "case_id": case["case_id"],
+        "owner_id": case.get("owner_id", ""),
+        "data": json.dumps(case),
+        "created_at": case.get("created_at", ""),
+        "updated_at": _now_iso(),
+    }
+    insert_fn = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
+    stmt = insert_fn(cases).values(**values)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["case_id"],
+        set_={k: v for k, v in values.items() if k != "case_id"},
     )
-    conn.commit()
+    with engine.begin() as conn:
+        conn.execute(stmt)
 
 
 def get_case(case_id: str) -> Optional[dict]:
-    row = _connect().execute("SELECT data FROM cases WHERE case_id=?", (case_id,)).fetchone()
-    return json.loads(row["data"]) if row else None
+    with engine.begin() as conn:
+        row = conn.execute(select(cases.c.data).where(cases.c.case_id == case_id)).fetchone()
+    return json.loads(row.data) if row else None
 
 
 def update_case(case_id: str, **fields) -> Optional[dict]:
     # See module docstring: the only read-modify-write here, so it's the one
     # place that still needs a lock to stay atomic across threads.
-    with _update_lock:
-        conn = _connect()
-        row = conn.execute("SELECT data FROM cases WHERE case_id=?", (case_id,)).fetchone()
+    with _update_lock, engine.begin() as conn:
+        row = conn.execute(select(cases.c.data).where(cases.c.case_id == case_id)).fetchone()
         if row is None:
             return None
-        case = json.loads(row["data"])
+        case = json.loads(row.data)
         case.update(fields)
         conn.execute(
-            "UPDATE cases SET data=?, owner_id=?, updated_at=datetime('now') WHERE case_id=?",
-            (json.dumps(case), case.get("owner_id", ""), case_id),
+            cases.update()
+            .where(cases.c.case_id == case_id)
+            .values(data=json.dumps(case), owner_id=case.get("owner_id", ""), updated_at=_now_iso())
         )
-        conn.commit()
         return case
 
 
 def all_cases() -> list[dict]:
-    rows = _connect().execute("SELECT data FROM cases").fetchall()
-    return [json.loads(r["data"]) for r in rows]
+    with engine.begin() as conn:
+        rows = conn.execute(select(cases.c.data)).fetchall()
+    return [json.loads(r.data) for r in rows]
 
 
 def list_cases_by_owner(owner_id: str) -> list[dict]:
     # idx_cases_owner already existed (added ahead of this endpoint, see its
     # own comment) -- this is the first query that actually uses it.
-    rows = _connect().execute(
-        "SELECT data FROM cases WHERE owner_id=? ORDER BY created_at DESC", (owner_id,)
-    ).fetchall()
-    return [json.loads(r["data"]) for r in rows]
+    with engine.begin() as conn:
+        rows = conn.execute(
+            select(cases.c.data).where(cases.c.owner_id == owner_id).order_by(cases.c.created_at.desc())
+        ).fetchall()
+    return [json.loads(r.data) for r in rows]
 
 
 def case_count() -> int:
-    return _connect().execute("SELECT COUNT(*) c FROM cases").fetchone()["c"]
+    with engine.begin() as conn:
+        return conn.execute(select(func.count()).select_from(cases)).scalar_one()
 
 
 # ----------------------------- events ----------------------------- #
-def append_event(case_id: str, event: dict) -> int:
-    ts = event.get("ts", 0.0)
+def append_event(case_id: str, event_data: dict) -> int:
+    ts = event_data.get("ts", 0.0)
     # See _event_lock's declaration: the read (last hash for this case) and
     # the write (insert chained to it) must be atomic together, or two
     # threads appending to the same case could both chain off the same
     # prior event.
-    with _event_lock:
-        conn = _connect()
+    with _event_lock, engine.begin() as conn:
         last = conn.execute(
-            "SELECT hash FROM events WHERE case_id=? ORDER BY seq DESC LIMIT 1", (case_id,)
+            select(events.c.hash).where(events.c.case_id == case_id).order_by(events.c.seq.desc()).limit(1)
         ).fetchone()
-        # A NULL hash means the last row predates hashing (see
-        # _ensure_events_hash_columns) -- start a fresh chain from genesis
-        # rather than chaining onto a hash that was never computed.
-        prev_hash = last["hash"] if (last and last["hash"]) else _EVENT_CHAIN_GENESIS
-        event_hash = _compute_event_hash(case_id, event, ts, prev_hash)
-        cur = conn.execute(
-            "INSERT INTO events(case_id, type, agent, status, title, detail, payload, ts, hash, prev_hash) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (
-                case_id,
-                event.get("type", ""),
-                event.get("agent", ""),
-                event.get("status", ""),
-                event.get("title", ""),
-                event.get("detail", ""),
-                json.dumps(event.get("payload", {})),
-                ts,
-                event_hash,
-                prev_hash,
-            ),
+        # A NULL hash means the last row predates hashing -- start a fresh
+        # chain from genesis rather than chaining onto a hash that was never
+        # computed.
+        prev_hash = last.hash if (last and last.hash) else _EVENT_CHAIN_GENESIS
+        event_hash = _compute_event_hash(case_id, event_data, ts, prev_hash)
+        result = conn.execute(
+            events.insert().values(
+                case_id=case_id,
+                type=event_data.get("type", ""),
+                agent=event_data.get("agent", ""),
+                status=event_data.get("status", ""),
+                title=event_data.get("title", ""),
+                detail=event_data.get("detail", ""),
+                payload=json.dumps(event_data.get("payload", {})),
+                ts=ts,
+                created_at=_now_iso(),
+                hash=event_hash,
+                prev_hash=prev_hash,
+            )
         )
-        conn.commit()
-        return cur.lastrowid
+        return result.inserted_primary_key[0]
 
 
 def verify_case_events(case_id: str) -> dict:
     """Recompute this case's event hash chain and report whether it's
-    intact. Events with no hash (inserted before the migration in
-    _ensure_events_hash_columns) are counted separately as "unverifiable"
-    rather than treated as broken links -- append_event() deliberately
-    restarts the chain at genesis right after one, so a legacy gap is
-    expected, not evidence of tampering.
+    intact. Events with no hash (inserted before the tamper-evident audit
+    log existed) are counted separately as "unverifiable" rather than
+    treated as broken links -- append_event() deliberately restarts the
+    chain at genesis right after one, so a legacy gap is expected, not
+    evidence of tampering.
 
     Returns {"verified": bool, "event_count": int, "verified_count": int,
     "unverifiable_count": int, "first_break_seq": int | None}. verified is
     True only if every hashed event's stored hash matches a fresh
     recomputation AND correctly chains to the event before it.
     """
-    rows = _connect().execute(
-        "SELECT seq, case_id, type, agent, status, title, detail, payload, ts, hash, prev_hash "
-        "FROM events WHERE case_id=? ORDER BY seq",
-        (case_id,),
-    ).fetchall()
+    with engine.begin() as conn:
+        rows = conn.execute(
+            select(
+                events.c.seq,
+                events.c.case_id,
+                events.c.type,
+                events.c.agent,
+                events.c.status,
+                events.c.title,
+                events.c.detail,
+                events.c.payload,
+                events.c.ts,
+                events.c.hash,
+                events.c.prev_hash,
+            )
+            .where(events.c.case_id == case_id)
+            .order_by(events.c.seq)
+        ).fetchall()
 
     expected_prev = _EVENT_CHAIN_GENESIS
     unverifiable_count = 0
@@ -291,23 +357,23 @@ def verify_case_events(case_id: str) -> dict:
     first_break_seq: Optional[int] = None
 
     for row in rows:
-        if not row["hash"]:
+        if not row.hash:
             unverifiable_count += 1
             expected_prev = _EVENT_CHAIN_GENESIS  # chain restarts after a legacy gap
             continue
 
-        event = {
-            "type": row["type"],
-            "agent": row["agent"],
-            "status": row["status"],
-            "title": row["title"],
-            "detail": row["detail"],
-            "payload": json.loads(row["payload"] or "{}"),
+        event_data = {
+            "type": row.type,
+            "agent": row.agent,
+            "status": row.status,
+            "title": row.title,
+            "detail": row.detail,
+            "payload": json.loads(row.payload or "{}"),
         }
-        recomputed = _compute_event_hash(row["case_id"], event, row["ts"], expected_prev)
-        broken_here = row["prev_hash"] != expected_prev or row["hash"] != recomputed
+        recomputed = _compute_event_hash(row.case_id, event_data, row.ts, expected_prev)
+        broken_here = row.prev_hash != expected_prev or row.hash != recomputed
         if broken_here and first_break_seq is None:
-            first_break_seq = row["seq"]
+            first_break_seq = row.seq
         # Once any row's hash is untrustworthy, every row chained after it
         # is unverifiable too, even if its own prev_hash/hash still happen
         # to line up against that already-suspect value -- a stored hash
@@ -317,7 +383,7 @@ def verify_case_events(case_id: str) -> dict:
         # the point where the chain was shown to have been forged or edited.
         if first_break_seq is None:
             verified_count += 1
-        expected_prev = row["hash"]
+        expected_prev = row.hash
 
     return {
         "verified": first_break_seq is None,
@@ -330,47 +396,44 @@ def verify_case_events(case_id: str) -> dict:
 
 # ----------------------------- documents ----------------------------- #
 def insert_document(doc: dict) -> None:
-    conn = _connect()
-    conn.execute(
-        """INSERT INTO documents(
-            id, case_id, original_filename, storage_path, mime_type, file_size,
-            is_scanned, raw_ocr_text, cleaned_text, extraction_status,
-            ocr_confidence, ocr_engine, error_message
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            doc["id"],
-            doc["case_id"],
-            doc.get("original_filename"),
-            doc.get("storage_path"),
-            doc.get("mime_type"),
-            doc.get("file_size"),
-            int(bool(doc.get("is_scanned", False))),
-            doc.get("raw_ocr_text"),
-            doc.get("cleaned_text"),
-            doc.get("extraction_status", "pending"),
-            doc.get("ocr_confidence"),
-            doc.get("ocr_engine"),
-            doc.get("error_message"),
-        ),
-    )
-    conn.commit()
+    now = _now_iso()
+    with engine.begin() as conn:
+        conn.execute(
+            documents.insert().values(
+                id=doc["id"],
+                case_id=doc["case_id"],
+                original_filename=doc.get("original_filename"),
+                storage_path=doc.get("storage_path"),
+                mime_type=doc.get("mime_type"),
+                file_size=doc.get("file_size"),
+                is_scanned=bool(doc.get("is_scanned", False)),
+                raw_ocr_text=doc.get("raw_ocr_text"),
+                cleaned_text=doc.get("cleaned_text"),
+                extraction_status=doc.get("extraction_status", "pending"),
+                ocr_confidence=doc.get("ocr_confidence"),
+                ocr_engine=doc.get("ocr_engine"),
+                error_message=doc.get("error_message"),
+                uploaded_at=now,
+                updated_at=now,
+            )
+        )
 
 
-def _row_to_document(row: sqlite3.Row) -> dict:
-    d = dict(row)
-    d["is_scanned"] = bool(d["is_scanned"])
-    return d
+def _row_to_document(row) -> dict:
+    return dict(row._mapping)
 
 
 def get_document(document_id: str) -> Optional[dict]:
-    row = _connect().execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
+    with engine.begin() as conn:
+        row = conn.execute(select(documents).where(documents.c.id == document_id)).fetchone()
     return _row_to_document(row) if row else None
 
 
 def list_documents(case_id: str) -> list[dict]:
-    rows = _connect().execute(
-        "SELECT * FROM documents WHERE case_id=? ORDER BY uploaded_at", (case_id,)
-    ).fetchall()
+    with engine.begin() as conn:
+        rows = conn.execute(
+            select(documents).where(documents.c.case_id == case_id).order_by(documents.c.uploaded_at)
+        ).fetchall()
     return [_row_to_document(r) for r in rows]
 
 
@@ -387,75 +450,71 @@ def update_document(document_id: str, **fields) -> Optional[dict]:
         raise ValueError(f"update_document got unknown field(s): {unknown}")
     if not fields:
         return get_document(document_id)
+    if "is_scanned" in fields:
+        fields = {**fields, "is_scanned": bool(fields["is_scanned"])}
     # Same read-modify-write shape as update_case, and the same fix: each
     # document_id is only ever updated by the one job thread processing it
     # (app.jobs's per-document claim registry already prevents two threads
     # extracting the same document concurrently), but the lock costs nothing
     # here and removes any doubt.
-    with _update_lock:
-        conn = _connect()
-        set_clause = ", ".join(f"{k}=?" for k in fields) + ", updated_at=datetime('now')"
-        values = list(fields.values())
-        if "is_scanned" in fields:
-            idx = list(fields).index("is_scanned")
-            values[idx] = int(bool(values[idx]))
-        conn.execute(f"UPDATE documents SET {set_clause} WHERE id=?", (*values, document_id))
-        conn.commit()
+    with _update_lock, engine.begin() as conn:
+        conn.execute(
+            documents.update()
+            .where(documents.c.id == document_id)
+            .values(updated_at=_now_iso(), **fields)
+        )
     return get_document(document_id)
 
 
 # ----------------------------- discrepancies ----------------------------- #
 def insert_discrepancy(disc: dict) -> None:
-    conn = _connect()
-    conn.execute(
-        """INSERT INTO discrepancies(
-            id, case_id, document_ids, discrepancy_type, severity,
-            confidence_score, explanation, source_location, flagged_for_review
-        ) VALUES(?,?,?,?,?,?,?,?,?)""",
-        (
-            disc["id"],
-            disc["case_id"],
-            json.dumps(disc.get("document_ids", [])),
-            disc["discrepancy_type"],
-            disc["severity"],
-            disc["confidence_score"],
-            disc.get("explanation"),
-            disc.get("source_location"),
-            int(bool(disc.get("flagged_for_review", False))),
-        ),
-    )
-    conn.commit()
+    with engine.begin() as conn:
+        conn.execute(
+            discrepancies.insert().values(
+                id=disc["id"],
+                case_id=disc["case_id"],
+                document_ids=json.dumps(disc.get("document_ids", [])),
+                discrepancy_type=disc["discrepancy_type"],
+                severity=disc["severity"],
+                confidence_score=disc["confidence_score"],
+                explanation=disc.get("explanation"),
+                source_location=disc.get("source_location"),
+                flagged_for_review=bool(disc.get("flagged_for_review", False)),
+                created_at=_now_iso(),
+            )
+        )
 
 
 def list_discrepancies(case_id: str) -> list[dict]:
-    rows = _connect().execute(
-        "SELECT * FROM discrepancies WHERE case_id=? ORDER BY created_at", (case_id,)
-    ).fetchall()
+    with engine.begin() as conn:
+        rows = conn.execute(
+            select(discrepancies).where(discrepancies.c.case_id == case_id).order_by(discrepancies.c.created_at)
+        ).fetchall()
     out = []
     for r in rows:
-        d = dict(r)
+        d = dict(r._mapping)
         d["document_ids"] = json.loads(d["document_ids"] or "[]")
-        d["flagged_for_review"] = bool(d["flagged_for_review"])
         out.append(d)
     return out
 
 
 def get_events(case_id: str, after_seq: int = 0) -> list[dict]:
-    rows = _connect().execute(
-        "SELECT * FROM events WHERE case_id=? AND seq>? ORDER BY seq", (case_id, after_seq)
-    ).fetchall()
+    with engine.begin() as conn:
+        rows = conn.execute(
+            select(events).where(events.c.case_id == case_id, events.c.seq > after_seq).order_by(events.c.seq)
+        ).fetchall()
     out = []
     for r in rows:
         out.append(
             {
-                "seq": r["seq"],
-                "type": r["type"],
-                "agent": r["agent"],
-                "status": r["status"],
-                "title": r["title"],
-                "detail": r["detail"],
-                "payload": json.loads(r["payload"] or "{}"),
-                "ts": r["ts"],
+                "seq": r.seq,
+                "type": r.type,
+                "agent": r.agent,
+                "status": r.status,
+                "title": r.title,
+                "detail": r.detail,
+                "payload": json.loads(r.payload or "{}"),
+                "ts": r.ts,
             }
         )
     return out
