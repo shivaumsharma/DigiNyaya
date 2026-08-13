@@ -21,7 +21,10 @@ resource "aws_db_instance" "diginyaya" {
   publicly_accessible    = false
   multi_az                = false # Single-AZ -- cost control, matches the "one instance" scope boundary
 
-  backup_retention_period = 7
+  # 1 day, not 7: this AWS account is still under new-account Free Tier
+  # restrictions that cap backup retention below 7 -- raise this once the
+  # account is fully verified/upgraded (see infra/README.md).
+  backup_retention_period = 1
   # Guards against an accidental `terraform destroy` silently losing real
   # data once this holds production cases -- see the migration plan's
   # "check in before acting" list.
