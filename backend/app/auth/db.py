@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from ..db_url import resolve_db_url
+
 
 def utcnow() -> datetime:
     """Naive UTC datetime -- SQLite has no native timezone-aware column type,
@@ -29,24 +31,11 @@ def utcnow() -> datetime:
     """
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-def _sqlalchemy_url(raw: str) -> str:
-    """DIGINYAYA_DB has historically always been a raw sqlite file path, but
-    needs to become a full connection string once a real Postgres instance
-    is configured. A value already containing "://" is used as-is (any
-    SQLAlchemy-supported URL, e.g. postgresql://...); anything else is
-    treated as a sqlite file path, matching this module's previous
-    hardcoded-`sqlite:///` behavior exactly.
-    """
-    if "://" in raw:
-        return raw
-    return f"sqlite:///{raw}"
-
-
 _DB_PATH = os.getenv(
     "DIGINYAYA_DB",
     os.path.join(os.path.dirname(__file__), "..", "..", "diginyaya.db"),
 )
-_DATABASE_URL = _sqlalchemy_url(_DB_PATH)
+_DATABASE_URL = resolve_db_url(_DB_PATH)
 
 # check_same_thread is a sqlite3-DBAPI-specific pyfunc arg; passing it to a
 # non-sqlite dialect (e.g. psycopg2) raises a TypeError at connect time.
