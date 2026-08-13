@@ -10,6 +10,11 @@ pyjwt>=2.10.1
 bcrypt>=5.0.0
 email-validator>=2.2.0
 
+# --- AWS (RDS Postgres + S3 evidence storage; see the AWS migration plan) ---
+# psycopg3 (not psycopg2) -- SQLAlchemy 2.0's recommended driver.
+psycopg[binary]>=3.2
+boto3>=1.35
+
 # Document ingestion / OCR (see README's "Document upload, OCR & discrepancy
 # detection" section -- Tesseract itself is a separate system binary, not
 # pip-installable). Sarvam Document AI is the primary OCR path (cloud API,
