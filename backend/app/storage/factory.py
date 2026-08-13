@@ -1,7 +1,8 @@
 """Storage Provider Factory -- mirrors app.llm.factory's shape exactly.
 
 Selection order: explicit provider from config only (no auto-detect chain
-like the LLM factory has, since there's only one real implementation today).
+like the LLM factory has, since there's more than one real implementation
+now but no ambiguity about which one a given deployment wants).
 """
 
 from __future__ import annotations
@@ -19,12 +20,15 @@ class StorageFactory:
         if provider == "local":
             return LocalFilesystemProvider()
 
-        if provider in ("s3", "gcs"):
+        if provider == "s3":
+            from .s3 import S3Provider
+
+            return S3Provider()
+
+        if provider == "gcs":
             # Not implemented yet -- add a provider class in this package
-            # (mirroring local.py's BaseStorageProvider implementation) and
-            # a branch here when a real backend is needed. Deliberately no
-            # stub s3.py/gcs.py file: an empty stub with no real code isn't
-            # a meaningful extension point, this branch already is one.
+            # (mirroring local.py/s3.py's BaseStorageProvider implementation)
+            # and a branch here when a real backend is needed.
             raise NotImplementedError(
                 f"Storage provider '{provider}' is not yet implemented. "
                 "See app.storage.factory.StorageFactory.create()."

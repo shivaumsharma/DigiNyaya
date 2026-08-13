@@ -6,23 +6,12 @@ the swap point for a real object-storage backend (S3/GCS) later.
 
 from __future__ import annotations
 
-import re
 import uuid
 from pathlib import Path
 
 from .base import BaseStorageProvider
 from .config import config
-
-# Strip anything that isn't alnum/dot/dash/underscore, so a client-supplied
-# filename (e.g. "../../etc/passwd" or one containing path separators) can
-# never escape the per-case upload directory.
-_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
-
-
-def _sanitize_filename(filename: str) -> str:
-    name = Path(filename).name  # drop any directory components
-    name = _UNSAFE_CHARS.sub("_", name).strip("._") or "file"
-    return name[:150]
+from .sanitize import sanitize_case_id, sanitize_filename
 
 
 class LocalFilesystemProvider(BaseStorageProvider):
@@ -36,8 +25,8 @@ class LocalFilesystemProvider(BaseStorageProvider):
         return self._root / storage_path
 
     def save(self, case_id: str, filename: str, content: bytes) -> str:
-        safe_case_id = _UNSAFE_CHARS.sub("_", case_id)
-        safe_name = _sanitize_filename(filename)
+        safe_case_id = sanitize_case_id(case_id)
+        safe_name = sanitize_filename(filename)
         rel_path = Path(safe_case_id) / f"{uuid.uuid4().hex}_{safe_name}"
         abs_path = self._abs_path(str(rel_path))
         abs_path.parent.mkdir(parents=True, exist_ok=True)

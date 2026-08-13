@@ -26,5 +26,8 @@ class StorageConfig:
 
     max_upload_mb: int = int(os.getenv("DIGINYAYA_MAX_UPLOAD_MB", "15"))
 
+    # Only read/used when provider == "s3" (see app.storage.s3.S3Provider).
+    s3_bucket: str = os.getenv("DIGINYAYA_S3_BUCKET", "")
+
 
 config = StorageConfig()
