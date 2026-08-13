@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (git-ignored) and fill in real values, or pass
+# via TF_VAR_* environment variables instead -- never commit real secrets.
+
+db_password    = "choose-a-strong-password"
+sarvam_api_key = "paste-your-sarvam-key-here"
+jwt_secret     = "generate-a-long-random-string"
