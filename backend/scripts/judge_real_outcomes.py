@@ -190,7 +190,15 @@ def judge(case: dict, ai: dict) -> dict | None:
         f"AI DECIDED:\n{relief_line}\n"
         f"Full order: {' '.join(ai['order'])}\n"
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=4096)
+    # temperature=0.0, not generate_json's 0.2 default: this is a comparison/
+    # classification judgment, not creative drafting -- the same AI decision
+    # compared against the same real outcome should always get the same
+    # verdict. Found via direct inspection: IK-EVAL-4862458's own `reason`
+    # field said the court "denied application" while `real_outcome` (fed to
+    # the SAME judge call) said the court "granted the plaintiff's
+    # application" -- an internally contradictory verdict, i.e. judge noise,
+    # not a real pipeline error.
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=4096, temperature=0.0)
     return data
 
 

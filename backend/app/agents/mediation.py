@@ -117,7 +117,12 @@ def run(ctx: CaseContext) -> AgentResult:
         "case is as strong as or stronger than the claimant's, use outcome_type 'dismissed' and "
         "relief_ratio 0.0. Do not exceed the claim."
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=600)
+    # temperature=0.0, not generate_json's 0.2 default -- see the matching
+    # note in analysis.py's LLM call. This is the call that proposes
+    # relief_ratio/outcome_type directly; a re-run on identical case facts
+    # was directly observed to swing from "dismissed" to a multi-crore
+    # award, which is a determinism problem independent of average accuracy.
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=600, temperature=0.0)
     if data:
         engine = "llm"
         try:

@@ -137,7 +137,17 @@ def run(ctx: CaseContext) -> AgentResult:
         f"{wrap_untrusted('RESPONDENT_STATEMENT', r_text)}\n"
         f"Evidence on record: {ev} item(s)."
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
+    # temperature=0.0, not generate_json's 0.2 default: this call's output
+    # (respondent_defense_strength, claimant_case_substance) directly decides
+    # net_strength in mediation.py, i.e. who wins and how much -- confirmed
+    # by direct trace that the same case, same code, same facts can swing
+    # from "dismissed" to a multi-crore award purely from sampling variance
+    # on a repeat call. A justice-adjacent system giving different outcomes
+    # for identical facts is a correctness problem in itself, independent of
+    # average accuracy -- deterministic reasoning here also makes every
+    # future real-judgment eval number actually mean something, rather than
+    # partly reflecting which way the dice landed on a given run.
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500, temperature=0.0)
     if data and data.get("neutral_summary"):
         neutral = str(data["neutral_summary"]).strip()
         engine = "llm"
