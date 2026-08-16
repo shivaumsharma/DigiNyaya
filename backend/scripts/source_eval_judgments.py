@@ -72,6 +72,7 @@ except Exception:
 from scripts._vendor.ikapi import IKApi  # noqa: E402
 
 from app import llm  # noqa: E402
+from app.llm.config import config  # noqa: E402
 
 CACHE_DIR = _BACKEND / "data_cache" / "indiankanoon"  # shared cache with ingest_judgments.py
 OUT_PATH = _BACKEND / "data_cache" / "eval_judgments.json"
@@ -378,11 +379,15 @@ def extract_fields(body_text: str, category: str) -> dict | None:
     # chain-of-thought (in a separate reasoning_content field) before the
     # actual answer, and that reasoning alone can exhaust a small max_tokens
     # budget, leaving content=null (finish_reason="length") -- confirmed
-    # empirically: 650 failed every time. 4096 is the hard ceiling for BOTH
-    # sarvam-30b and sarvam-105b on the "starter" subscription tier (a
-    # larger request gets rejected with a 400, not silently clamped), so
-    # that's the most headroom available regardless of model choice.
-    return llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=4096)
+    # empirically: 650 failed every time. 4096 is the ceiling for sarvam-105b
+    # on the "starter" subscription tier (a larger request gets rejected with
+    # a 400, not silently clamped). This call is left on that full-size
+    # reasoning model explicitly, not the default fast-tier model
+    # (sarvam-105b-conversations, the replacement for the now-deprecated
+    # sarvam-30b) -- the fast tier's max_tokens ceiling is only 2048 on this
+    # subscription, well under the headroom this specific extraction task
+    # was already measured to need.
+    return llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=4096, model=config.sarvam_reasoning_model)
 
 
 def build_case(
