@@ -65,10 +65,17 @@ class LLMConfig:
         "https://api.sarvam.ai/v1"
     )
 
-    # Fast / inexpensive reasoning
+    # Fast / inexpensive reasoning. sarvam-30b was deprecated by Sarvam and
+    # is now hard-rejected by the API (confirmed live: a 400 naming
+    # sarvam-105b/sarvam-105b-conversations as the only valid replacements) --
+    # every classification/retrieval call using the old default was silently
+    # failing and falling back to scripted logic. sarvam-105b-conversations
+    # is the lighter/faster variant of the current flagship, keeping the
+    # original fast-vs-reasoning cost tiering intent (sarvam_reasoning_model
+    # below still points at full sarvam-105b for analysis/mediation/drafting).
     sarvam_fast_model: str = os.getenv(
         "SARVAM_FAST_MODEL",
-        "sarvam-30b"
+        "sarvam-105b-conversations"
     )
 
     # Highest-quality reasoning
