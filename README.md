@@ -258,8 +258,11 @@ instead of engaging with the evidence.
 
 ## AI engine
 
-**Sarvam AI** (`sarvam-30b`, with `sarvam-105b` available for heavier reasoning) is the real,
-live provider used in production. **Ollama** (local, free, no API key) is fully supported as a
+**Sarvam AI** (`sarvam-105b-conversations` for fast classification/retrieval calls,
+`sarvam-105b` for the heavier analysis/mediation/drafting reasoning) is the real, live provider
+used in production. `sarvam-30b`, the original fast-tier model, was deprecated by Sarvam and is
+now hard-rejected by their API — see `backend/app/llm/config.py`. **Ollama** (local, free, no API
+key) is fully supported as a
 dev/offline alternative — set `DIGINYAYA_LLM_PROVIDER=ollama` and pull a model:
 
 ```bash
