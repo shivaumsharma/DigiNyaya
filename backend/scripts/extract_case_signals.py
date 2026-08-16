@@ -103,7 +103,13 @@ def extract_signals(case: dict) -> dict | None:
         "side argued BEFORE the court decided. Return JSON only, matching this schema: "
         f"{schema}\n\nJUDGMENT TEXT:\n{_window(body)}"
     )
-    return llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=4096)
+    # max_tokens=2000, not 4096: this resolves to the fast-tier model
+    # (sarvam_fast_model), and Sarvam's newer sarvam-105b-conversations --
+    # the replacement for the now-deprecated sarvam-30b -- caps max_tokens
+    # at 2048 on the starter subscription tier (a hard 400, not a graceful
+    # truncation, confirmed via a raw API call). See judge_real_outcomes.py
+    # for the same fix and full explanation.
+    return llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=2000)
 
 
 def main() -> int:

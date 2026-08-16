@@ -198,7 +198,17 @@ def judge(case: dict, ai: dict) -> dict | None:
     # the SAME judge call) said the court "granted the plaintiff's
     # application" -- an internally contradictory verdict, i.e. judge noise,
     # not a real pipeline error.
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=4096, temperature=0.0)
+    # max_tokens=2000, not 4096: this call resolves to the fast-tier model
+    # (sarvam_fast_model), and Sarvam's newer sarvam-105b-conversations --
+    # the replacement for the now-deprecated sarvam-30b, see app/llm/config.py
+    # -- caps max_tokens at 2048 on the starter subscription tier, lower than
+    # sarvam-30b's old 4096 ceiling. Confirmed via a raw API call: requesting
+    # 4096 here 400s outright ("exceeds the maximum allowed... 2048"), not a
+    # graceful truncation. The docstring above already established this
+    # call's real completions finish in ~1200-1700 tokens, so 2000 keeps
+    # the same headroom margin the original 4096 was providing, just under
+    # the new model's actual ceiling.
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=2000, temperature=0.0)
     return data
 
 
