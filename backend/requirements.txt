@@ -29,3 +29,11 @@ sarvamai>=0.1.30
 # --- dev/test only ---
 pytest>=8.3.4
 httpx>=0.28.1
+
+# --- analysis scripts only (train_outcome_classifier.py, error_analysis.py) ---
+scikit-learn>=1.5.0
+pandas>=2.2.0
+
+# --- scripts/source_free_judgments.py only (free HuggingFace judgment sourcing) ---
+huggingface_hub>=0.25.0
+pyarrow>=17.0.0

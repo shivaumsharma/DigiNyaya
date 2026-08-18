@@ -237,6 +237,18 @@ def run_one(case: dict) -> dict:
     result["tier"] = ctx.tier if ctx.escalation is None else None
     result["ingestion_confidence"] = ctx.ingestion.confidence if ctx.ingestion else None
 
+    # The actual computed drivers of the win/lose decision (see
+    # app/agents/mediation.py's net_strength = claimant - respondent), not
+    # just proxies for it -- exposed here so downstream analysis (e.g.
+    # scripts/train_outcome_classifier.py) can learn from what the pipeline
+    # itself concluded about each side's case, not only from case-intake
+    # metadata that's several steps removed from the actual decision.
+    if ctx.analysis is not None:
+        result["claimant_strength_score"] = ctx.analysis.strength_score.get("claimant")
+        result["respondent_strength_score"] = ctx.analysis.strength_score.get("respondent")
+        result["analysis_confidence"] = ctx.analysis.confidence
+        result["analysis_engine"] = ctx.analysis.engine
+
     if ctx.escalation is None and ctx.mediation is not None:
         try:
             list(graph.run_resolution(ctx, via_mediation=True))
