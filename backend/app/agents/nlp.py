@@ -169,7 +169,26 @@ _RELIEF_TYPE_LEXICON: list[tuple[str, tuple[str, ...]]] = [
         "did not reinstate", "seeking reinstatement", "restore him to his post",
         "restore her to her post", "continuity of service", "back wages",
     )),
-    ("possession", ("vacant possession", "hand over possession", "eviction", "evict", "recover possession")),
+    # Real-judgment testing at 257-case scale found this original 5-phrase
+    # list missed the large majority of actual possession suits: real
+    # judgment text overwhelmingly phrases the ask as bare "possession"
+    # ("suit for possession", "recovery of possession", "seeking possession
+    # of the property") rather than the narrower "vacant possession"/"hand
+    # over possession"/"recover possession" phrasings, and South Indian
+    # courts commonly use "ejectment" instead of "eviction" entirely (see
+    # IK-EVAL-98413367 -- a Bangalore ejectment suit that fell through to
+    # "monetary" and lost its correct possession relief type as a result).
+    # Deliberately NOT adding a bare "possession of" trigger -- that false-
+    # positived on cases merely describing a party's EXISTING possession as
+    # background fact (e.g. "the plaintiff claimed to be in possession of
+    # the property" in a specific-performance contract dispute), not the
+    # relief actually being sought.
+    ("possession", (
+        "vacant possession", "hand over possession", "eviction", "evict",
+        "recover possession", "recovery of possession", "suit for possession",
+        "seeking possession", "delivery of possession", "restore possession",
+        "ejectment", "quit and vacate",
+    )),
     ("injunction", ("injunction", "restrain", "restraining order", "stop the respondent", "cease and desist", "remove the", "removal of the")),
     ("declaration", ("declare", "declaration that", "declared void", "null and void", "declaratory")),
     ("replacement", ("replace the", "replacement of", "provide a replacement", "exchange the", "provide a new", "seeking a new", "delivery of a new", "deliver a new")),

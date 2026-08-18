@@ -122,6 +122,9 @@ DigiNyaya/
 │       ├── eval_cases.py             Golden-case evaluation harness (scripted, free, runs in CI)
 │       ├── measure_eval_cost.py      Token-cost regression gate against real Sarvam calls (opt-in)
 │       ├── judge_real_outcomes.py    Scores AI output against real court judgments
+│       ├── source_free_judgments.py  Sources more real judgments for $0 via HuggingFace (no API billing)
+│       ├── train_outcome_classifier.py  Predicts match-vs-not from case features (leave-one-out CV)
+│       ├── error_analysis.py         Confusion-matrix-style breakdown of the real-judgment eval by category
 │       ├── promote_reviewer.py       Grants/revokes is_reviewer on an existing account (CLI only)
 │       ├── translate_ui_strings.py   Regenerates one locale file from en.json via Sarvam
 │       ├── fill_missing_translations.py  Incrementally fills only the KEYS a locale file is missing

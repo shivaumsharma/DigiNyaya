@@ -179,26 +179,76 @@ def run(ctx: CaseContext) -> AgentResult:
         compliance_days = nearest
 
     relief_kind = _ratio_to_type(clamped_ratio)
-    # A non-monetary ask (injunction/declaration/replacement/possession)
-    # overrides the ratio-derived monetary bucket -- UNLESS the case was
-    # dismissed outright, in which case there's nothing to grant regardless
-    # of what kind of relief was sought. `recommended_amount` is left as
-    # computed: real claims routinely seek incidental damages ALONGSIDE a
-    # non-monetary primary ask (e.g. injunction + damages), so it still
-    # feeds a secondary monetary line in resolution.py's order.
+    # A non-monetary ask (injunction/declaration/replacement/possession/
+    # partition/reinstatement) overrides the ratio-derived monetary bucket
+    # based on the claimant's OWN case strength (see the c_strength>=0.5
+    # branch below) -- NOT on whether the money-ratio path happened to land
+    # on "dismissed", which is a separate question (see that branch's
+    # comment for why). `recommended_amount` is left as computed: real
+    # claims routinely seek incidental damages ALONGSIDE a non-monetary
+    # primary ask (e.g. injunction + damages), so it still feeds a secondary
+    # monetary line in resolution.py's order.
     requested_relief = ctx.ingestion.relief_type_requested if ctx.ingestion else "monetary"
-    if requested_relief != "monetary" and (relief_kind != "dismissed" or requested_relief == "arbitration_referral"):
-        # Arbitration referral is the one non-monetary kind that overrides
-        # even an outright "dismissed" ratio: unlike injunction/declaration/
-        # replacement/possession (genuinely merits-based asks -- nothing to
-        # grant if the claimant's case was too weak), a referral to
-        # arbitration is a THRESHOLD/jurisdictional question that doesn't
-        # depend on how strong either side's merits case is at all. Found
-        # via a synthetic test: a weak claimant + an arbitration-clause
-        # defense pushed net_strength negative, so `_ratio_to_type()`
-        # returned "dismissed" before this override could ever run --
-        # incorrectly treating "send this to arbitration" as "the claimant
-        # lost on the merits", which misrepresents what actually happened.
+    if requested_relief == "arbitration_referral":
+        # Arbitration referral overrides even an outright "dismissed" ratio:
+        # unlike injunction/declaration/replacement/possession (genuinely
+        # merits-based asks -- nothing to grant if the claimant's case was
+        # too weak), a referral to arbitration is a THRESHOLD/jurisdictional
+        # question that doesn't depend on how strong either side's merits
+        # case is at all. Found via a synthetic test: a weak claimant + an
+        # arbitration-clause defense pushed net_strength negative, so
+        # `_ratio_to_type()` returned "dismissed" before this override could
+        # ever run -- incorrectly treating "send this to arbitration" as
+        # "the claimant lost on the merits", which misrepresents what
+        # actually happened.
+        relief_kind = requested_relief
+    elif requested_relief != "monetary" and c_strength >= _non_monetary_threshold(requested_relief, ctx.dispute_type):
+        # A gate on nlp.has_threshold_defense() (does the respondent raise a
+        # locus-standi/jurisdiction/non-joinder/res-judicata defense) was
+        # tried here and measured: it DID cut the AI-too-liberal pattern
+        # (possession granted despite a threshold defense) from 38->24
+        # mismatches, but overcorrected into 22/23 wrongful dismissals where
+        # the term was merely RAISED (one of several arguments) and the real
+        # court rejected it and ruled for the claimant anyway -- mere
+        # presence of the term is not evidence the defense succeeded.
+        # Net effect measured at 216->173 clean cases: 53%->48% exact match,
+        # a real regression. Reverted rather than kept as a mixed trade-off.
+        # Possession/injunction/declaration/replacement/partition/
+        # reinstatement are evaluated on the claimant's OWN affirmative case
+        # (c_strength) -- NOT on whether it beat the respondent's defense on
+        # the MONEY question (net_strength, which drove `relief_kind` up to
+        # this point via the r_strength>=c_strength dismissal rule above).
+        # Real-judgment testing at 216-case scale found this conflation
+        # forced a wrongful "dismissed" on 58% of ALL judged tenancy cases
+        # (see data_cache/error_analysis_report.md): a tenant's rent-arrears
+        # defense can legitimately reduce or zero the MONETARY award while
+        # the landlord still wins the SEPARATE eviction/possession ground --
+        # Indian tenancy law doesn't require the landlord's overall case to
+        # outscore the tenant's defense on a single combined scale before
+        # possession relief can issue. `relief_kind == "dismissed"` (the
+        # money path) is deliberately NOT a gate here anymore.
+        #
+        # Threshold originally set to 0.5 (analysis.py's "moderate" label)
+        # for EVERY non-monetary relief kind, then loosened to a flat 0.3
+        # after finding this was too strict specifically for tenancy
+        # possession/eviction relief -- but a subsequent full re-measure
+        # found the flat 0.3 REGRESSED property_neighbor_disputes badly
+        # (49%->33% match rate; ai_too_liberal jumped to the dominant
+        # failure mode). Root cause: "possession" means two legally
+        # different things under one relief_kind label -- tenancy eviction
+        # is a fairly formulaic test (ownership+tenancy+valid ground,
+        # strongly favours the landlord: real courts granted the claimant
+        # SOMETHING at c_strength's lowest observed tenancy tier, 0.33, in
+        # 100% of the sample) vs. a property/boundary "possession" claim,
+        # which requires proving TITLE and is far more evidence-contestable
+        # -- and the same over-permissiveness hit injunction claims too.
+        # `_non_monetary_threshold()` below scopes the loosened 0.3 bar to
+        # EXACTLY the population the finding came from (possession relief on
+        # a tenancy-mapped case, ctx.dispute_type=="money_recovery" -- see
+        # CATEGORY_TO_DISPUTE_TYPE in scripts/run_real_judgment_eval.py for
+        # why tenancy, not property, maps there) -- every other non-monetary
+        # kind, and possession claims on any OTHER dispute_type, stays at
+        # the stricter original 0.5 pending its own real-data justification.
         relief_kind = requested_relief
     if relief_kind in _NO_INCIDENTAL_AMOUNT_KINDS:
         # An arbitration referral means this forum isn't deciding the
@@ -294,6 +344,31 @@ def run(ctx: CaseContext) -> AgentResult:
         + (f"{len(validator_notes)} validator adjustment(s)." if validator_notes else "Within precedent band.")
     )
     return AgentResult(output=proposal, detail=detail, confidence=proposal.confidence, citations=proposal.based_on, engine=engine)
+
+
+def _non_monetary_threshold(requested_relief: str, dispute_type: str) -> float:
+    """Minimum claimant case strength (c_strength) needed to grant a
+    non-monetary relief type on its own merits, independent of the money-
+    ratio dismissal path -- see the call site in run() for the full story.
+
+    Only "possession" relief on a tenancy-mapped case gets the loosened 0.3
+    bar: that's the EXACT population (money_recovery <- tenancy_disputes,
+    see CATEGORY_TO_DISPUTE_TYPE in scripts/run_real_judgment_eval.py) real-
+    judgment testing found real courts grant SOMETHING to the claimant in
+    83-100% of cases even at our system's lowest observed strength tier --
+    Indian eviction law is a fairly formulaic ownership+tenancy+valid-ground
+    test that strongly favours the landlord. A property/boundary
+    "possession" claim (dispute_type -> contract_breach) asks a materially
+    different, title-contestable question and does NOT get the same
+    loosened bar -- confirmed by real-judgment testing: applying 0.3
+    uniformly regressed property_neighbor_disputes from 49% to 33% match
+    rate. Everything else (injunction/declaration/replacement/partition/
+    reinstatement, on any dispute_type) stays at the original 0.5 pending
+    its own real-data justification -- it has none yet.
+    """
+    if requested_relief == "possession" and dispute_type == "money_recovery":
+        return 0.3
+    return 0.5
 
 
 def _ratio_to_type(ratio: float) -> str:
