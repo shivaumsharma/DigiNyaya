@@ -72,16 +72,25 @@ class TestPreliminaryReview(unittest.TestCase):
         self.assertIsNone(result["documents"][0]["authenticity_flag"])
         self.assertEqual(result["documents"][0]["authenticity_note"], "")
 
-    def test_llm_unavailable_falls_back_to_uncertain_not_false_accusation(self):
+    def test_llm_unavailable_falls_back_to_assumed_relevant(self):
         # DIGINYAYA_USE_LLM=0 makes llm.generate_json return falsy -- this
-        # is the "couldn't assess" path, which must stay None (not False),
-        # since a wrongly-flagged "irrelevant" would be a false accusation.
+        # is the "couldn't assess" path. Was `relevant: None` (a wrongly-
+        # flagged "irrelevant" would be a false accusation) until real-
+        # judgment testing found that silently made Tier-1 autonomy
+        # unreachable for every case whenever the LLM is unavailable,
+        # since app.agents.ingestion's Tier-1 check only counts
+        # relevant=True documents and None counts toward neither relevant
+        # nor irrelevant. Now defaults to relevant=True (benefit of the
+        # doubt on real extracted text) -- restores Tier-1 availability
+        # during an outage, at the cost of the relevance check itself
+        # during that window. See app.agents.preliminary_review.document_relevance's
+        # docstring for the full rationale.
         case_id = "DN-PRELIM-NOLLM"
         _make_case(case_id)
         _make_document("DOC-1", case_id, "Some document text with actual content in it.")
         result = preliminary_review.run_preliminary_review(case_id)
         self.assertEqual(len(result["documents"]), 1)
-        self.assertIsNone(result["documents"][0]["relevant"])
+        self.assertTrue(result["documents"][0]["relevant"])
         self.assertIn("Couldn't assess", result["documents"][0]["note"])
 
     def test_pending_extraction_reported_separately_from_relevance(self):

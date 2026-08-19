@@ -47,6 +47,14 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Run DB migrations
+        # eval_cases.py (unlike tests/conftest.py, which calls
+        # Base.metadata.create_all() directly) uses app.db's real,
+        # file-based DIGINYAYA_DB default -- on a fresh CI checkout that
+        # file doesn't exist yet, so its schema has to come from a real
+        # `alembic upgrade head`, the same way a real deployment's Docker
+        # CMD does it, instead of silently relying on a pre-existing file.
+        run: python -m alembic upgrade head
       - name: Run golden eval suite
         # DIGINYAYA_USE_LLM defaults to 0 inside eval_cases.py itself (scripted
         # mode) -- no SARVAM_API_KEY needed, no external calls, no cost.
