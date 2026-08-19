@@ -35,6 +35,7 @@ from typing import Any
 
 import requests
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.language.config import (
     LanguageConfig,
     config as language_config,
@@ -44,6 +45,13 @@ from app.language.config import (
 )
 
 logger = logging.getLogger("diginyaya.language.detector")
+
+# Own breaker, independent of translator.py's: LID (/text-lid) and
+# translation (/translate) are different Sarvam endpoints with
+# independently-failing uptime. Without this, a sustained outage means every
+# inbound request pays the full retry_attempts x timeout loop below
+# (~90s worst case at defaults) before falling back to default_user_language.
+_breaker = CircuitBreaker(name="language_lid")
 
 # Sarvam's LID endpoint hard-caps input at 1000 characters; detection only
 # needs a representative sample, not the full document.
@@ -215,6 +223,13 @@ class LanguageDetector:
             )
             return None
 
+        if not _breaker.allow():
+            logger.info(
+                "language detection circuit breaker open; skipping call",
+                extra={"event": "language_detection_breaker_open"},
+            )
+            return None
+
         headers = {
             "api-subscription-key": self.settings.sarvam_api_key,
             "Content-Type": "application/json",
@@ -233,6 +248,7 @@ class LanguageDetector:
                     timeout=self.settings.timeout,
                 )
                 response.raise_for_status()
+                _breaker.record_success()
                 return response.json()
             except (requests.RequestException, ValueError) as exc:
                 last_error = exc
@@ -248,6 +264,7 @@ class LanguageDetector:
                 if attempt < attempts:
                     time.sleep(self.settings.retry_delay * attempt)
 
+        _breaker.record_failure()
         logger.error(
             "sarvam LID call exhausted retries; falling back to default language",
             extra={

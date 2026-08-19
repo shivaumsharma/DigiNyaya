@@ -18,10 +18,17 @@ COST
 
 USAGE (run from the backend/ directory)
   # cheap: just search, list what would be fetched, fetch nothing
-  python -m scripts.ingest_judgments --dry-run
+  python -m scripts.ingest_judgments --dry-run --category contract_breach --all-topics
 
-  # pull + extract 25 consumer judgments and merge into the corpus
-  python -m scripts.ingest_judgments --limit 25 --doctypes ncdrc
+  # pull + extract 25 consumer judgments and merge into the corpus (default category)
+  python -m scripts.ingest_judgments --limit 25 --all-topics
+
+  # grow an under-covered dispute type -- doctypes defaults to unfiltered
+  # (all courts) for anything other than consumer_dispute, since these come
+  # from ordinary civil/criminal courts, not the consumer forum
+  python -m scripts.ingest_judgments --category contract_breach --all-topics --limit 30
+  python -m scripts.ingest_judgments --category money_recovery --all-topics --limit 30
+  python -m scripts.ingest_judgments --category cheque_bounce --all-topics --limit 30
 
   # rebuild the corpus from scratch (drops synthetic entries)
   python -m scripts.ingest_judgments --limit 50 --replace
@@ -73,26 +80,62 @@ ALLOWED_OUTCOMES = ["full_refund", "partial_refund", "replacement", "compensatio
 
 DEFAULT_QUERY = "consumer protection deficiency of service refund defective goods"
 
-# Broad coverage across the major consumer-dispute categories. Used with
-# --all-topics so a single ingestion builds a diverse corpus (better decisions)
-# instead of 20 near-duplicate hits from one query. Deduped by document id.
-TOPIC_QUERIES = [
-    "deficiency of service refund consumer",
-    "defective goods replacement warranty consumer",
-    "e-commerce online purchase non-delivery refund consumer",
-    "insurance claim repudiation deficiency consumer",
-    "builder possession delay flat refund consumer",
-    "medical negligence compensation consumer",
-    "bank unauthorised transaction deficiency consumer",
-    "airline flight cancellation refund consumer",
-    "telecom mobile broadband billing deficiency consumer",
-    "electricity water utility deficiency of service consumer",
-    "automobile vehicle manufacturing defect consumer",
-    "unfair trade practice misleading advertisement consumer",
-    "education coaching fee refund deficiency consumer",
-    "tour travel package deficiency refund consumer",
-    "real estate RERA possession compensation consumer",
-]
+# Broad coverage across the major dispute categories, one topic-query set per
+# DigiNyaya dispute type. Used with --all-topics so a single ingestion builds
+# a diverse corpus (better decisions) instead of 20 near-duplicate hits from
+# one query. Deduped by document id.
+#
+# Originally consumer_dispute-only (this corpus started at 120 consumer
+# precedents vs. 2-3 each for the other three types -- see the real-judgment
+# eval, where that imbalance directly explained why contract_breach cases
+# retrieved an identical, capped 2 precedents every time). Generalized so the
+# same tool can grow money_recovery/contract_breach/cheque_bounce coverage.
+TOPIC_QUERIES_BY_CATEGORY: dict[str, list[str]] = {
+    "consumer_dispute": [
+        "deficiency of service refund consumer",
+        "defective goods replacement warranty consumer",
+        "e-commerce online purchase non-delivery refund consumer",
+        "insurance claim repudiation deficiency consumer",
+        "builder possession delay flat refund consumer",
+        "medical negligence compensation consumer",
+        "bank unauthorised transaction deficiency consumer",
+        "airline flight cancellation refund consumer",
+        "telecom mobile broadband billing deficiency consumer",
+        "electricity water utility deficiency of service consumer",
+        "automobile vehicle manufacturing defect consumer",
+        "unfair trade practice misleading advertisement consumer",
+        "education coaching fee refund deficiency consumer",
+        "tour travel package deficiency refund consumer",
+        "real estate RERA possession compensation consumer",
+    ],
+    "cheque_bounce": [
+        "cheque dishonour section 138 negotiable instruments act",
+        "cheque bounce complaint conviction acquittal",
+        "cheque dishonour compounding settlement",
+        "post dated cheque security advance payment dishonour",
+        "cheque dishonour legally enforceable debt presumption section 139",
+        "cheque bounce insufficient funds complaint",
+        "section 138 negotiable instruments act appeal sentence",
+    ],
+    "money_recovery": [
+        "money recovery suit summary judgment order 37 CPC",
+        "loan recovery friendly loan promissory note",
+        "recovery of money suit decree interest",
+        "unpaid dues recovery civil suit",
+        "recovery suit written agreement default",
+        "recovery of loan guarantor liability suit",
+        "recovery suit dishonoured cheque debt",
+    ],
+    "contract_breach": [
+        "breach of contract suit specific performance damages",
+        "breach of agreement compensation section 74 contract act",
+        "earnest money forfeiture breach of contract",
+        "non-performance of contract damages suit",
+        "cancellation of agreement breach compensation",
+        "breach of contract liquidated damages penalty clause",
+        "specific performance agreement to sell breach",
+    ],
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -167,6 +210,24 @@ def search(token: str, query: str, doctypes: str | None, pages: int) -> list[dic
     return docs
 
 
+_CASE_TITLE_RE = re.compile(r"\bvs\.?\b|\bversus\b", re.IGNORECASE)
+
+
+def _looks_like_case_judgment(title: str) -> bool:
+    """Indian Kanoon's search also indexes bare Acts/statutes and law-review
+    articles alongside actual case judgments -- a search for e.g. "breach of
+    contract" can surface "The Maharashtra Universities Act, 1994" right next
+    to a real case. Those have no holding to extract an outcome from, so the
+    LLM extraction step silently defaults them to "dismissed" -- which is
+    actively harmful here, not just noise: it would quietly bias the
+    corpus's under-covered dispute types toward dismissal, the opposite of
+    what growing the corpus is meant to fix. Every real judgment title on
+    Indian Kanoon follows "<party> vs <party> on <date>"; bare Acts and
+    articles don't -- cheap, reliable filter, applied before any paid fetch.
+    """
+    return bool(_CASE_TITLE_RE.search(title or ""))
+
+
 def collect_candidates(
     token: str, queries: list[str], doctypes: str | None, pages: int, target: int
 ) -> list[dict]:
@@ -174,6 +235,7 @@ def collect_candidates(
     `target` unique candidates (or exhaust the queries)."""
     seen: set = set()
     pool: list[dict] = []
+    skipped_non_judgments = 0
     for q in queries:
         if len(pool) >= target:
             break
@@ -183,9 +245,14 @@ def collect_candidates(
             if tid is None or tid in seen:
                 continue
             seen.add(tid)
+            if not _looks_like_case_judgment(d.get("title", "")):
+                skipped_non_judgments += 1
+                continue
             pool.append(d)
             if len(pool) >= target:
                 break
+    if skipped_non_judgments:
+        print(f"  (skipped {skipped_non_judgments} non-judgment result(s): bare Acts/articles, not case titles)")
     return pool
 
 
@@ -234,7 +301,7 @@ def extract_fields(doc: dict) -> dict | None:
         "}"
     )
     prompt = (
-        "Extract structured fields from this Indian consumer-court judgment. Return JSON only, "
+        "Extract structured fields from this Indian court judgment. Return JSON only, "
         "matching the schema. Use ONLY facts present in the text; if a number is absent use the "
         "stated default. Do not invent amounts.\n\n"
         f"SCHEMA: {schema}\n\nJUDGMENT TEXT:\n{_window(body)}"
@@ -245,7 +312,21 @@ def extract_fields(doc: dict) -> dict | None:
     return data
 
 
-def build_precedent(doc: dict, fields: dict) -> dict:
+_DEFAULT_COURT_BY_CATEGORY = {
+    "consumer_dispute": "Consumer Disputes Redressal Commission",
+    "cheque_bounce": "Court (Section 138 Negotiable Instruments Act)",
+    "money_recovery": "Civil Court",
+    "contract_breach": "Civil Court",
+}
+_DEFAULT_TAG_BY_CATEGORY = {
+    "consumer_dispute": "service_deficiency",
+    "cheque_bounce": "cheque_dishonour",
+    "money_recovery": "unpaid_dues",
+    "contract_breach": "breach_of_agreement",
+}
+
+
+def build_precedent(doc: dict, fields: dict, category: str) -> dict:
     tid = doc.get("tid")
     title = html_to_text(doc.get("title", "")) or f"Indian Kanoon doc {tid}"
     pubdate = str(doc.get("publishdate") or doc.get("docdate") or "")
@@ -268,10 +349,10 @@ def build_precedent(doc: dict, fields: dict) -> dict:
     return {
         "id": f"IK-{tid}",
         "title": title[:140],
-        "court": html_to_text(doc.get("docsource", "")) or "Consumer Disputes Redressal Commission",
+        "court": html_to_text(doc.get("docsource", "")) or _DEFAULT_COURT_BY_CATEGORY.get(category, "Civil Court"),
         "year": year,
-        "category": "consumer_dispute",
-        "tags": tags or ["service_deficiency"],
+        "category": category,
+        "tags": tags or [_DEFAULT_TAG_BY_CATEGORY.get(category, "service_deficiency")],
         "summary": str(fields.get("summary", ""))[:600],
         "principle": str(fields.get("principle", ""))[:400],
         "outcome": outcome,
@@ -290,15 +371,27 @@ def build_precedent(doc: dict, fields: dict) -> dict:
 
 # --------------------------------------------------------------------------- #
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Ingest Indian Kanoon consumer judgments into the precedent corpus.")
+    ap = argparse.ArgumentParser(description="Ingest Indian Kanoon judgments into the precedent corpus.")
     ap.add_argument("--token-env", default="DIGINYAYA_INDIANKANOON_TOKEN")
+    ap.add_argument(
+        "--category",
+        default="consumer_dispute",
+        choices=sorted(TOPIC_QUERIES_BY_CATEGORY.keys()),
+        help="DigiNyaya dispute type these judgments are ingested as (default: consumer_dispute).",
+    )
     ap.add_argument("--query", default=DEFAULT_QUERY)
     ap.add_argument(
         "--all-topics",
         action="store_true",
-        help="search the full consumer-dispute topic set (broad, diverse corpus) instead of --query",
+        help="search the full topic-query set for --category (broad, diverse corpus) instead of --query",
     )
-    ap.add_argument("--doctypes", default="ncdrc", help="Indian Kanoon doctype filter (e.g. ncdrc). Empty to disable.")
+    ap.add_argument(
+        "--doctypes",
+        default=None,
+        help="Indian Kanoon doctype filter (e.g. ncdrc). Defaults to 'ncdrc' for consumer_dispute, "
+        "unfiltered (all courts) for every other category -- cheque_bounce/money_recovery/"
+        "contract_breach judgments come from ordinary civil/criminal courts, not the consumer forum.",
+    )
     ap.add_argument("--pages", type=int, default=2, help="search result pages to scan per query")
     ap.add_argument("--limit", type=int, default=10, help="max judgments to fetch + extract")
     ap.add_argument("--out", default=str(OUT_PATH))
@@ -306,11 +399,14 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="search only; fetch/extract nothing (cheap)")
     ap.add_argument("--no-llm", action="store_true", help="cache docs but skip LLM extraction")
     args = ap.parse_args()
+    if args.doctypes is None:
+        args.doctypes = "ncdrc" if args.category == "consumer_dispute" else ""
 
     token = _token(args.token_env)
-    queries = TOPIC_QUERIES if args.all_topics else [args.query]
+    topic_queries = TOPIC_QUERIES_BY_CATEGORY[args.category]
+    queries = topic_queries if args.all_topics else [args.query]
     mode = f"{len(queries)} topics" if args.all_topics else f"query='{args.query}'"
-    print(f"Indian Kanoon ingestion · {mode} doctypes='{args.doctypes}' limit={args.limit}")
+    print(f"Indian Kanoon ingestion · category={args.category} · {mode} doctypes='{args.doctypes}' limit={args.limit}")
 
     # Over-collect when merging so that docs already in the corpus (resume) don't
     # eat into the requested count of NEW precedents.
@@ -365,7 +461,7 @@ def main() -> int:
         if not fields:
             print(f"  ! extraction failed for {tid} (skipped)")
             continue
-        prec = build_precedent(doc, fields)
+        prec = build_precedent(doc, fields, args.category)
         ok, why = validate_precedent(prec)
         if not ok:
             print(f"  ! invalid precedent {tid}: {why} (skipped)")

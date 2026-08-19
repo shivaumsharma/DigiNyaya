@@ -95,6 +95,24 @@ class LoginAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class ApiCallLog(Base):
+    """Generic per-user call log for rate-limiting LLM-cost-bearing endpoints
+    (case creation, preliminary review, dispute-type classification) -- see
+    app.auth.rate_limit.enforce_call_limit. Not a security control like
+    LoginAttempt/OtpCode; these calls just spend real Sarvam API credits, so
+    an unbounded client (or a bug that loops a request) needs SOME ceiling.
+    One table, disambiguated by `endpoint`, mirroring AuthToken's `purpose`
+    pattern rather than a table per endpoint.
+    """
+
+    __tablename__ = "api_call_log"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class AuthToken(Base):
     """Not in the original spec's schema -- email-verification links (24hr
     expiry) and password-reset links (short-lived) both need a token stored

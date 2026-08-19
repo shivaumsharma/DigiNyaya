@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .db import utcnow
-from .orm_models import LoginAttempt, OtpCode
+from .orm_models import ApiCallLog, LoginAttempt, OtpCode
 
 OTP_REQUEST_LIMIT = 3
 OTP_REQUEST_WINDOW = timedelta(minutes=15)
@@ -77,4 +77,29 @@ def enforce_login_rate_limit(db: Session, identifier: str, ip: str) -> None:
 
 def record_login_attempt(db: Session, identifier: str, ip: str, success: bool) -> None:
     db.add(LoginAttempt(identifier=identifier, ip=ip, success=success))
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# LLM-cost-bearing endpoints (case creation, preliminary review, dispute-type
+# classification): a real user files very few cases and re-runs the
+# preliminary review a handful of times while iterating on evidence, so
+# these limits are generous relative to normal use -- they exist to bound an
+# unbounded client (or a bug that loops a request) from running up real
+# Sarvam API cost, not to police ordinary usage. Distinct from the security
+# rate limits above (login/OTP), which is why this is a separate function
+# with its own log table (ApiCallLog) rather than reusing LoginAttempt.
+# ---------------------------------------------------------------------------
+
+
+def enforce_call_limit(db: Session, user_id: str, endpoint: str, *, limit: int, window: timedelta) -> None:
+    since = utcnow() - window
+    count = db.scalar(
+        select(func.count())
+        .select_from(ApiCallLog)
+        .where(ApiCallLog.user_id == user_id, ApiCallLog.endpoint == endpoint, ApiCallLog.created_at >= since)
+    )
+    if count and count >= limit:
+        raise HTTPException(status_code=429, detail=TOO_MANY_REQUESTS)
+    db.add(ApiCallLog(user_id=user_id, endpoint=endpoint))
     db.commit()

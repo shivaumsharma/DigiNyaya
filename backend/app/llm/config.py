@@ -65,10 +65,17 @@ class LLMConfig:
         "https://api.sarvam.ai/v1"
     )
 
-    # Fast / inexpensive reasoning
+    # Fast / inexpensive reasoning. sarvam-30b was deprecated by Sarvam and
+    # is now hard-rejected by the API (confirmed live: a 400 naming
+    # sarvam-105b/sarvam-105b-conversations as the only valid replacements) --
+    # every classification/retrieval call using the old default was silently
+    # failing and falling back to scripted logic. sarvam-105b-conversations
+    # is the lighter/faster variant of the current flagship, keeping the
+    # original fast-vs-reasoning cost tiering intent (sarvam_reasoning_model
+    # below still points at full sarvam-105b for analysis/mediation/drafting).
     sarvam_fast_model: str = os.getenv(
         "SARVAM_FAST_MODEL",
-        "sarvam-30b"
+        "sarvam-105b-conversations"
     )
 
     # Highest-quality reasoning
@@ -82,6 +89,26 @@ class LLMConfig:
         "SARVAM_EMBED_MODEL",
         "sarvam-embed"
     )
+
+    # ------------------------------------------------------------------
+    # OpenAI -- only used by scripts/panel_review.py's multi-model panel
+    # today, never by the live pipeline (app.llm.factory only instantiates
+    # this when explicitly asked -- see get_panel_provider()). No key set =
+    # simply unavailable, same graceful-degradation convention as everywhere
+    # else in this module.
+    # ------------------------------------------------------------------
+
+    openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
+    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+    # ------------------------------------------------------------------
+    # Anthropic -- same "panel-only, never the live pipeline" scope as OpenAI above.
+    # ------------------------------------------------------------------
+
+    anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY")
+    anthropic_base_url: str = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
+    anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 
     # ------------------------------------------------------------------
     # Generation Defaults

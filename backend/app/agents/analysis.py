@@ -102,6 +102,7 @@ def run(ctx: CaseContext) -> AgentResult:
     engine = "scripted"
     neutral = None
     llm_defense_strength: float | None = None
+    llm_claimant_substance: float | None = None
     r_text = respondent.get("statement", "") if respondent else "(No response filed within the 72-hour window.)"
     schema = (
         '{"neutral_summary": "<max 70 word neutral paragraph for a quasi-judicial record, do not take '
@@ -115,7 +116,17 @@ def run(ctx: CaseContext) -> AgentResult:
         "limitation, lack of jurisdiction, no privity of contract, res judicata, arbitration clause -- "
         "would be fully dispositive if actually established. Only score 0.7+ when a concrete fact is "
         "actually stated that would make the doctrine apply, or when the claimant's own case fails to "
-        "establish an essential fact. A bare denial with nothing behind it at all still scores 0.0.>"
+        "establish an essential fact. A bare denial with nothing behind it at all still scores 0.0.>, "
+        '"claimant_case_substance": <number 0.0-1.0: does the CLAIMANT\'s own statement actually '
+        "ESTABLISH the specific fact(s) their claim depends on -- an actual contract/agreement, actual "
+        "possession, an actual employer-employee relationship, actual non-delivery as alleged -- or does "
+        "it just ASSERT the conclusion without a checkable fact behind it (an exact date, figure, "
+        "document, registration number, or named witness)? This is judged from the claimant's OWN "
+        "statement only, independent of how many evidence items are attached -- a count of attachments "
+        "doesn't establish relevance or sufficiency. Score LOW (0.1-0.3) when the claim restates the "
+        "allegation ('the respondent owes me money', 'I am the rightful owner') without a specific fact "
+        "that would prove the disputed element. Score 0.7+ only when a concrete, checkable fact is "
+        "actually stated that would establish the element the claim depends on.>"
         "}"
     )
     prompt = (
@@ -126,7 +137,17 @@ def run(ctx: CaseContext) -> AgentResult:
         f"{wrap_untrusted('RESPONDENT_STATEMENT', r_text)}\n"
         f"Evidence on record: {ev} item(s)."
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500)
+    # temperature=0.0, not generate_json's 0.2 default: this call's output
+    # (respondent_defense_strength, claimant_case_substance) directly decides
+    # net_strength in mediation.py, i.e. who wins and how much -- confirmed
+    # by direct trace that the same case, same code, same facts can swing
+    # from "dismissed" to a multi-crore award purely from sampling variance
+    # on a repeat call. A justice-adjacent system giving different outcomes
+    # for identical facts is a correctness problem in itself, independent of
+    # average accuracy -- deterministic reasoning here also makes every
+    # future real-judgment eval number actually mean something, rather than
+    # partly reflecting which way the dice landed on a given run.
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=500, temperature=0.0)
     if data and data.get("neutral_summary"):
         neutral = str(data["neutral_summary"]).strip()
         engine = "llm"
@@ -135,6 +156,11 @@ def run(ctx: CaseContext) -> AgentResult:
             llm_defense_strength = min(max(llm_defense_strength, 0.0), 1.0)
         except (TypeError, ValueError):
             llm_defense_strength = None
+        try:
+            llm_claimant_substance = float(data.get("claimant_case_substance"))
+            llm_claimant_substance = min(max(llm_claimant_substance, 0.0), 1.0)
+        except (TypeError, ValueError):
+            llm_claimant_substance = None
 
     if respondent is None:
         # Uncontested: claimant's version stands unopposed.
@@ -166,7 +192,27 @@ def run(ctx: CaseContext) -> AgentResult:
         # expensive paid re-judges with no clear signal left to chase. See
         # scripts/judge_real_outcomes.py's cached results and
         # [[diginyaya_real_judgment_eval]] memory for the full trail.
+        #
+        # BUT: evidence_count alone can only ever measure how MUCH the
+        # claimant submitted, never whether it actually PROVES what the
+        # claim depends on -- a genuinely asymmetric gap against the
+        # respondent side, which already gets an LLM-judged substance score
+        # (defense_score below) instead of a raw count. Real-judgment
+        # analysis of the "too generous" mismatches (AI grants relief a real
+        # court denied) found this asymmetry is exactly where they cluster:
+        # e.g. "AI granted an injunction, real court denied it for lack of
+        # possession proof" -- evidence_count was nonzero, but nothing
+        # existing could distinguish "evidence submitted" from "evidence
+        # that proves the specific disputed fact". llm_claimant_substance
+        # (schema above) is the symmetric fix: same rigor as
+        # respondent_defense_strength, judged from the claimant's own
+        # statement. Kept ADDITIVE to the already-calibrated evidence-count
+        # term (not a replacement) so a case where the LLM call fails still
+        # degrades to exactly the previously-tuned behavior, not an
+        # untested one.
         c_score = round(min(0.2 + min(ev, 3) * 0.13, 0.85), 2)
+        if llm_claimant_substance is not None:
+            c_score = round(min(0.2 + min(ev, 3) * 0.065 + llm_claimant_substance * 0.4, 0.85), 2)
         # Respondent's strength depends on TWO things, not just the
         # counter-offer: how much they concede via a counter-offer, AND how
         # substantive/specific the defense itself is (a dispositive ground

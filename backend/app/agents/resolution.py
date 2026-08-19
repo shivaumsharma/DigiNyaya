@@ -203,7 +203,7 @@ def finalize(
     non_monetary_action = _NON_MONETARY_ACTIONS.get(med.type) if med else None
     if dismissed:
         order = [
-            "The claimant's case is dismissed for want of a stronger showing than the respondent's "
+            f"{claimant}'s case is dismissed for want of a stronger showing than {respondent}'s "
             "position on the record.",
             "No payment is ordered. Either party may bring fresh evidence for a renewed hearing.",
         ]
@@ -217,17 +217,17 @@ def finalize(
         # incidental line -- claims routinely seek both (e.g. injunction +
         # damages), never as a substitute for the primary non-monetary order.
         order = [
-            f"The respondent shall {non_monetary_action}."
+            f"{respondent} shall {non_monetary_action}."
             if binding
-            else f"It is recommended that the respondent {non_monetary_action}.",
+            else f"It is recommended that {respondent} {non_monetary_action}.",
             f"Compliance is due on or before {deadline.isoformat()} ({compliance_days} days).",
         ]
         if amount > 0:
             order.append(
-                f"In addition, the respondent shall pay the claimant {nlp.inr(amount)} towards incidental "
+                f"In addition, {respondent} shall pay {claimant} {nlp.inr(amount)} towards incidental "
                 f"compensation{interest_clause}."
                 if binding
-                else f"In addition, it is recommended that the respondent pay the claimant {nlp.inr(amount)} "
+                else f"In addition, it is recommended that {respondent} pay {claimant} {nlp.inr(amount)} "
                 f"towards incidental compensation{interest_clause}."
             )
         order.append(
@@ -239,14 +239,14 @@ def finalize(
         )
     elif binding:
         order = [
-            f"The respondent shall pay the claimant {nlp.inr(amount)} towards {relief_for}{interest_clause}.",
+            f"{respondent} shall pay {claimant} {nlp.inr(amount)} towards {relief_for}{interest_clause}.",
             f"Payment shall be completed on or before {deadline.isoformat()} ({compliance_days} days from this agreement).",
             "Compliance shall be reported through the DigiNyaya portal; non-compliance will trigger "
             "an automatic escalation notice and enforcement reference.",
         ]
     else:
         order = [
-            f"It is recommended that the respondent pay the claimant {nlp.inr(amount)} towards {relief_for}{interest_clause}.",
+            f"It is recommended that {respondent} pay {claimant} {nlp.inr(amount)} towards {relief_for}{interest_clause}.",
             f"The suggested compliance window is on or before {deadline.isoformat()} ({compliance_days} days).",
             "This recommendation becomes enforceable only upon the parties' written consent or, where "
             "applicable, after human adjudication.",

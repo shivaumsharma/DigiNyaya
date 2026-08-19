@@ -10,9 +10,16 @@ export default function ReviewerQueue() {
   const navigate = useNavigate()
   const [cases, setCases] = useState(null)
   const [error, setError] = useState('')
+  const [evalMetrics, setEvalMetrics] = useState(null)
+  const [opsMetrics, setOpsMetrics] = useState(null)
 
   useEffect(() => {
     api.reviewQueue().then(setCases).catch((e) => setError(e.message))
+    // Best-effort -- absent in most environments (data_cache/ is gitignored,
+    // only produced by manually running scripts/judge_real_outcomes.py), so
+    // a failure here should never block the queue itself from rendering.
+    api.evalMetrics().then(setEvalMetrics).catch(() => {})
+    api.opsMetrics().then(setOpsMetrics).catch(() => {})
   }, [])
 
   return (
@@ -24,6 +31,36 @@ export default function ReviewerQueue() {
         </h1>
         <p style={{ fontSize: '0.95rem' }}>Cases awaiting a human decision -- escalated, manually flagged, or a Tier 2 draft awaiting counter-signature.</p>
       </div>
+
+      {opsMetrics && (
+        <div className="card elev-sm card-pad" style={{ marginBottom: 16, fontSize: '0.85rem' }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Case volume</div>
+          <p className="sub" style={{ margin: 0 }}>
+            <strong>{opsMetrics.total_cases}</strong> total ·{' '}
+            {Object.entries(opsMetrics.by_tier).map(([tier, n]) => `Tier ${tier}: ${n}`).join(', ')} ·{' '}
+            {Object.entries(opsMetrics.by_status).map(([s, n]) => `${s.replace('_', ' ')}: ${n}`).join(', ')}
+          </p>
+          <p className="sub" style={{ margin: '4px 0 0' }}>
+            Escalation rate: {opsMetrics.escalation_rate_of_terminal != null ? `${Math.round(opsMetrics.escalation_rate_of_terminal * 100)}%` : '—'} of
+            {' '}concluded cases (of all filed: {opsMetrics.escalation_rate_of_total != null ? `${Math.round(opsMetrics.escalation_rate_of_total * 100)}%` : '—'}) ·{' '}
+            {opsMetrics.awaiting_review_count} awaiting review now
+          </p>
+        </div>
+      )}
+
+      {evalMetrics && evalMetrics.available && (
+        <div className="card elev-sm card-pad" style={{ marginBottom: 16, fontSize: '0.85rem' }} title={evalMetrics.methodology}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Real-judgment eval (calibration signal, not a validated accuracy figure)</div>
+          <p className="sub" style={{ margin: 0 }}>
+            AI resolution vs. real court outcome, {evalMetrics.sample_size} cases:{' '}
+            <strong>{evalMetrics.counts.match} match</strong>, <strong>{evalMetrics.counts.partial} partial</strong>,{' '}
+            <strong>{evalMetrics.counts.mismatch} mismatch</strong>
+            {evalMetrics.counts.judge_failed > 0 && `, ${evalMetrics.counts.judge_failed} judge-failed`}
+            {' · '}
+            {Math.round(evalMetrics.match_rate * 100)}% exact match, {Math.round(evalMetrics.match_or_partial_rate * 100)}% match-or-partial
+          </p>
+        </div>
+      )}
 
       {error && <p style={{ color: 'var(--red)' }}>{error}</p>}
       {cases && cases.length === 0 && <p className="sub">Nothing awaiting review right now.</p>}

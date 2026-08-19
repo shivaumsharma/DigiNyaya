@@ -10,13 +10,34 @@ pyjwt>=2.10.1
 bcrypt>=5.0.0
 email-validator>=2.2.0
 
+# --- AWS (RDS Postgres + S3 evidence storage; see the AWS migration plan) ---
+# psycopg3 (not psycopg2) -- SQLAlchemy 2.0's recommended driver.
+psycopg[binary]>=3.2
+boto3>=1.35
+
 # Document ingestion / OCR (see README's "Document upload, OCR & discrepancy
 # detection" section -- Tesseract itself is a separate system binary, not
-# pip-installable)
+# pip-installable). Sarvam Document AI is the primary OCR path (cloud API,
+# no local binary needed); Tesseract is the fallback when no Sarvam key is
+# configured, the document exceeds Document AI's 10-page limit, or the API
+# call fails.
 pymupdf==1.28.0
 pytesseract==0.3.13
 pillow==12.1.1
+sarvamai>=0.1.30
 
 # --- dev/test only ---
 pytest>=8.3.4
 httpx>=0.28.1
+
+# --- analysis scripts only (train_outcome_classifier.py, error_analysis.py) ---
+scikit-learn>=1.5.0
+pandas>=2.2.0
+
+# --- scripts/source_free_judgments.py only (free HuggingFace judgment sourcing) ---
+huggingface_hub>=0.25.0
+pyarrow>=17.0.0
+
+# --- scripts/explain_mediation_shap.py only ---
+shap>=0.45.0
+numpy>=1.26.0

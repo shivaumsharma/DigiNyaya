@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.documents.validation import sniff_mime_type, validate_upload  # noqa: E402
+from app.documents.validation import is_audio_mime_type, sniff_mime_type, validate_upload  # noqa: E402
 
 _MAX = 15 * 1024 * 1024
 
@@ -29,6 +29,41 @@ class TestSniffMimeType(unittest.TestCase):
 
     def test_unrecognised_signature_returns_none(self):
         self.assertIsNone(sniff_mime_type(b"this is plain text, not any of the three types"))
+
+    def test_wav_signature(self):
+        # RIFF....WAVE -- the middle 4 bytes are a variable file-size field,
+        # so this exercises the offset-based matcher, not a plain prefix.
+        self.assertEqual(sniff_mime_type(b"RIFF\x24\x08\x00\x00WAVEfmt "), "audio/wav")
+
+    def test_wav_rejects_other_riff_containers(self):
+        # RIFF is also used by AVI/WEBP -- must not match on RIFF alone.
+        self.assertIsNone(sniff_mime_type(b"RIFF\x24\x08\x00\x00WEBPfmt "))
+
+    def test_mp3_id3_tagged_signature(self):
+        self.assertEqual(sniff_mime_type(b"ID3\x03\x00\x00\x00\x00\x00\x00rest"), "audio/mpeg")
+
+    def test_mp3_raw_frame_sync_signature(self):
+        self.assertEqual(sniff_mime_type(b"\xff\xfb\x90\x00rest of frame"), "audio/mpeg")
+
+    def test_m4a_signature(self):
+        # ISO base media (MP4) container -- a 4-byte box size, then b"ftyp".
+        self.assertEqual(sniff_mime_type(b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00"), "audio/mp4")
+
+    def test_ogg_signature(self):
+        self.assertEqual(sniff_mime_type(b"OggS\x00\x02rest"), "audio/ogg")
+
+    def test_webm_signature(self):
+        self.assertEqual(sniff_mime_type(b"\x1a\x45\xdf\xa3\x9f\x42rest"), "audio/webm")
+
+
+class TestIsAudioMimeType(unittest.TestCase):
+    def test_audio_types_recognised(self):
+        for mime in ("audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/webm"):
+            self.assertTrue(is_audio_mime_type(mime))
+
+    def test_non_audio_types_rejected(self):
+        for mime in ("application/pdf", "image/png", "image/jpeg"):
+            self.assertFalse(is_audio_mime_type(mime))
 
 
 class TestValidateUpload(unittest.TestCase):

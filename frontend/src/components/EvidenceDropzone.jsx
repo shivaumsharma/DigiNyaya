@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
-import { FileText, UploadCloud, Check, Clock, AlertTriangle } from '../icons.jsx'
+import { FileText, Mic, UploadCloud, Check, Clock, AlertTriangle } from '../icons.jsx'
+
+function DocIcon({ mimeType }) {
+  if (mimeType && mimeType.startsWith('audio/')) return <Mic width={16} height={16} />
+  return <FileText width={16} height={16} />
+}
 
 const POLL_MS = 1200
 
@@ -84,7 +89,7 @@ export default function EvidenceDropzone({ caseId, onDocumentsChange }) {
           ref={inputRef}
           type="file"
           multiple
-          accept="application/pdf,image/*"
+          accept="application/pdf,image/*,audio/*"
           style={{ display: 'none' }}
           onChange={(e) => { handleFiles(e.target.files); e.target.value = '' }}
         />
@@ -96,7 +101,7 @@ export default function EvidenceDropzone({ caseId, onDocumentsChange }) {
         <div className="ev-list">
           {documents.map((doc) => (
             <div className="ev-row" key={doc.id}>
-              <FileText width={16} height={16} />
+              <DocIcon mimeType={doc.mime_type} />
               {doc.original_filename}
               <span className="ev-kind">
                 {doc.extraction_status === 'pending' ? t('evidence.statusPending') : doc.extraction_status === 'failed' ? t('evidence.statusFailed') : t('evidence.statusReady')}

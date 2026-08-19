@@ -15,22 +15,39 @@ circular import (main.py will import and mount this router).
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
 from .. import db, jobs
 from ..agents.preliminary_review import run_preliminary_review
+from ..auth.db import get_db
 from ..auth.deps import current_user
 from ..auth.orm_models import User
-from ..documents.validation import validate_upload
+from ..auth.rate_limit import enforce_call_limit
+from ..documents.validation import is_audio_mime_type, validate_upload
 from ..models import DiscrepancyOut, DocumentDetailOut, DocumentOut, PreliminaryReviewOut
 from ..security import ensure_owner
 from ..storage import get_storage
 from ..storage.config import config as storage_config
 
+# See auth.rate_limit.enforce_call_limit's docstring -- re-runnable by
+# design ("any number of times before filing"), so this stays generous
+# relative to real usage; it exists to bound a scripted client, not to
+# police normal iteration on evidence.
+_PRELIM_REVIEW_LIMIT, _PRELIM_REVIEW_WINDOW = 30, timedelta(minutes=10)
+
 router = APIRouter(prefix="/api/cases/{case_id}", tags=["documents"])
 
 _MAX_UPLOAD_BYTES = storage_config.max_upload_mb * 1024 * 1024
+# Each document costs at least one LLM relevance-check call in BOTH the
+# pre-filing preliminary review and the real pipeline's ingestion agent (see
+# app.agents.preliminary_review.document_relevance) -- with no cap, a case
+# with dozens of files means dozens of sequential LLM calls just to ingest
+# it, an unbounded cost/latency vector found during the production-readiness
+# review (2026-08-06). 15 is generous for any real dispute's actual evidence.
+_MAX_EVIDENCE_PER_CASE = 15
 
 
 def _load_owned(case_id: str, owner_id: str) -> dict:
@@ -42,7 +59,11 @@ def _load_owned(case_id: str, owner_id: str) -> dict:
 
 
 def _evidence_kind(mime_type: str) -> str:
-    return "document" if mime_type == "application/pdf" else "photo"
+    if mime_type == "application/pdf":
+        return "document"
+    if is_audio_mime_type(mime_type):
+        return "audio"
+    return "photo"
 
 
 @router.post("/documents", response_model=list[DocumentOut])
@@ -54,6 +75,16 @@ async def upload_documents(
     case = _load_owned(case_id, user.id)
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+
+    existing_count = len(db.list_documents(case_id))
+    if existing_count + len(files) > _MAX_EVIDENCE_PER_CASE:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This case already has {existing_count} evidence file(s); the maximum is "
+                f"{_MAX_EVIDENCE_PER_CASE} per case."
+            ),
+        )
 
     storage = get_storage()
     created: list[dict] = []
@@ -108,12 +139,13 @@ def get_document(case_id: str, document_id: str, user: User = Depends(current_us
 
 
 @router.post("/preliminary-review", response_model=PreliminaryReviewOut)
-def preliminary_review(case_id: str, user: User = Depends(current_user)):
+def preliminary_review(case_id: str, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
     """Advisory-only check on a draft case's evidence -- not the real
     adjudication (that's the 5-agent pipeline, which only runs after the
     respondent replies). Re-runnable any number of times before filing.
     """
     _load_owned(case_id, user.id)
+    enforce_call_limit(auth_db, user.id, "preliminary_review", limit=_PRELIM_REVIEW_LIMIT, window=_PRELIM_REVIEW_WINDOW)
     return run_preliminary_review(case_id)
 
 
