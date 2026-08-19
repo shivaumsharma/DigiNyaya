@@ -12,7 +12,9 @@ no-op, so refreshing the page won't re-run agents or burn LLM compute twice.
 from __future__ import annotations
 
 import logging
+import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterator
 
 from . import db
@@ -23,6 +25,22 @@ from .documents import extraction as doc_extraction
 from .storage import get_storage
 
 logger = logging.getLogger("diginyaya.jobs")
+
+# Every start_*() below used to spawn a raw, unbounded threading.Thread per
+# call -- fine at low volume, but nothing capped how many could pile up
+# concurrently (each one making real LLM/OCR calls) on a single small
+# instance. A single shared bounded pool caps TOTAL background work across
+# pipeline/resolution/extraction/discrepancy runs together, since they all
+# compete for the same CPU/memory/Sarvam-quota regardless of category --
+# more relevant now than ever on the free-tier t3.micro EB instance (1
+# vCPU). The existing per-case/per-document claim registries below (
+# `_running`, `_running_docs`, `_running_discrepancy`) are unchanged and
+# still do their job of preventing a duplicate run of the SAME case/doc;
+# this pool only bounds how many DIFFERENT cases/docs can run at once.
+# Submitted work queues (does not drop) once the pool is full, so a burst
+# just waits its turn instead of failing or being unbounded.
+_MAX_WORKERS = int(os.environ.get("DIGINYAYA_JOB_WORKERS", "4"))
+_executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="diginyaya-job")
 
 
 def _log_status(case_id: str, status: str, **extra) -> None:
@@ -298,7 +316,7 @@ def _run_extraction(document_id: str) -> None:
 def start_extraction(document_id: str) -> bool:
     if not _claim_doc(document_id):
         return False
-    threading.Thread(target=_run_extraction, args=(document_id,), daemon=True).start()
+    _executor.submit(_run_extraction, document_id)
     return True
 
 
@@ -330,19 +348,19 @@ def _run_discrepancy_check(case_id: str) -> None:
 def start_discrepancy_check(case_id: str) -> bool:
     if not _claim_discrepancy(case_id):
         return False
-    threading.Thread(target=_run_discrepancy_check, args=(case_id,), daemon=True).start()
+    _executor.submit(_run_discrepancy_check, case_id)
     return True
 
 
 def start_pipeline(case_id: str) -> bool:
     if not _claim(case_id, "pipeline"):
         return False
-    threading.Thread(target=_run_pipeline, args=(case_id,), daemon=True).start()
+    _executor.submit(_run_pipeline, case_id)
     return True
 
 
 def start_resolution(case_id: str, via_mediation: bool) -> bool:
     if not _claim(case_id, "resolution"):
         return False
-    threading.Thread(target=_run_resolution, args=(case_id, via_mediation), daemon=True).start()
+    _executor.submit(_run_resolution, case_id, via_mediation)
     return True
