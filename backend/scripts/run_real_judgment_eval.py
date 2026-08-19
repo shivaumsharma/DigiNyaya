@@ -92,6 +92,10 @@ CATEGORY_TO_DISPUTE_TYPE = {
     "partnership_business_disputes": "contract_breach",
     "escalation__criminal_matter": "money_recovery",
     "escalation__jurisdiction_mismatch": "consumer_dispute",
+    # Identity mapping, not an approximation like the others above --
+    # cheque_bounce cases (see scripts/build_cheque_bounce_eval.py) already
+    # carry the real registered dispute_type as their category.
+    "cheque_bounce": "cheque_bounce",
 }
 
 EXPECTED_CONDITION_BY_CATEGORY = {

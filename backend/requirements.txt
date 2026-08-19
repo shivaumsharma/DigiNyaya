@@ -37,3 +37,7 @@ pandas>=2.2.0
 # --- scripts/source_free_judgments.py only (free HuggingFace judgment sourcing) ---
 huggingface_hub>=0.25.0
 pyarrow>=17.0.0
+
+# --- scripts/explain_mediation_shap.py only ---
+shap>=0.45.0
+numpy>=1.26.0
