@@ -267,7 +267,7 @@ def main() -> int:
               f"200 shuffles)")
         if "feature_importance_full_fit" in m:
             top = m["feature_importance_full_fit"][:5]
-            print(f"  top features (full-fit, descriptive only): "
+            print("  top features (full-fit, descriptive only): "
                   + ", ".join(f"{t['feature']}={t['weight']}" for t in top))
         print()
 

@@ -170,9 +170,25 @@ def document_relevance(
     )
     data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=250)
     if not data:
+        # No scripted fallback exists for THIS judgment -- whether a
+        # document's content actually supports a specific claim isn't
+        # something a keyword check can reliably do -- but returning
+        # relevant=None here silently made Tier-1 autonomy completely
+        # unreachable whenever the LLM is unavailable (DIGINYAYA_USE_LLM=0,
+        # a Sarvam outage, the circuit breaker open), for EVERY case
+        # regardless of how strong the evidence actually is: ingestion.py's
+        # Tier-1 check only counts relevant=True documents, and None counts
+        # toward neither relevant nor irrelevant. Falling back to "assume
+        # relevant when there's real extracted text" -- the behavior before
+        # this relevance check existed at all, when any non-empty evidence
+        # counted -- restores Tier-1 availability during an outage, at the
+        # cost of losing the relevance check specifically during that
+        # window. Matches how every other LLM-primary check in this
+        # codebase degrades (see e.g. analysis.py's defense-strength
+        # scoring, nlp.score_defense_substance as its scripted fallback).
         return {
             **base,
-            "relevant": None,
+            "relevant": True,
             "looks_like": None,
             "note": "Couldn't assess this document right now -- it will still be reviewed properly once you file.",
             "authenticity_flag": None,

@@ -11,7 +11,24 @@ import re
 
 # Maps a domain signal -> trigger phrases that may appear in free text.
 SIGNAL_LEXICON: dict[str, list[str]] = {
-    "non_delivery": ["not deliver", "never deliver", "non-delivery", "did not arrive", "didn't arrive", "not received", "never received", "undelivered"],
+    # "not deliver"/"never deliver" alone stopped matching real text once
+    # SIGNAL_LEXICON triggers moved to \b-anchored regex (see
+    # _SIGNAL_PATTERNS below): the trailing \b requires a word boundary
+    # right after "deliver", which the common past-tense phrasing "never
+    # delivered" doesn't have (no boundary between "deliver" and "ed").
+    # Confirmed via the golden eval suite: a textbook "never delivered
+    # though marked delivered" non-delivery case silently stopped matching
+    # this signal, which cascaded into no recognised subtype -> Tier 2
+    # instead of the expected Tier 1. Listing the inflected forms
+    # explicitly (rather than loosening the shared \b regex, which exists
+    # specifically to stop short/generic triggers matching inside unrelated
+    # words) fixes this without reopening that original bug.
+    "non_delivery": [
+        "not deliver", "not delivered", "not delivering",
+        "never deliver", "never delivered", "never delivering",
+        "non-delivery", "did not arrive", "didn't arrive",
+        "not received", "never received", "undelivered",
+    ],
     "defective_product": ["defective", "not working", "stopped working", "faulty", "broken", "malfunction", "damaged", "defect"],
     "refund": ["refund", "money back", "return my money", "reimburse"],
     "replacement": ["replace", "replacement", "exchange"],
