@@ -74,6 +74,29 @@ class ClaimSubmission(BaseModel):
     _validate_language = field_validator("language")(_validate_optional_language)
 
 
+class CaseSubmitConfirmation(BaseModel):
+    """Body for POST /api/cases/{id}/submit -- the claimant must
+    affirmatively confirm the claim is accurate before the case actually
+    files and the respondent is notified, mirroring the "verification"
+    affirmation a real court e-filing system requires. Enforced server-side
+    (see submit_case in app.main), not just a disabled frontend button --
+    a client that skips the checkbox and calls the API directly is still
+    blocked."""
+
+    confirmed_accurate: bool = False
+
+
+class DisputeTypeSuggestionRequest(BaseModel):
+    description: str
+    selected_type: DisputeType
+
+
+class DisputeTypeSuggestionOut(BaseModel):
+    suggested_type_id: str
+    suggested_type_label: str
+    reason: str
+
+
 class RespondentSubmission(BaseModel):
     statement: str
     accepts_liability: bool = False
@@ -149,7 +172,7 @@ class DocumentReviewOut(BaseModel):
     looks_like: Optional[str] = None
     note: str = ""
     # Text-only heuristic, NOT forgery/tampering detection (see
-    # app.agents.preliminary_review._document_relevance). None = couldn't
+    # app.agents.preliminary_review.document_relevance). None = couldn't
     # assess; False = no specific concern found; True = a specific,
     # nameable issue was found (authenticity_note explains it).
     authenticity_flag: Optional[bool] = None
@@ -225,6 +248,23 @@ class ReviewQueueItemOut(BaseModel):
     claim_amount: float
     status: str
     reason: str
+    created_at: Optional[str] = None
+
+
+class CaseSummaryOut(BaseModel):
+    """One row of a claimant's own case list (GET /api/cases). Filed-by-me
+    only -- a case's respondent is identified by name, not by user id, so
+    there's no way yet to also list "cases filed against me" here; that
+    needs the respondent-identity gap closed first (see README's known
+    issues / the notification-delivery gap)."""
+
+    case_id: str
+    dispute_type: str
+    respondent: Optional[str] = None
+    claim_amount: float
+    status: str
+    tier: int
+    tier_label: str
     created_at: Optional[str] = None
 
 

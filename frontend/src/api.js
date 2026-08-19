@@ -50,15 +50,39 @@ async function uploadFetch(path, files) {
   return res.json()
 }
 
+async function blobFetch(path) {
+  const res = await fetch(BASE + path, { headers: { ...authHeaders() } })
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`
+    try {
+      const body = await res.json()
+      if (body.detail) msg = body.detail
+    } catch {
+      // Response body wasn't JSON -- fall back to the generic message above.
+    }
+    const err = new Error(msg)
+    err.status = res.status
+    throw err
+  }
+  return res.blob()
+}
+
 export const api = {
   aiStatus: () => jsonFetch('/ai-status'),
   languages: () => jsonFetch('/languages'),
   disputeTypes: () => jsonFetch('/dispute-types'),
-  sampleClaim: () => jsonFetch('/sample-claim'),
+  sampleClaim: (disputeType) => jsonFetch(`/sample-claim${disputeType ? `?dispute_type=${encodeURIComponent(disputeType)}` : ''}`),
   precedents: () => jsonFetch('/precedents'),
+  myCases: () => jsonFetch('/cases'),
   createCase: (claim) => jsonFetch('/cases', { method: 'POST', body: JSON.stringify(claim) }),
+  classifyDisputeType: (description, selectedType) =>
+    jsonFetch('/classify-dispute-type', {
+      method: 'POST',
+      body: JSON.stringify({ description, selected_type: selectedType }),
+    }),
   getCase: (id, lang) => jsonFetch(`/cases/${id}${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
-  submitCase: (id) => jsonFetch(`/cases/${id}/submit`, { method: 'POST' }),
+  submitCase: (id, confirmedAccurate) =>
+    jsonFetch(`/cases/${id}/submit`, { method: 'POST', body: JSON.stringify({ confirmed_accurate: confirmedAccurate }) }),
   uploadDocuments: (id, files) => uploadFetch(`/cases/${id}/documents`, files),
   listDocuments: (id) => jsonFetch(`/cases/${id}/documents`),
   preliminaryReview: (id) => jsonFetch(`/cases/${id}/preliminary-review`, { method: 'POST' }),
@@ -68,8 +92,12 @@ export const api = {
   runPipeline: (id) => jsonFetch(`/cases/${id}/run`, { method: 'POST' }),
   mediationDecision: (id, accept) =>
     jsonFetch(`/cases/${id}/mediation`, { method: 'POST', body: JSON.stringify({ accept }) }),
+  mediationAudio: (id, lang) => blobFetch(`/cases/${id}/mediation/audio${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
+  resolutionAudio: (id, lang) => blobFetch(`/cases/${id}/resolution/audio${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
   requestReview: (id) => jsonFetch(`/cases/${id}/request-review`, { method: 'POST' }),
   reviewQueue: () => jsonFetch('/reviews/queue'),
+  evalMetrics: () => jsonFetch('/reviews/eval-metrics'),
+  opsMetrics: () => jsonFetch('/reviews/ops-metrics'),
   reviewDetail: (id) => jsonFetch(`/reviews/${id}`),
   submitReviewDecision: (id, decision) =>
     jsonFetch(`/reviews/${id}/decision`, { method: 'POST', body: JSON.stringify(decision) }),

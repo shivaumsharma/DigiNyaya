@@ -11,6 +11,7 @@ import AuthScreen from './auth/AuthScreen.jsx'
 import ResetPassword from './auth/ResetPassword.jsx'
 import VerifyEmail from './auth/VerifyEmail.jsx'
 import Home from './pages/Home.jsx'
+import MyCases from './pages/MyCases.jsx'
 import Disputes from './pages/Disputes.jsx'
 import NewCase from './pages/NewCase.jsx'
 import Respondent from './pages/Respondent.jsx'
@@ -31,6 +32,7 @@ createRoot(document.getElementById('root')).render(
               <Route path="/verify-email" element={<VerifyEmail />} />
 
               <Route element={<ProtectedRoute />}>
+                <Route path="/my-cases" element={<MyCases />} />
                 <Route path="/disputes" element={<Disputes />} />
                 <Route path="/file/:type" element={<NewCase />} />
                 <Route path="/case/:id/respond" element={<Respondent />} />

@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.auth.db import Base  # noqa: E402
 from app.auth import orm_models  # noqa: E402,F401  (registers tables on Base.metadata)
+from app.db_url import resolve_db_url  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -23,13 +24,17 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Same DIGINYAYA_DB env var app/db.py and app/auth/db.py both read, so
-# migrations always target the one .db file the app actually uses --
-# alembic.ini's sqlalchemy.url placeholder is never read.
+# migrations always target the one database the app actually uses --
+# alembic.ini's sqlalchemy.url placeholder is never read. resolve_db_url
+# passes a full URL (e.g. postgresql+psycopg://...) through unchanged and
+# only wraps a bare value as a sqlite file path -- previously this file
+# unconditionally did the sqlite wrap, which silently mangled a real
+# Postgres URL into `sqlite:///postgresql://...` and broke migrations.
 _db_path = os.getenv(
     "DIGINYAYA_DB",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diginyaya.db"),
 )
-config.set_main_option("sqlalchemy.url", f"sqlite:///{_db_path}")
+config.set_main_option("sqlalchemy.url", resolve_db_url(_db_path))
 
 target_metadata = Base.metadata
 

@@ -1,28 +1,37 @@
 """Unit tests for app.documents.extraction.
 
 Native-PDF and PDF-type-detection tests need no external binary (PyMuPDF is
-pure pip). OCR tests need the real Tesseract binary installed and are
-skipped (not failed) when it isn't -- matching this codebase's existing
-convention of gracefully degrading around external dependencies (see
-app.llm's provider fallbacks) rather than hard-failing CI on a machine
-without it.
+pure pip). OCR tests for the Tesseract *fallback* path need the real
+Tesseract binary installed and are skipped (not failed) when it isn't --
+matching this codebase's existing convention of gracefully degrading around
+external dependencies (see app.llm's provider fallbacks) rather than
+hard-failing CI on a machine without it.
+
+Sarvam Document AI (the primary OCR path) is tested by monkeypatching
+``extraction._sarvam_ocr`` rather than hitting the real network -- a live
+API call in an automated unit test would be slow, flaky, cost credits, and
+require a real key in CI. End-to-end verification against the real API was
+done manually (see the OCR-swap session that added this path).
 
 Run with (from backend/):
     python -m unittest tests.test_document_extraction -v
 """
 from __future__ import annotations
 
+import dataclasses
 import io
 import shutil
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import fitz
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.circuit_breaker import CircuitBreaker  # noqa: E402
 from app.documents import extraction  # noqa: E402
 
 _TESSERACT_AVAILABLE = shutil.which("tesseract") is not None
@@ -117,11 +126,39 @@ class TestExtractDocumentNative(unittest.TestCase):
         self.assertIn("Invoice dated 01/02/2024", result.cleaned_text)
 
 
-@unittest.skipUnless(_TESSERACT_AVAILABLE, "Tesseract binary not installed on this machine")
-class TestExtractDocumentOCR(unittest.TestCase):
-    def test_scanned_pdf_extracted_via_ocr(self):
+class TestExtractDocumentOCRSarvamPrimary(unittest.TestCase):
+    """Sarvam Document AI is tried first; _sarvam_ocr is mocked so these
+    don't hit the real network."""
+
+    def test_scanned_pdf_uses_sarvam_when_available(self):
         raw = _scanned_pdf_bytes("Receipt Rs 12000")
-        result = extraction.extract_document(raw, "application/pdf")
+        with mock.patch.object(extraction, "_sarvam_ocr", return_value=("Receipt Rs 12000", 0.92)):
+            result = extraction.extract_document(raw, "application/pdf")
+        self.assertIsNone(result.error)
+        self.assertTrue(result.is_scanned)
+        self.assertEqual(result.engine, "sarvam_doc_ai")
+        self.assertEqual(result.ocr_confidence, 0.92)
+
+    def test_standalone_image_uses_sarvam_when_available(self):
+        raw = _image_bytes("Contract Rs 50000")
+        with mock.patch.object(extraction, "_sarvam_ocr", return_value=("Contract Rs 50000", 0.92)):
+            result = extraction.extract_document(raw, "image/png")
+        self.assertIsNone(result.error)
+        self.assertTrue(result.is_scanned)
+        self.assertEqual(result.engine, "sarvam_doc_ai")
+
+
+@unittest.skipUnless(_TESSERACT_AVAILABLE, "Tesseract binary not installed on this machine")
+class TestExtractDocumentOCRTesseractFallback(unittest.TestCase):
+    """Tesseract is only reached when Sarvam is unconfigured/unavailable --
+    forced here by mocking _sarvam_ocr to return None (its "unavailable"
+    contract), independent of whether a real Sarvam key happens to be set
+    in this environment."""
+
+    def test_scanned_pdf_falls_back_to_tesseract(self):
+        raw = _scanned_pdf_bytes("Receipt Rs 12000")
+        with mock.patch.object(extraction, "_sarvam_ocr", return_value=None):
+            result = extraction.extract_document(raw, "application/pdf")
         self.assertIsNone(result.error)
         self.assertTrue(result.is_scanned)
         self.assertEqual(result.engine, "tesseract")
@@ -129,12 +166,38 @@ class TestExtractDocumentOCR(unittest.TestCase):
         self.assertGreaterEqual(result.ocr_confidence, 0.0)
         self.assertLessEqual(result.ocr_confidence, 1.0)
 
-    def test_standalone_image_extracted_via_ocr(self):
+    def test_standalone_image_falls_back_to_tesseract(self):
         raw = _image_bytes("Contract Rs 50000")
-        result = extraction.extract_document(raw, "image/png")
+        with mock.patch.object(extraction, "_sarvam_ocr", return_value=None):
+            result = extraction.extract_document(raw, "image/png")
         self.assertIsNone(result.error)
         self.assertTrue(result.is_scanned)
         self.assertEqual(result.engine, "tesseract")
+
+
+class TestExtractDocumentAudio(unittest.TestCase):
+    """Audio evidence has no local fallback engine (unlike OCR's Tesseract
+    fallback) -- _sarvam_transcribe is mocked so these don't hit the real
+    network; live verification against the real API was done manually."""
+
+    def test_audio_transcribed_via_sarvam(self):
+        with mock.patch.object(
+            extraction, "_sarvam_transcribe",
+            return_value=("Speaker 0: I paid for the laptop.\nSpeaker 1: We will refund you.", 0.9),
+        ):
+            result = extraction.extract_document(b"RIFF....WAVEfmt ", "audio/wav")
+        self.assertIsNone(result.error)
+        self.assertTrue(result.is_scanned)
+        self.assertEqual(result.engine, "sarvam_stt")
+        self.assertEqual(result.ocr_confidence, 0.9)
+        self.assertIn("Speaker 0", result.cleaned_text)
+        self.assertIn("Speaker 1", result.cleaned_text)
+
+    def test_audio_unavailable_reports_error_without_raising(self):
+        with mock.patch.object(extraction, "_sarvam_transcribe", return_value=None):
+            result = extraction.extract_document(b"RIFF....WAVEfmt ", "audio/wav")
+        self.assertIsNotNone(result.error)
+        self.assertEqual(result.raw_text, "")
 
 
 class TestExtractDocumentGracefulFailure(unittest.TestCase):
@@ -142,9 +205,92 @@ class TestExtractDocumentGracefulFailure(unittest.TestCase):
         if _TESSERACT_AVAILABLE:
             self.skipTest("Tesseract IS installed on this machine -- this test needs it absent")
         raw = _scanned_pdf_bytes("Some text")
-        result = extraction.extract_document(raw, "application/pdf")
+        with mock.patch.object(extraction, "_sarvam_ocr", return_value=None):
+            result = extraction.extract_document(raw, "application/pdf")
         self.assertIsNotNone(result.error)
         self.assertEqual(result.raw_text, "")
+
+
+class TestSarvamOcrCircuitBreaker(unittest.TestCase):
+    """An open breaker must short-circuit _sarvam_ocr before it even
+    imports/constructs the SarvamAI client -- proven by asserting the SDK
+    constructor is never called, not just that the return value is None."""
+
+    def setUp(self):
+        self._breaker = CircuitBreaker(name="test_doc_ai")
+        self._breaker_patch = mock.patch.object(extraction, "_ocr_breaker", self._breaker)
+        self._breaker_patch.start()
+        self._key_patch = mock.patch.object(
+            extraction, "config", dataclasses.replace(extraction.config, sarvam_api_key="test-key")
+        )
+        self._key_patch.start()
+
+    def tearDown(self):
+        self._breaker_patch.stop()
+        self._key_patch.stop()
+
+    def test_open_breaker_skips_client_construction(self):
+        for _ in range(CircuitBreaker.FAILURE_THRESHOLD):
+            self._breaker.record_failure()
+
+        with mock.patch("sarvamai.SarvamAI") as mock_client_cls:
+            result = extraction._sarvam_ocr(b"raw", "doc.pdf", "application/pdf", "en-IN")
+
+        self.assertIsNone(result)
+        mock_client_cls.assert_not_called()
+
+    def test_closed_breaker_calls_client_and_records_success(self):
+        mock_client = mock.MagicMock()
+        mock_client.doc_ai.digitise.return_value = mock.MagicMock(status="completed", job_id="job-1")
+        mock_client.doc_ai.get_results.return_value = mock.MagicMock(
+            documents=[mock.MagicMock(pages=[mock.MagicMock(blocks=[{"text": "hello", "reading_order": 0}])])]
+        )
+        with mock.patch("sarvamai.SarvamAI", return_value=mock_client):
+            result = extraction._sarvam_ocr(b"raw", "doc.pdf", "application/pdf", "en-IN")
+
+        self.assertEqual(result, ("hello", 0.92))
+        self.assertTrue(self._breaker.allow())
+
+    def test_exception_records_failure(self):
+        with mock.patch("sarvamai.SarvamAI", side_effect=RuntimeError("network down")):
+            for _ in range(CircuitBreaker.FAILURE_THRESHOLD):
+                result = extraction._sarvam_ocr(b"raw", "doc.pdf", "application/pdf", "en-IN")
+                self.assertIsNone(result)
+
+        self.assertFalse(self._breaker.allow())
+
+
+class TestSarvamSttCircuitBreaker(unittest.TestCase):
+    def setUp(self):
+        self._breaker = CircuitBreaker(name="test_stt")
+        self._breaker_patch = mock.patch.object(extraction, "_stt_breaker", self._breaker)
+        self._breaker_patch.start()
+        self._key_patch = mock.patch.object(
+            extraction, "config", dataclasses.replace(extraction.config, sarvam_api_key="test-key")
+        )
+        self._key_patch.start()
+
+    def tearDown(self):
+        self._breaker_patch.stop()
+        self._key_patch.stop()
+
+    def test_open_breaker_skips_client_construction(self):
+        for _ in range(CircuitBreaker.FAILURE_THRESHOLD):
+            self._breaker.record_failure()
+
+        with mock.patch("sarvamai.SarvamAI") as mock_client_cls:
+            result = extraction._sarvam_transcribe(b"RIFF....WAVEfmt ", "audio/wav")
+
+        self.assertIsNone(result)
+        mock_client_cls.assert_not_called()
+
+    def test_exception_records_failure(self):
+        with mock.patch("sarvamai.SarvamAI", side_effect=RuntimeError("network down")):
+            for _ in range(CircuitBreaker.FAILURE_THRESHOLD):
+                result = extraction._sarvam_transcribe(b"RIFF....WAVEfmt ", "audio/wav")
+                self.assertIsNone(result)
+
+        self.assertFalse(self._breaker.allow())
 
 
 if __name__ == "__main__":

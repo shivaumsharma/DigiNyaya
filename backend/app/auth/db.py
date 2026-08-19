@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from ..db_url import resolve_db_url
+
 
 def utcnow() -> datetime:
     """Naive UTC datetime -- SQLite has no native timezone-aware column type,
@@ -33,11 +35,13 @@ _DB_PATH = os.getenv(
     "DIGINYAYA_DB",
     os.path.join(os.path.dirname(__file__), "..", "..", "diginyaya.db"),
 )
+_DATABASE_URL = resolve_db_url(_DB_PATH)
 
-engine = create_engine(
-    f"sqlite:///{_DB_PATH}",
-    connect_args={"check_same_thread": False},
-)
+# check_same_thread is a sqlite3-DBAPI-specific pyfunc arg; passing it to a
+# non-sqlite dialect (e.g. psycopg2) raises a TypeError at connect time.
+_connect_args = {"check_same_thread": False} if _DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(_DATABASE_URL, connect_args=_connect_args)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 

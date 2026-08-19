@@ -30,9 +30,11 @@ Run (from backend/): python -m scripts.judge_real_outcomes
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
+import threading
 import sys
 import time
 from pathlib import Path
@@ -190,7 +192,25 @@ def judge(case: dict, ai: dict) -> dict | None:
         f"AI DECIDED:\n{relief_line}\n"
         f"Full order: {' '.join(ai['order'])}\n"
     )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=4096)
+    # temperature=0.0, not generate_json's 0.2 default: this is a comparison/
+    # classification judgment, not creative drafting -- the same AI decision
+    # compared against the same real outcome should always get the same
+    # verdict. Found via direct inspection: IK-EVAL-4862458's own `reason`
+    # field said the court "denied application" while `real_outcome` (fed to
+    # the SAME judge call) said the court "granted the plaintiff's
+    # application" -- an internally contradictory verdict, i.e. judge noise,
+    # not a real pipeline error.
+    # max_tokens=2000, not 4096: this call resolves to the fast-tier model
+    # (sarvam_fast_model), and Sarvam's newer sarvam-105b-conversations --
+    # the replacement for the now-deprecated sarvam-30b, see app/llm/config.py
+    # -- caps max_tokens at 2048 on the starter subscription tier, lower than
+    # sarvam-30b's old 4096 ceiling. Confirmed via a raw API call: requesting
+    # 4096 here 400s outright ("exceeds the maximum allowed... 2048"), not a
+    # graceful truncation. The docstring above already established this
+    # call's real completions finish in ~1200-1700 tokens, so 2000 keeps
+    # the same headroom margin the original 4096 was providing, just under
+    # the new model's actual ceiling.
+    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=2000, temperature=0.0)
     return data
 
 
@@ -205,7 +225,21 @@ def main() -> int:
                           "case from scratch (re-pays for all of them). Default is incremental: a "
                           "case is only re-judged if its actual AI output (relief type/amount/order) "
                           "changed since the last run.")
+    ap.add_argument("--workers", type=int, default=1,
+                     help="run this many cases concurrently (I/O-bound on Sarvam API calls, so real "
+                          "wall-clock speedup, not just paper parallelism). REQUIRES --live-llm: "
+                          "_llm_disabled_for() toggles a process-wide env var per case to switch "
+                          "between scripted pipeline / live judge -- safe under concurrency only "
+                          "when every thread wants the SAME value the whole run (true for --live-llm, "
+                          "where both the pipeline and the judge want it enabled; NOT true for "
+                          "scripted mode, where the pipeline wants it off and the judge wants it on, "
+                          "and concurrent threads flipping between the two would race).")
     args = ap.parse_args()
+
+    if args.workers > 1 and not args.live_llm:
+        print("ERROR: --workers > 1 requires --live-llm (see --help for why -- scripted mode's "
+              "env-var toggling isn't safe under concurrency).")
+        return 1
 
     cases = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     if not llm.is_available():
@@ -213,6 +247,13 @@ def main() -> int:
         return 1
     if args.live_llm:
         print("--live-llm: analysis.py/mediation.py will make real LLM calls during this run.")
+    if args.workers > 1:
+        # Pre-set once, for the whole run, instead of per-case: every thread
+        # wants this at "1" throughout (see --workers help above), so
+        # concurrent enter/exit of _llm_disabled_for("1") below becomes a
+        # harmless same-value no-op instead of a real race.
+        os.environ["DIGINYAYA_USE_LLM"] = "1"
+        print(f"--workers {args.workers}: running cases concurrently.")
 
     # Cache keyed by case_id -> {ai_hash, verdict, reason, ai_relief,
     # real_outcome, code_fingerprint, live_llm}. Two levels of reuse:
@@ -229,19 +270,24 @@ def main() -> int:
     cache: dict[str, dict] = {}
     if not args.fresh and OUT_PATH.exists():
         prior = json.loads(OUT_PATH.read_text(encoding="utf-8"))
-        cache = {r["case_id"]: r for r in prior if r.get("ai_hash")}
+        # verdict == "judge_failed" is NOT a real cached verdict -- it means
+        # the judge call itself broke (a transient outage/circuit-breaker
+        # trip, observed happening spontaneously mid-run in this environment)
+        # and still carries an ai_hash, so without this exclusion a future
+        # incremental run would treat "we couldn't get an answer" as a
+        # permanent answer and never retry it.
+        cache = {r["case_id"]: r for r in prior if r.get("ai_hash") and r.get("verdict") != "judge_failed"}
         print(f"Loaded {len(cache)} cached verdict(s) from {OUT_PATH} -- only re-judging cases whose "
               "AI output changed (use --fresh to ignore and re-judge everything).")
 
     current_fingerprint = _pipeline_fingerprint()
 
-    results = []
-    n_full_skip = 0
-    n_cached = 0
-    n_judged = 0
-    for i, case in enumerate(cases):
-        print(f"[{i + 1}/{len(cases)}] {case['case_id']} ({case['category']})...", end=" ", flush=True)
+    results: list[dict] = []
+    counts_lock = threading.Lock()
+    tallies = {"full_skip": 0, "cached": 0, "judged": 0}
 
+    def process_one(i: int, case: dict) -> None:
+        label = f"[{i + 1}/{len(cases)}] {case['case_id']} ({case['category']})..."
         cached = cache.get(case["case_id"])
         if (
             cached
@@ -249,52 +295,69 @@ def main() -> int:
             and cached.get("live_llm") is False
             and cached.get("code_fingerprint") == current_fingerprint
         ):
-            print(f"(unchanged, pipeline not re-run) {cached['verdict']} -- {(cached.get('reason') or '')[:80]}")
-            results.append(cached)
-            n_full_skip += 1
-            continue
+            print(f"{label} (unchanged, pipeline not re-run) {cached['verdict']} -- "
+                  f"{(cached.get('reason') or '')[:80]}")
+            with counts_lock:
+                results.append(cached)
+                tallies["full_skip"] += 1
+            return
 
         ai = run_and_capture(case, live_llm=args.live_llm)
         if ai is None:
-            print("skipped (escalated -- no AI resolution to compare)")
-            continue
+            print(f"{label} skipped (escalated -- no AI resolution to compare)")
+            return
         ai_hash = _ai_hash(ai)
         if cached and cached.get("ai_hash") == ai_hash:
-            print(f"(cached) {cached['verdict']} -- {(cached.get('reason') or '')[:80]}")
+            print(f"{label} (cached) {cached['verdict']} -- {(cached.get('reason') or '')[:80]}")
             reused = dict(cached)
             reused["code_fingerprint"] = current_fingerprint
             reused["live_llm"] = args.live_llm
-            results.append(reused)
-            n_cached += 1
-            continue
-        n_judged += 1
+            with counts_lock:
+                results.append(reused)
+                tallies["cached"] += 1
+            return
+
+        with counts_lock:
+            tallies["judged"] += 1
         verdict = judge(case, ai)
         if verdict is None or verdict.get("verdict") not in ("match", "partial", "mismatch"):
-            print("JUDGE FAILED (no usable response)")
-            results.append({
+            print(f"{label} JUDGE FAILED (no usable response)")
+            entry = {
                 "case_id": case["case_id"], "category": case["category"],
                 "verdict": "judge_failed", "reason": None,
                 "ai_relief": ai["relief_amount_display"], "ai_hash": ai_hash,
                 "code_fingerprint": current_fingerprint, "live_llm": args.live_llm,
-            })
-            # Saved incrementally so a mid-run crash doesn't lose already-judged cases.
+            }
+        else:
+            print(f"{label} {verdict['verdict']} -- {verdict.get('reason', '')[:80]}")
+            entry = {
+                "case_id": case["case_id"],
+                "category": case["category"],
+                "verdict": verdict["verdict"],
+                "reason": verdict.get("reason"),
+                "ai_relief": ai["relief_amount_display"],
+                "real_outcome": case["expected_outcome"][:200],
+                "ai_hash": ai_hash,
+                "code_fingerprint": current_fingerprint,
+                "live_llm": args.live_llm,
+            }
+        # Saved incrementally (under the same lock as the append) so a
+        # mid-run crash/kill -- observed happening spontaneously in this
+        # environment on long runs -- never loses more than the single
+        # in-flight case per worker.
+        with counts_lock:
+            results.append(entry)
             OUT_PATH.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
-            continue
-        print(f"{verdict['verdict']} -- {verdict.get('reason', '')[:80]}")
-        results.append({
-            "case_id": case["case_id"],
-            "category": case["category"],
-            "verdict": verdict["verdict"],
-            "reason": verdict.get("reason"),
-            "ai_relief": ai["relief_amount_display"],
-            "real_outcome": case["expected_outcome"][:200],
-            "ai_hash": ai_hash,
-            "code_fingerprint": current_fingerprint,
-            "live_llm": args.live_llm,
-        })
-        OUT_PATH.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
         time.sleep(0.3)
 
+    if args.workers > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+            list(executor.map(lambda ic: process_one(*ic), enumerate(cases)))
+    else:
+        for i, case in enumerate(cases):
+            process_one(i, case)
+
+    n_full_skip, n_cached, n_judged = tallies["full_skip"], tallies["cached"], tallies["judged"]
     OUT_PATH.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
 
     counts = {"match": 0, "partial": 0, "mismatch": 0, "judge_failed": 0}

@@ -14,7 +14,8 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 
 # Load backend/.env before importing modules that read config at import time
 # (e.g. the llm client and security secret). Shell env vars take precedence.
@@ -27,15 +28,19 @@ except Exception:
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from sqlalchemy.orm import Session
 
 from . import db, jobs, llm
-from .auth.db import init_auth_db
+from .agents.preliminary_review import suggest_dispute_type
+from .auth.db import get_db, init_auth_db
 from .auth.deps import current_user
 from .auth.orm_models import User
+from .auth.rate_limit import enforce_call_limit
 from .auth.router import me_router as auth_me_router, router as auth_router
 from .core.events import TERMINAL, bus, stream_from_queue
 from .core.logging import configure_app_logging
+from .core.versioning import ApiVersionRewriteMiddleware
 from .routers.documents import router as documents_router
 from .routers.reviews import router as reviews_router
 from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
@@ -48,8 +53,13 @@ from .language.config import (
 )
 from .language.gateway import UnsupportedLanguageError, get_language_gateway
 from .language.logging import configure_language_logging
+from .language.tts import synthesize_speech
 from .models import (
+    CaseSubmitConfirmation,
+    CaseSummaryOut,
     ClaimSubmission,
+    DisputeTypeSuggestionOut,
+    DisputeTypeSuggestionRequest,
     LanguageOption,
     MediationDecision,
     RespondentSubmission,
@@ -80,6 +90,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# See app.core.versioning's docstring: makes every /api/... route also
+# reachable at /api/v1/... with zero duplicate route declarations.
+app.add_middleware(ApiVersionRewriteMiddleware)
 
 app.include_router(auth_router)
 app.include_router(auth_me_router)
@@ -87,32 +100,118 @@ app.include_router(documents_router)
 app.include_router(reviews_router)
 
 
-SAMPLE_CLAIM = {
-    "claimant_name": "Ananya Sharma",
-    "respondent_name": "QuickShop Online Pvt. Ltd.",
-    "dispute_type": "consumer_dispute",
-    "claim_amount": 42999,
-    "description": (
-        "I ordered a laptop worth Rs. 42,999 from QuickShop Online on 12/03/2024. "
-        "The amount was debited from my account immediately. The order was never "
-        "delivered despite the app showing 'delivered' on 20/03/2024. I have raised "
-        "the issue with their customer care five times but received no response. "
-        "I am seeking a full refund of the amount paid online for goods I never received."
-    ),
-    "evidence": [
-        {"filename": "order_invoice.pdf", "kind": "invoice", "note": "Tax invoice for Rs. 42,999"},
-        {"filename": "bank_debit_statement.pdf", "kind": "receipt", "note": "Bank debit confirmation"},
-        {"filename": "chat_with_support.png", "kind": "screenshot", "note": "5 unanswered support tickets"},
-    ],
-}
-
-SAMPLE_RESPONSE = {
-    "statement": (
-        "The order was handed to our logistics partner. We are unable to confirm "
-        "delivery and our courier has not responded. We can offer store credit."
-    ),
-    "accepts_liability": False,
-    "counter_offer": 20000,
+SAMPLE_CLAIMS = {
+    "consumer_dispute": {
+        "claim": {
+            "claimant_name": "Ananya Sharma",
+            "respondent_name": "QuickShop Online Pvt. Ltd.",
+            "dispute_type": "consumer_dispute",
+            "claim_amount": 42999,
+            "description": (
+                "I ordered a laptop worth Rs. 42,999 from QuickShop Online on 12/03/2024. "
+                "The amount was debited from my account immediately. The order was never "
+                "delivered despite the app showing 'delivered' on 20/03/2024. I have raised "
+                "the issue with their customer care five times but received no response. "
+                "I am seeking a full refund of the amount paid online for goods I never received."
+            ),
+            "evidence": [
+                {"filename": "order_invoice.pdf", "kind": "invoice", "note": "Tax invoice for Rs. 42,999"},
+                {"filename": "bank_debit_statement.pdf", "kind": "receipt", "note": "Bank debit confirmation"},
+                {"filename": "chat_with_support.png", "kind": "screenshot", "note": "5 unanswered support tickets"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "The order was handed to our logistics partner. We are unable to confirm "
+                "delivery and our courier has not responded. We can offer store credit."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 20000,
+        },
+    },
+    "money_recovery": {
+        "claim": {
+            "claimant_name": "Rohan Verma",
+            "respondent_name": "Karan Mehta",
+            "dispute_type": "money_recovery",
+            "claim_amount": 150000,
+            "description": (
+                "I lent Rs. 1,50,000 to Karan Mehta via bank transfer on 05/01/2024 as an "
+                "interest-free personal loan, repayable within 6 months as agreed over WhatsApp. "
+                "The repayment date (05/07/2024) has passed and he has repaid nothing. He "
+                "acknowledged the loan in writing at the time but has since stopped responding "
+                "to calls and messages. I am seeking recovery of the full amount lent."
+            ),
+            "evidence": [
+                {"filename": "bank_transfer_receipt.pdf", "kind": "receipt", "note": "NEFT transfer confirmation, Rs. 1,50,000"},
+                {"filename": "whatsapp_agreement.png", "kind": "screenshot", "note": "Chat acknowledging the loan and repayment terms"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "I did borrow the money but I've lost my job and can't repay the full amount "
+                "right now. I can pay in installments over the next year."
+            ),
+            "accepts_liability": True,
+            "counter_offer": 75000,
+        },
+    },
+    "contract_breach": {
+        "claim": {
+            "claimant_name": "Priya Nair",
+            "respondent_name": "BuildRight Interiors",
+            "dispute_type": "contract_breach",
+            "claim_amount": 80000,
+            "description": (
+                "I signed a written agreement with BuildRight Interiors on 01/02/2024 for "
+                "home renovation work, paying an advance of Rs. 80,000 out of a total "
+                "Rs. 2,00,000 contract value. The agreement specified work would begin within "
+                "2 weeks and complete within 6 weeks. No work has started as of 15/04/2024, "
+                "over two months later, and they are not responding to requests to either "
+                "start the work or refund the advance."
+            ),
+            "evidence": [
+                {"filename": "signed_agreement.pdf", "kind": "contract", "note": "Signed renovation contract with timeline"},
+                {"filename": "advance_payment_receipt.pdf", "kind": "receipt", "note": "Rs. 80,000 advance payment receipt"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "There were delays due to material shortages beyond our control. We intend to "
+                "complete the work and are not willing to refund the advance."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 0,
+        },
+    },
+    "cheque_bounce": {
+        "claim": {
+            "claimant_name": "Vikram Desai",
+            "respondent_name": "Suresh Traders",
+            "dispute_type": "cheque_bounce",
+            "claim_amount": 250000,
+            "description": (
+                "Suresh Traders issued a cheque for Rs. 2,50,000 dated 10/03/2024 to settle an "
+                "outstanding supply debt. The cheque was dishonoured on presentation on "
+                "12/03/2024 with the reason 'insufficient funds'. I sent a legal demand notice "
+                "under Section 138 of the Negotiable Instruments Act on 18/03/2024, giving 15 "
+                "days to pay. No payment has been made and the notice period has expired."
+            ),
+            "evidence": [
+                {"filename": "dishonoured_cheque.pdf", "kind": "document", "note": "Copy of the bounced cheque"},
+                {"filename": "bank_return_memo.pdf", "kind": "document", "note": "Bank's cheque-return memo citing insufficient funds"},
+                {"filename": "demand_notice.pdf", "kind": "document", "note": "Section 138 legal demand notice, sent 18/03/2024"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "We had a temporary cash flow issue at the time. We are willing to reissue "
+                "payment but dispute the exact amount owed."
+            ),
+            "accepts_liability": True,
+            "counter_offer": 200000,
+        },
+    },
 }
 
 
@@ -280,6 +379,26 @@ def dispute_types():
     return DISPUTE_TYPES
 
 
+# LLM-cost-bearing endpoints -- see auth.rate_limit.enforce_call_limit's
+# docstring. Limits are generous relative to real usage; they bound an
+# unbounded/scripted client, not ordinary use.
+_CLASSIFY_LIMIT, _CLASSIFY_WINDOW = 60, timedelta(minutes=10)
+_CREATE_CASE_LIMIT, _CREATE_CASE_WINDOW = 20, timedelta(hours=1)
+
+
+@app.post("/api/classify-dispute-type", response_model=Optional[DisputeTypeSuggestionOut])
+def classify_dispute_type(
+    payload: DisputeTypeSuggestionRequest, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+):
+    """Advisory-only: called live while a claimant types their description
+    on the filing form, to catch them being on the wrong category page
+    (e.g. describing a bounced cheque under Consumer Dispute). Never blocks
+    filing -- returns null when there's nothing worth suggesting."""
+    enforce_call_limit(auth_db, user.id, "classify_dispute_type", limit=_CLASSIFY_LIMIT, window=_CLASSIFY_WINDOW)
+    result = suggest_dispute_type(payload.description, payload.selected_type.value)
+    return result
+
+
 @app.get("/api/precedents")
 def precedents():
     return load_precedents()
@@ -298,8 +417,9 @@ def languages():
 
 
 @app.get("/api/sample-claim")
-def sample_claim():
-    return {"claim": SAMPLE_CLAIM, "response": SAMPLE_RESPONSE}
+def sample_claim(dispute_type: str = "consumer_dispute"):
+    sample = SAMPLE_CLAIMS.get(dispute_type, SAMPLE_CLAIMS["consumer_dispute"])
+    return {"claim": sample["claim"], "response": sample["response"]}
 
 
 # ----------------------------- cases (authed) ----------------------------- #
@@ -310,8 +430,68 @@ def _tier_for(dispute_type: str) -> tuple[int, str]:
     return 1, "Tier 1 — Fully Autonomous AI Resolution"
 
 
+@app.get("/api/cases", response_model=list[CaseSummaryOut])
+def list_my_cases(user: User = Depends(current_user)):
+    """Cases the current user filed (owner_id == user.id) -- filed-by-me
+    only, newest first. See CaseSummaryOut's docstring for why this can't
+    yet also list cases filed against the user."""
+    return [
+        CaseSummaryOut(
+            case_id=c["case_id"],
+            dispute_type=c.get("dispute_type", ""),
+            respondent=(c.get("respondent") or {}).get("name"),
+            claim_amount=c.get("claim_amount", 0.0),
+            status=c.get("status", ""),
+            tier=c.get("tier", 1),
+            tier_label=c.get("tier_label", ""),
+            created_at=c.get("created_at"),
+        )
+        for c in db.list_cases_by_owner(user.id)
+    ]
+
+
+@app.get("/api/me/data-export")
+def export_my_data(user: User = Depends(current_user)):
+    """Self-service data export (DPDP Act 2023 access/portability principle)
+    -- every case the user filed, in full, plus that case's documents
+    (including extracted text -- it's their evidence) and event log.
+
+    Deliberately NOT paired with a self-service delete: case records
+    doubling as evidentiary/audit records is the whole point of the
+    tamper-evident event log (see app.db.verify_case_events) -- deciding
+    what's safe to actually erase vs. must be retained is a legal/product
+    policy question, not one this endpoint should silently resolve by
+    letting a user delete their own dispute history.
+
+    storage_path is deliberately omitted from each document -- that's an
+    internal server implementation detail, not something the user gave us.
+    """
+    cases = []
+    for case in db.list_cases_by_owner(user.id):
+        case_id = case["case_id"]
+        documents = [
+            {k: v for k, v in doc.items() if k != "storage_path"}
+            for doc in db.list_documents(case_id)
+        ]
+        cases.append({**case, "documents": documents, "events": db.get_events(case_id)})
+
+    return {
+        "exported_at": datetime.utcnow().isoformat(),
+        "profile": {
+            "id": user.id,
+            "email": user.email,
+            "phone": user.phone,
+            "full_name": user.full_name,
+            "preferred_language": user.preferred_language,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        },
+        "cases": cases,
+    }
+
+
 @app.post("/api/cases")
-def create_case(submission: ClaimSubmission, user: User = Depends(current_user)):
+def create_case(submission: ClaimSubmission, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
+    enforce_call_limit(auth_db, user.id, "create_case", limit=_CREATE_CASE_LIMIT, window=_CREATE_CASE_WINDOW)
     case_id = "DN-" + datetime.utcnow().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
     tier, tier_label = _tier_for(submission.dispute_type.value)
     gw = get_language_gateway()
@@ -359,16 +539,40 @@ def _load_owned(case_id: str, owner_id: str) -> dict:
 
 
 @app.post("/api/cases/{case_id}/submit")
-def submit_case(case_id: str, user: User = Depends(current_user)):
+def submit_case(case_id: str, confirmation: CaseSubmitConfirmation, user: User = Depends(current_user)):
     """The real "file & notify respondent" action -- separate from case
     creation so a claimant can attach evidence and get a preliminary review
     first (see /preliminary-review) without the 72-hour response window
     starting, or the respondent being notified, before they're ready.
+
+    Requires confirmed_accurate=True: the claimant must affirmatively
+    confirm the claim is accurate before it actually files, mirroring a
+    real court e-filing "verification" -- enforced here, not just in the
+    frontend, and recorded on the case (plus an audit-log event) with a
+    timestamp so it's part of the case's permanent record.
     """
     case = _load_owned(case_id, user.id)
     if case.get("status") != "draft":
         raise HTTPException(status_code=409, detail="Case has already been filed")
-    db.update_case(case_id, status="awaiting_response")
+    if not confirmation.confirmed_accurate:
+        raise HTTPException(
+            status_code=400,
+            detail="You must confirm the information in this claim is accurate before filing.",
+        )
+    filing_confirmation = {"confirmed_accurate": True, "confirmed_at": datetime.utcnow().isoformat()}
+    db.update_case(case_id, status="awaiting_response", filing_confirmation=filing_confirmation)
+    db.append_event(
+        case_id,
+        {
+            "type": "filing_confirmed",
+            "agent": "system",
+            "status": "info",
+            "title": "Claimant confirmed accuracy before filing",
+            "detail": "",
+            "payload": filing_confirmation,
+            "ts": datetime.utcnow().timestamp(),
+        },
+    )
     return {"case_id": case_id, "status": "awaiting_response", "respondent_deadline_hours": 72}
 
 
@@ -376,6 +580,70 @@ def submit_case(case_id: str, user: User = Depends(current_user)):
 def get_case(case_id: str, lang: str | None = None, user: User = Depends(current_user)):
     case = _load_owned(case_id, user.id)
     return _localize_case_response(case, lang)
+
+
+# LLM-cost-bearing (Sarvam Bulbul) -- see auth.rate_limit.enforce_call_limit's
+# docstring. A citizen might replay a resolution/proposal a few times while
+# reading along; generous relative to that, bounds a scripted client.
+_TTS_LIMIT, _TTS_WINDOW = 20, timedelta(minutes=10)
+
+
+def _mediation_narration_text(mediation: dict) -> str:
+    parts = [mediation.get("headline", ""), mediation.get("explanation", "")]
+    parts.extend(mediation.get("rationale") or [])
+    return " ".join(p for p in parts if p)
+
+
+def _resolution_narration_text(resolution: dict) -> str:
+    parts = [resolution.get("header", ""), resolution.get("subheader", ""), resolution.get("basis", "")]
+    parts.extend(resolution.get("findings") or [])
+    parts.extend(resolution.get("order") or [])
+    parts.append(resolution.get("footer", ""))
+    return " ".join(p for p in parts if p)
+
+
+@app.get("/api/cases/{case_id}/mediation/audio")
+def mediation_audio(
+    case_id: str, lang: str | None = None, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+):
+    """Read the mediation proposal aloud in the same language it's
+    displayed in -- localizes via the same path as GET /api/cases/{id}
+    before narrating, so what's read matches what's on screen.
+    """
+    case = _load_owned(case_id, user.id)
+    mediation = case.get("mediation")
+    if not mediation:
+        raise HTTPException(status_code=404, detail="No mediation proposal on this case yet")
+    enforce_call_limit(auth_db, user.id, "tts_narration", limit=_TTS_LIMIT, window=_TTS_WINDOW)
+
+    target_language = _resolve_target_language(case, lang)
+    localized = _localize_case_response(case, lang)
+    text = _mediation_narration_text(localized["mediation"])
+    audio = synthesize_speech(text, target_language)
+    if audio is None:
+        raise HTTPException(status_code=503, detail="Audio narration is unavailable right now")
+    return Response(content=audio, media_type="audio/mpeg")
+
+
+@app.get("/api/cases/{case_id}/resolution/audio")
+def resolution_audio(
+    case_id: str, lang: str | None = None, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+):
+    """Read the resolution order aloud in the same language it's displayed
+    in. Same rationale as mediation_audio above."""
+    case = _load_owned(case_id, user.id)
+    resolution = case.get("resolution")
+    if not resolution:
+        raise HTTPException(status_code=404, detail="No resolution on this case yet")
+    enforce_call_limit(auth_db, user.id, "tts_narration", limit=_TTS_LIMIT, window=_TTS_WINDOW)
+
+    target_language = _resolve_target_language(case, lang)
+    localized = _localize_case_response(case, lang)
+    text = _resolution_narration_text(localized["resolution"])
+    audio = synthesize_speech(text, target_language)
+    if audio is None:
+        raise HTTPException(status_code=503, detail="Audio narration is unavailable right now")
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @app.post("/api/cases/{case_id}/respond")

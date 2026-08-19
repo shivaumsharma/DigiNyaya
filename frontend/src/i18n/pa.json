@@ -206,7 +206,12 @@
       "photo": "ਫੋਟੋ",
       "other": "ਹੋਰ"
     },
-    "continueToEvidence": "ਸਬੂਤ ਜਾਰੀ ਰੱਖिए।"
+    "continueToEvidence": "ਸਬੂਤ ਜਾਰੀ ਰੱਖिए।",
+    "titleFor": "{{category}} ਦਾ ਦਾਅਵਾ ਦਰਜ ਕਰੋ।",
+    "placeholderDescriptionExample": "ਉਦਾਹਰਨ ਲਈ {{example}}",
+    "categorySuggestion": "ਇਹ ਇੱਕ {{category}} ਕੇਸ ਜਾਪਦਾ ਹੈ।",
+    "categorySuggestionSwitch": "{{category}} 'ਤੇ ਜਾਓ।",
+    "categorySuggestionDismiss": "ਖਾਰਜ ਕਰਨ ਵਾਲਾ ਸੁਝਾਅ"
   },
   "respondent": {
     "title": "ਉੱਤਰਦਾਤਾ ਸੂਚਿਤ ਕੀਤਾ",
@@ -363,7 +368,8 @@
     "subtitle": "ਤੁਹਾਡੇ ਸਬੂਤ ਦਾ ਇੱਕ ਤੇਜ਼, ਗੈਰ-ਬੰਧਨ ਵਾਲਾ ਏ ਆਈ ਚੈੱਕ -- ਅਸਲ ਸਮੀਖਿਆ ਉੱਤਰਦਾਤਾ ਦੇ ਜਵਾਬਾਂ ਤੋਂ ਬਾਅਦ ਹੁੰਦੀ ਹੈ।",
     "loading": "ਤੁਹਾਡੇ ਸਬੂਤ ਦੀ ਸਮੀਖਿਆ ਕਰਦੇ ਹੋਏ...",
     "addMoreEvidence": "ਹੋਰ ਸਬੂਤ ਸ਼ਾਮਲ ਕਰੋ।",
-    "backToEvidence": "ਸਬੂਤ ਵੱਲ ਵਾਪਸ।"
+    "backToEvidence": "ਸਬੂਤ ਵੱਲ ਵਾਪਸ।",
+    "confirmAccurate": "ਮੈਂ ਇਸ ਦਾਅਵੇ ਵਿੱਚ ਦਿੱਤੀ ਗਈ ਜਾਣਕਾਰੀ ਨੂੰ ਆਪਣੀ ਸਮਰੱਥਾ ਦੇ ਸਰਵੋਤਮ ਅਨੁਸਾਰ ਸਹੀ ਮੰਨਦੀ ਹਾਂ, ਅਤੇ ਮੈਂ ਇਸ ਵਿਵਾਦ ਨੂੰ ਇਮਾਨਦਾਰੀ ਨਾਲ ਦਰਜ ਕਰ ਰਹੀ ਹਾਂ।"
   },
   "caseStrength": {
     "doneTag": "ਪੂਰਾ",
@@ -375,5 +381,27 @@
     "authenticityPrefix": "ਸੰਭਵ ਸਮੱਸਿਆ:",
     "authenticityCaveat": "ਇਹ ਸਿਰਫ਼ ਦਸਤਾਵੇਜ਼ ਦੇ ਪਾਠ ਦੀ ਸਪੱਸ਼ਟ ਅਸੰਗਤੀਆਂ ਲਈ ਜਾਂਚ ਕਰਦਾ ਹੈ - ਇਹ ਇੱਕ ਬਦਲੀ ਗਈ ਤਸਵੀਰ ਜਾਂ ਇੱਕ ਬਦਲੀ ਸਕੈਨ ਦਾ ਪਤਾ ਨਹੀਂ ਲਗਾ ਸਕਦਾ, ਅਤੇ ਇਹ ਅਸਲ ਤਸਦੀਕ ਦਾ ਬਦਲ ਨਹੀਂ ਹੈ।",
     "noEvidenceFiled": "ਇਸ ਮਾਮਲੇ ਵਿੱਚ ਸਬੂਤ ਵਜੋਂ ਕੋਈ ਦਸਤਾਵੇਜ਼ ਪੇਸ਼ ਨਹੀਂ ਕੀਤੇ ਗਏ ਹਨ।"
+  },
+  "myCases": {
+    "title": "मामले",
+    "subtitle": "ਤੁਹਾਡੇ ਦੁਆਰਾ ਦਾਇਰ ਕੀਤੇ ਗਏ ਹਰ ਵਿਵਾਦ, ਇੱਕ ਥਾਂ।",
+    "loading": "ਤੁਹਾਡੇ ਕੇਸ लोड हो रहे हैं...",
+    "empty": "ਤੁਸੀਂ ਅਜੇ ਤੱਕ ਕੋਈ ਕੇਸ ਦਰਜ ਨਹੀਂ ਕਰਵਾਇਆ ਹੈ।",
+    "fileFirst": "ਆਪਣਾ ਪਹਿਲਾ ਕੇਸ ਦਰਜ ਕਰੋ।",
+    "status": {
+      "draft": "ਖਰੜਾ",
+      "awaiting_response": "ਜਵਾਬ की प्रतीक्षा",
+      "ready": "ਸਮਾਧਾਨ ਲਈ ਤਿਆਰ",
+      "mediation_proposed": "ਮਤਾ",
+      "resolved": "ਹੱਲ ਹੋ ਗਿਆ",
+      "escalated": "ਮਨੁੱਖੀ ਸਮੀਖਿਆ ਲਈ ਭੇਜ दिया गया है।"
+    }
+  },
+  "audio": {
+    "listenToProposal": "ਪ੍ਰਸਤਾਵ ਸੁਣੋ।",
+    "listenToResolution": "ਸੁਣੋ ਮਤਾ",
+    "loading": "ਆਡੀਓ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ...",
+    "listening": "ਵਜਾਉਣਾ - ਰੁਕਣ ਲਈ ਟੈਪ ਕਰੋ",
+    "unavailable": "ਆਡੀਓ ਵਰਣਨ ਇਸ ਵੇਲੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
   }
 }
