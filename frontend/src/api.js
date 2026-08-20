@@ -2,7 +2,8 @@
 // through the Vite proxy (/api -> :8000). In production the frontend and
 // backend are separate deploys on different domains, so VITE_API_BASE points
 // straight at the backend's origin (see .env.production / Render env vars).
-import { getAccessToken } from './auth/tokenStore.js'
+import { getAccessToken, setAccessToken } from './auth/tokenStore.js'
+import { authApi } from './auth/authApi.js'
 
 const BASE = `${import.meta.env.VITE_API_BASE || ''}/api`
 
@@ -11,11 +12,54 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+// Access tokens are short-lived (15 min). A case-filing session (details ->
+// evidence -> review -> submit) can easily outlast that, so any call here can
+// hit a 401 mid-flow. Refresh once via the httpOnly cookie and retry rather
+// than surfacing the 401 -- mirrors AuthContext's mount-time refresh, and
+// dedupes concurrent 401s the same way (refresh tokens rotate on every use,
+// so two overlapping /auth/refresh calls would revoke the session, see
+// AuthContext.jsx).
+let refreshPromise = null
+
+function refreshAccessToken() {
+  if (!refreshPromise) {
+    refreshPromise = authApi
+      .refresh()
+      .then(({ access_token }) => {
+        setAccessToken(access_token)
+        return access_token
+      })
+      .catch((err) => {
+        setAccessToken(null)
+        throw err
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
+// Runs `makeOptions()` -> fetch; on a 401, refreshes the access token once
+// and retries with freshly-rebuilt options (so the new token is picked up).
+// If refresh itself fails (no valid session), the original 401 response is
+// returned unchanged.
+async function fetchWithRefresh(url, makeOptions) {
+  const res = await fetch(url, makeOptions())
+  if (res.status !== 401) return res
+  try {
+    await refreshAccessToken()
+  } catch {
+    return res
+  }
+  return fetch(url, makeOptions())
+}
+
 async function jsonFetch(path, options = {}) {
-  const res = await fetch(BASE + path, {
+  const res = await fetchWithRefresh(BASE + path, () => ({
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     ...options,
-  })
+  }))
   if (!res.ok) {
     let msg = `Request failed (${res.status})`
     try {
@@ -34,7 +78,7 @@ async function jsonFetch(path, options = {}) {
 async function uploadFetch(path, files) {
   const body = new FormData()
   for (const file of files) body.append('files', file)
-  const res = await fetch(BASE + path, { method: 'POST', headers: authHeaders(), body })
+  const res = await fetchWithRefresh(BASE + path, () => ({ method: 'POST', headers: authHeaders(), body }))
   if (!res.ok) {
     let msg = `Request failed (${res.status})`
     try {
@@ -51,7 +95,7 @@ async function uploadFetch(path, files) {
 }
 
 async function blobFetch(path) {
-  const res = await fetch(BASE + path, { headers: { ...authHeaders() } })
+  const res = await fetchWithRefresh(BASE + path, () => ({ headers: { ...authHeaders() } }))
   if (!res.ok) {
     let msg = `Request failed (${res.status})`
     try {
@@ -108,7 +152,7 @@ export const api = {
 // ownership is enforced. Returns an abort function.
 export function streamSSE(path, { onEvent, onDone, onError }) {
   const controller = new AbortController()
-  fetch(BASE + path, { signal: controller.signal, headers: { ...authHeaders() } })
+  fetchWithRefresh(BASE + path, () => ({ signal: controller.signal, headers: { ...authHeaders() } }))
     .then(async (res) => {
       if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`)
       const reader = res.body.getReader()
