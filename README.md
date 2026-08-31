@@ -65,12 +65,13 @@ _Screenshots to be added — placeholders below, filenames expected under `scree
 | Category | Technologies |
 | --- | --- |
 | Backend | Python, FastAPI, Uvicorn |
-| Database / ORM | SQLite, SQLAlchemy, Alembic |
+| Database / ORM | SQLAlchemy Core + Alembic — SQLite (dev, current production default) or PostgreSQL (production-ready, identical code path via `DIGINYAYA_DB`) |
 | AI / LLM | Sarvam AI (Sarvam-30B/105B chat, Document AI OCR, Speech-to-Text, Bulbul text-to-speech, Mayura translation), Ollama (local fallback + embeddings) |
 | Retrieval | Custom semantic (cosine over embeddings) + keyword-fallback precedent search |
 | Frontend | React, Vite |
 | Auth | JWT access tokens, rotating refresh tokens, email + phone/OTP |
 | Document processing | PyMuPDF (native-text PDFs), Tesseract OCR (fallback) |
+| Evidence storage | Local filesystem (dev default) or AWS S3 (production-ready via `boto3`, same interface either way) |
 | Testing | pytest, Vitest, React Testing Library |
 | Deployment | Render (backend + frontend) |
 | Version Control | Git, GitHub |
@@ -339,8 +340,9 @@ producing empty text. See `app/documents/extraction.py`'s `_sarvam_transcribe()`
 | --- | --- | --- |
 | `SARVAM_API_KEY` | — | Also enables Sarvam Document AI OCR (primary engine); ₹0.5/page |
 | `TESSERACT_LANG` | `eng` | Tesseract language pack(s) for the fallback engine, e.g. `eng+hin+ben` |
-| `DIGINYAYA_STORAGE_PROVIDER` | `local` | Only `local` is implemented; `s3`/`gcs` raise `NotImplementedError` |
-| `DIGINYAYA_STORAGE_ROOT` | `backend/uploads` | Local filesystem root for uploads (dev-only, not committed) |
+| `DIGINYAYA_STORAGE_PROVIDER` | `local` | `local` and `s3` (AWS, `app/storage/s3.py`) are implemented; `gcs` raises `NotImplementedError` |
+| `DIGINYAYA_STORAGE_ROOT` | `backend/uploads` | Local filesystem root for uploads (dev-only, not committed) — only used when `DIGINYAYA_STORAGE_PROVIDER=local` |
+| `DIGINYAYA_S3_BUCKET` | — | Required when `DIGINYAYA_STORAGE_PROVIDER=s3`; credentials/region come from the normal AWS credential chain, never from an env var here |
 | `DIGINYAYA_MAX_UPLOAD_MB` | `15` | Per-file upload size cap |
 
 Evidence is also capped at **15 documents per case** (`app/routers/documents.py`'s `_MAX_EVIDENCE_PER_CASE`,
@@ -449,7 +451,7 @@ Reusing an already-rotated-out refresh token revokes every token descended from 
 | --- | --- | --- |
 | `DIGINYAYA_JWT_SECRET` | random per-process | Signs access tokens — **set a real value in production**, or every backend restart invalidates every live session |
 | `DIGINYAYA_ENV` | `development` | `production` rejects non-HTTPS requests to `/auth/*` and `/me` |
-| `DIGINYAYA_DB` | `backend/diginyaya.db` | One shared SQLite file for cases *and* auth tables |
+| `DIGINYAYA_DB` | `backend/diginyaya.db` | SQLAlchemy database URL for cases *and* auth tables — a bare path defaults to SQLite; set a full `postgresql+psycopg://user:pass@host:5432/db` URL to run against Postgres instead, same code path either way |
 | `DIGINYAYA_FRONTEND_URL` | `http://localhost:5173` | Base URL for email-verification / password-reset links |
 
 SMS and email are provider-stub interfaces (`app/auth/sms.py`, `app/auth/mail.py`) in local dev
