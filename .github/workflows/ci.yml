@@ -180,6 +180,12 @@ jobs:
           version_label: ${{ github.sha }}
           region: ${{ vars.AWS_REGION || 'eu-north-1' }}
           deployment_package: Dockerrun.aws.json
+          # A version_label of github.sha means any retry of the same commit
+          # (a re-run, or a manual workflow_dispatch on an unchanged HEAD)
+          # hits "Version <sha> already exists" -- benign, but fails the
+          # deploy outright without this. Reuse the already-created version
+          # instead of erroring when that happens.
+          use_existing_version_if_available: true
 
   deploy-frontend:
     name: Deploy frontend (S3 + CloudFront)
