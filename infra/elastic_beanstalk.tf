@@ -18,6 +18,20 @@ resource "aws_iam_role_policy_attachment" "eb_service" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth"
 }
 
+resource "aws_iam_role_policy_attachment" "eb_service_core" {
+  # AWSElasticBeanstalkEnhancedHealth alone isn't the full recommended pair
+  # for an EB service role -- AWS's own docs attach this second managed
+  # policy too, and its absence is exactly what surfaced on the real first
+  # successful environment-update attempt: EB's OWN service role (not the
+  # GitHub Actions deploy role fixed in the prior several commits) failed
+  # mid-deployment with "You do not have permission to perform the
+  # 's3:GetObjectAcl' action" and "'ec2:DescribeSubnets'" -- both of which
+  # this policy grants, along with the other read/describe permissions EB
+  # needs to orchestrate a deployment (CloudFormation, Auto Scaling, ELB).
+  role       = aws_iam_role.eb_service.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService"
+}
+
 resource "aws_elastic_beanstalk_application" "diginyaya" {
   name        = "diginyaya"
   description = "DigiNyaya backend (FastAPI, single-container Docker)"
