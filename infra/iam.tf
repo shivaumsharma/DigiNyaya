@@ -139,6 +139,31 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     resources = ["*"]
   }
   statement {
+    # elasticbeanstalk:CreateStorageLocation above is the EB-service-level
+    # permission, but under the hood it actually creates a real S3 bucket --
+    # that needs its own S3-level grant too (confirmed the hard way, again:
+    # got past the first error only to hit AccessDenied on s3:CreateBucket
+    # next). This is AWS's own fixed, well-known bucket-naming convention for
+    # the EB deployment bucket, not something this repo chose.
+    # CreateBucket alone got past the previous error only to hit AccessDenied
+    # on s3:PutBucketOwnershipControls next -- the EB SDK runs a fixed
+    # sequence of bucket-provisioning calls internally (create -> ownership
+    # controls -> encryption -> public-access-block -> policy) that has
+    # nothing to do with this app, so granting the full documented set here
+    # up front rather than discovering each one via another failed deploy.
+    sid = "ElasticBeanstalkManagedBucket"
+    actions = [
+      "s3:CreateBucket", "s3:PutBucketPolicy", "s3:GetBucketPolicy",
+      "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
+      "s3:PutBucketPublicAccessBlock", "s3:PutBucketAcl",
+      "s3:PutObject", "s3:GetObject", "s3:ListBucket",
+    ]
+    resources = [
+      "arn:aws:s3:::elasticbeanstalk-${var.aws_region}-${data.aws_caller_identity.current.account_id}",
+      "arn:aws:s3:::elasticbeanstalk-${var.aws_region}-${data.aws_caller_identity.current.account_id}/*",
+    ]
+  }
+  statement {
     sid       = "FrontendBucketSync"
     actions   = ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
     resources = [aws_s3_bucket.frontend.arn, "${aws_s3_bucket.frontend.arn}/*"]
