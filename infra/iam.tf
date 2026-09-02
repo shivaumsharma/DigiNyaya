@@ -179,6 +179,25 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     ]
   }
   statement {
+    # EB manages every environment update through an internal, auto-created
+    # CloudFormation stack (named awseb-e-<id>-stack) -- polling deployment
+    # progress needs read access to that stack, which is a CloudFormation
+    # permission, not an Elastic Beanstalk one, so ElasticBeanstalkDeploy's
+    # elasticbeanstalk:* grant above doesn't cover it (confirmed the hard
+    # way: AccessDenied on cloudformation:GetTemplate on the exact
+    # awseb-e-*-stack ARN was the next error after fixing
+    # CreateApplicationVersion). Scoped to the awseb-* naming prefix EB
+    # itself uses, not "*", but the stack's numeric suffix is unpredictable
+    # ahead of creation so the prefix wildcard is as tight as this can get.
+    sid = "ElasticBeanstalkManagedStack"
+    actions = [
+      "cloudformation:GetTemplate", "cloudformation:DescribeStacks",
+      "cloudformation:DescribeStackEvents", "cloudformation:DescribeStackResource",
+      "cloudformation:DescribeStackResources",
+    ]
+    resources = ["arn:aws:cloudformation:${var.aws_region}:${data.aws_caller_identity.current.account_id}:stack/awseb-*/*"]
+  }
+  statement {
     sid       = "FrontendBucketSync"
     actions   = ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
     resources = [aws_s3_bucket.frontend.arn, "${aws_s3_bucket.frontend.arn}/*"]
