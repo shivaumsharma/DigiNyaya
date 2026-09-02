@@ -127,6 +127,18 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     resources = ["arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/diginyaya*"]
   }
   statement {
+    # CreateStorageLocation provisions/verifies the EB-managed S3 bucket
+    # (elasticbeanstalk-<region>-<account>) that einaregilsson/beanstalk-deploy
+    # uploads app versions to before creating an application version -- an
+    # account/region-level action, not an application-scoped one, so AWS
+    # requires Resource: "*" for it specifically (confirmed the hard way:
+    # scoping it under ElasticBeanstalkDeploy's application/diginyaya* ARN
+    # above failed with AccessDenied on the real first deploy).
+    sid       = "ElasticBeanstalkAccountLevel"
+    actions   = ["elasticbeanstalk:CreateStorageLocation"]
+    resources = ["*"]
+  }
+  statement {
     sid       = "FrontendBucketSync"
     actions   = ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
     resources = [aws_s3_bucket.frontend.arn, "${aws_s3_bucket.frontend.arn}/*"]
