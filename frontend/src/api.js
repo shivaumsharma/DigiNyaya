@@ -12,7 +12,7 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-// Access tokens are short-lived (15 min). A case-filing session (details ->
+// Access tokens are short-lived (60 min). A case-filing session (details ->
 // evidence -> review -> submit) can easily outlast that, so any call here can
 // hit a 401 mid-flow. Refresh once via the httpOnly cookie and retry rather
 // than surfacing the 401 -- mirrors AuthContext's mount-time refresh, and
