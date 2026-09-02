@@ -197,12 +197,19 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     # controls -> encryption -> public-access-block -> policy) that has
     # nothing to do with this app, so granting the full documented set here
     # up front rather than discovering each one via another failed deploy.
+    # PutObjectAcl/DeleteObject added after AccessDenied on both, on an
+    # object under resources/environments/<env-id>/_runtime/_versions/... --
+    # EB's own platform-managed runtime-version tracking objects, a
+    # different prefix than the plain app-version upload path, but already
+    # covered by the .../* resource wildcard below; only the actions were
+    # missing.
     sid = "ElasticBeanstalkManagedBucket"
     actions = [
       "s3:CreateBucket", "s3:PutBucketPolicy", "s3:GetBucketPolicy",
       "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
       "s3:PutBucketPublicAccessBlock", "s3:PutBucketAcl",
       "s3:PutObject", "s3:GetObject", "s3:ListBucket", "s3:GetObjectAcl",
+      "s3:PutObjectAcl", "s3:DeleteObject",
     ]
     resources = [
       "arn:aws:s3:::elasticbeanstalk-${var.aws_region}-${data.aws_caller_identity.current.account_id}",
