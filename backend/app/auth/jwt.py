@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 import jwt
 
-ACCESS_TOKEN_TTL = timedelta(minutes=15)
+ACCESS_TOKEN_TTL = timedelta(minutes=60)
 REFRESH_TOKEN_TTL = timedelta(days=7)
 JWT_ALGORITHM = "HS256"
 
