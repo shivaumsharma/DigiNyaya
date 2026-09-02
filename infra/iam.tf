@@ -62,6 +62,37 @@ data "aws_iam_policy_document" "eb_instance_scoped" {
       aws_ssm_parameter.database_url.arn,
     ]
   }
+
+  statement {
+    # The role actually missing s3:GetObjectAcl/ec2:DescribeSubnets --
+    # confirmed via `aws iam simulate-principal-policy` directly (implicitDeny
+    # on both), after diginyaya-eb-service-prod (the OTHER EB role, already
+    # fixed) simulated as cleanly "allowed" on the same two actions. This is
+    # the EC2 instance itself (via AWSElasticBeanstalkWebTier, which doesn't
+    # cover these two), not the service role that orchestrates the
+    # deployment -- a fourth distinct role in this whole chain, after the
+    # GitHub Actions deploy role (#17/#19/#20/#21) and the EB service role
+    # (#22).
+    sid       = "EbInstanceHealthAgent"
+    actions   = ["s3:GetObjectAcl"]
+    resources = ["arn:aws:s3:::elasticbeanstalk-${var.aws_region}-${data.aws_caller_identity.current.account_id}/*"]
+  }
+}
+
+data "aws_iam_policy_document" "eb_instance_ec2_describe" {
+  # ec2:DescribeSubnets (like most EC2 Describe* actions) doesn't support
+  # resource-level permissions -- AWS requires Resource: "*" for it.
+  statement {
+    sid       = "EbInstanceEc2Describe"
+    actions   = ["ec2:DescribeSubnets"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "eb_instance_ec2_describe" {
+  name   = "diginyaya-eb-instance-ec2-describe-${var.environment}"
+  role   = aws_iam_role.eb_instance.id
+  policy = data.aws_iam_policy_document.eb_instance_ec2_describe.json
 }
 
 resource "aws_iam_role_policy" "eb_instance_scoped" {
