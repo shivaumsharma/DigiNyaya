@@ -122,9 +122,24 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     resources = [aws_ecr_repository.backend.arn]
   }
   statement {
-    sid       = "ElasticBeanstalkDeploy"
-    actions   = ["elasticbeanstalk:*"]
-    resources = ["arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/diginyaya*"]
+    # EB scopes different operations to different ARN resource TYPES under
+    # the same app -- application/, applicationversion/, environment/, and
+    # configurationtemplate/ are each their own namespace, not sub-paths of
+    # "application/diginyaya*" (confirmed the hard way: that single pattern
+    # covers the application itself but not the applicationversion the
+    # actual deploy creates -- AccessDenied on
+    # elasticbeanstalk:CreateApplicationVersion on an applicationversion/...
+    # ARN was the very next error after every S3/CreateStorageLocation issue
+    # was fixed). Listing all four scoped to "diginyaya*" up front rather
+    # than discovering each remaining one via another failed deploy.
+    sid     = "ElasticBeanstalkDeploy"
+    actions = ["elasticbeanstalk:*"]
+    resources = [
+      "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:application/diginyaya*",
+      "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:applicationversion/diginyaya*",
+      "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/diginyaya*",
+      "arn:aws:elasticbeanstalk:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configurationtemplate/diginyaya*",
+    ]
   }
   statement {
     # CreateStorageLocation provisions/verifies the EB-managed S3 bucket
