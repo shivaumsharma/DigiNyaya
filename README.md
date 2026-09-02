@@ -424,7 +424,7 @@ Open **http://localhost:5173**. The Vite dev server proxies `/api`, `/auth`, and
 ## Authentication
 
 A real account system (`backend/app/auth/`) — email+password and phone+OTP signup/login, JWT
-access tokens (15 min) + rotating opaque refresh tokens (7 days, httpOnly cookie). This **is**
+access tokens (60 min) + rotating opaque refresh tokens (7 days, httpOnly cookie). This **is**
 the system that owns cases (`user.id` on every case) — there is no separate demo-login path.
 
 ### Endpoints
