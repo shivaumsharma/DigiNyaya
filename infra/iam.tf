@@ -202,12 +202,30 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "s3:CreateBucket", "s3:PutBucketPolicy", "s3:GetBucketPolicy",
       "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
       "s3:PutBucketPublicAccessBlock", "s3:PutBucketAcl",
-      "s3:PutObject", "s3:GetObject", "s3:ListBucket",
+      "s3:PutObject", "s3:GetObject", "s3:ListBucket", "s3:GetObjectAcl",
     ]
     resources = [
       "arn:aws:s3:::elasticbeanstalk-${var.aws_region}-${data.aws_caller_identity.current.account_id}",
       "arn:aws:s3:::elasticbeanstalk-${var.aws_region}-${data.aws_caller_identity.current.account_id}/*",
     ]
+  }
+  statement {
+    # A FIFTH distinct role needing this exact pair (s3:GetObjectAcl,
+    # ec2:DescribeSubnets), after diginyaya-eb-instance-prod (#24). This one
+    # is the CALLING role itself -- the credentials the GitHub Actions
+    # runner uses to invoke elasticbeanstalk:UpdateEnvironment in the first
+    # place. Found via `aws elasticbeanstalk describe-events` showing the
+    # exact same AccessDenied errors firing ONE SECOND after "Environment
+    # update is starting" -- too fast to be real instance-level work, i.e.
+    # a synchronous pre-flight check the API call itself performs using the
+    # CALLER's credentials, not (only) a role EB assumes internally later.
+    # Confirmed via `aws iam simulate-principal-policy` against this exact
+    # role: implicitDeny on both, the same way #24 found for the instance
+    # role. ec2:DescribeSubnets needs Resource: "*", same reasoning as
+    # ElasticBeanstalkAccountLevel above.
+    sid       = "ElasticBeanstalkDeployEc2Describe"
+    actions   = ["ec2:DescribeSubnets"]
+    resources = ["*"]
   }
   statement {
     # EB manages every environment update through an internal, auto-created
