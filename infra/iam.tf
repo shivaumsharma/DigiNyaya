@@ -230,8 +230,22 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     # role: implicitDeny on both, the same way #24 found for the instance
     # role. ec2:DescribeSubnets needs Resource: "*", same reasoning as
     # ElasticBeanstalkAccountLevel above.
-    sid       = "ElasticBeanstalkDeployEc2Describe"
-    actions   = ["ec2:DescribeSubnets"]
+    # ec2:DescribeSecurityGroups AccessDenied was the very next error after
+    # this statement fixed DescribeSubnets -- clearly a validation pass that
+    # checks several EC2 resource types in sequence (subnets, then security
+    # groups). Rather than keep discovering the rest one deploy at a time,
+    # this now grants AWS's own documented set of EC2 Describe* permissions
+    # for an Elastic Beanstalk environment (see AWS's "Managing Elastic
+    # Beanstalk environments" IAM guide) up front -- all of them are
+    # inherently account-wide Describe/List actions with no resource-level
+    # scoping support, same as DescribeSubnets.
+    sid = "ElasticBeanstalkDeployEc2Describe"
+    actions = [
+      "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeVpcs",
+      "ec2:DescribeInstances", "ec2:DescribeKeyPairs", "ec2:DescribeImages",
+      "ec2:DescribeAvailabilityZones", "ec2:DescribeAccountAttributes",
+      "ec2:DescribeAddresses",
+    ]
     resources = ["*"]
   }
   statement {
