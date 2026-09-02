@@ -392,6 +392,26 @@ def main() -> int:
             if r["verdict"] == "mismatch":
                 print(f"  - {r['case_id']} ({r['category']}): {r['reason']}")
 
+    # This is the file scripts/train_outcome_classifier.py's ground truth is
+    # built from -- it just changed, so that report is now stale until
+    # re-run. Chaining it here is what actually prevents the staleness bug
+    # found 2026-09-02: outcome_classifier_report.json sat untouched from an
+    # intermediate 216-case dataset for two weeks after this file moved on to
+    # the final 173-case cut, and nobody noticed until the numbers were
+    # quoted somewhere and didn't reconcile. Best-effort: sklearn/pandas are
+    # only needed for the classifier, not for judging outcomes, so a failure
+    # here (missing deps, insufficient data) is reported but never discards
+    # the real, expensive-to-produce judging results written above.
+    try:
+        from scripts.train_outcome_classifier import main as retrain_classifier
+
+        print("\n" + "=" * 70)
+        print("Re-running scripts.train_outcome_classifier (ground truth just changed)...\n")
+        retrain_classifier()
+    except Exception as exc:
+        print(f"\nWARNING: could not refresh outcome_classifier_report.json: {exc}")
+        print("Run `python -m scripts.train_outcome_classifier` manually before trusting its numbers.")
+
     return 0
 
 
