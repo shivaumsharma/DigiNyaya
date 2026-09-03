@@ -210,6 +210,14 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "s3:PutBucketPublicAccessBlock", "s3:PutBucketAcl",
       "s3:PutObject", "s3:GetObject", "s3:ListBucket", "s3:GetObjectAcl",
       "s3:PutObjectAcl", "s3:DeleteObject",
+      # GetObjectVersion/ListBucketVersions added after "S3 error: Access
+      # Denied" from CloudFormation while reading the environment's CFN
+      # template -- this bucket's own EB-managed bucket policy already
+      # grants the instance role exactly these two (visible via
+      # `aws s3api get-bucket-policy`), implying object versioning is
+      # enabled and plain GetObject/ListBucket aren't sufficient on their
+      # own for every read path.
+      "s3:GetObjectVersion", "s3:ListBucketVersions",
     ]
     resources = [
       "arn:aws:s3:::elasticbeanstalk-${var.aws_region}-${data.aws_caller_identity.current.account_id}",
@@ -244,7 +252,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeVpcs",
       "ec2:DescribeInstances", "ec2:DescribeKeyPairs", "ec2:DescribeImages",
       "ec2:DescribeAvailabilityZones", "ec2:DescribeAccountAttributes",
-      "ec2:DescribeAddresses",
+      "ec2:DescribeAddresses", "ec2:DescribeLaunchTemplates",
     ]
     resources = ["*"]
   }
