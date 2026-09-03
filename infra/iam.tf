@@ -259,13 +259,34 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     # CreateApplicationVersion). Scoped to the awseb-* naming prefix EB
     # itself uses, not "*", but the stack's numeric suffix is unpredictable
     # ahead of creation so the prefix wildcard is as tight as this can get.
+    # cloudformation:UpdateStack AccessDenied was the next error after the
+    # read-only Describe/GetTemplate set above -- this is what actually
+    # applies the environment update, not just polls it. Added Create/Delete
+    # too since EB's own SDK can choose either path (in-place update vs.
+    # stack recreation) depending on what changed, same "grant the sibling
+    # actions up front" reasoning as everywhere else in this chain.
     sid = "ElasticBeanstalkManagedStack"
     actions = [
       "cloudformation:GetTemplate", "cloudformation:DescribeStacks",
       "cloudformation:DescribeStackEvents", "cloudformation:DescribeStackResource",
-      "cloudformation:DescribeStackResources",
+      "cloudformation:DescribeStackResources", "cloudformation:UpdateStack",
+      "cloudformation:CreateStack", "cloudformation:DeleteStack",
     ]
     resources = ["arn:aws:cloudformation:${var.aws_region}:${data.aws_caller_identity.current.account_id}:stack/awseb-*/*"]
+  }
+  statement {
+    # autoscaling:DescribeAutoScalingGroups AccessDenied fired in the same
+    # deploy attempt as cloudformation:UpdateStack above -- EB's environment
+    # update checks the ASG state alongside applying the CFN stack change.
+    # Granting the standard AWS-documented set of ASG describe permissions
+    # an EB deploy needs, all account-wide (no resource-level scoping
+    # support), same reasoning as the EC2 Describe* statement.
+    sid = "ElasticBeanstalkAutoScalingDescribe"
+    actions = [
+      "autoscaling:DescribeAutoScalingGroups", "autoscaling:DescribeLaunchConfigurations",
+      "autoscaling:DescribeScalingActivities", "autoscaling:DescribeNotificationConfigurations",
+    ]
+    resources = ["*"]
   }
   statement {
     sid       = "FrontendBucketSync"
