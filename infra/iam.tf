@@ -203,11 +203,19 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     # different prefix than the plain app-version upload path, but already
     # covered by the .../* resource wildcard below; only the actions were
     # missing.
+    # GetBucketLocation added after tracing the true root cause via
+    # CloudTrail (boto3 lookup_events, not the beanstalk-deploy CLI's own
+    # relayed error text -- which just wrapped this as a generic, unhelpful
+    # "S3 error: Access Denied" from cloudformation:UpdateStack). The real
+    # denied call, seconds earlier in the trail: s3:GetBucketLocation on
+    # this exact bucket. UpdateStack calls it internally (likely to resolve
+    # the correct regional S3 endpoint for the template URL) -- that
+    # failure is what UpdateStack surfaces as its own opaque S3 error.
     sid = "ElasticBeanstalkManagedBucket"
     actions = [
       "s3:CreateBucket", "s3:PutBucketPolicy", "s3:GetBucketPolicy",
       "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
-      "s3:PutBucketPublicAccessBlock", "s3:PutBucketAcl",
+      "s3:PutBucketPublicAccessBlock", "s3:PutBucketAcl", "s3:GetBucketLocation",
       "s3:PutObject", "s3:GetObject", "s3:ListBucket", "s3:GetObjectAcl",
       "s3:PutObjectAcl", "s3:DeleteObject",
       # GetObjectVersion/ListBucketVersions added after "S3 error: Access
@@ -253,6 +261,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "ec2:DescribeInstances", "ec2:DescribeKeyPairs", "ec2:DescribeImages",
       "ec2:DescribeAvailabilityZones", "ec2:DescribeAccountAttributes",
       "ec2:DescribeAddresses", "ec2:DescribeLaunchTemplates",
+      "ec2:DescribeLaunchTemplateVersions",
     ]
     resources = ["*"]
   }
@@ -279,6 +288,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "cloudformation:DescribeStackEvents", "cloudformation:DescribeStackResource",
       "cloudformation:DescribeStackResources", "cloudformation:UpdateStack",
       "cloudformation:CreateStack", "cloudformation:DeleteStack",
+      "cloudformation:ListStackResources",
     ]
     resources = ["arn:aws:cloudformation:${var.aws_region}:${data.aws_caller_identity.current.account_id}:stack/awseb-*/*"]
   }
