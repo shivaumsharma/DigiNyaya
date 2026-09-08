@@ -307,6 +307,25 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     resources = ["*"]
   }
   statement {
+    # The actual root cause of every "S3 error: Access Denied" deploy
+    # failure since #17 -- confirmed via a short-lived CloudTrail data-events
+    # trail scoped to the EB S3 bucket (not in Event History by default,
+    # which only logs bucket-level S3 management events, never the
+    # object-level calls CloudFormation makes internally). CloudFormation's
+    # own error wrapper is simply wrong/misleading here: the real denied
+    # call, moments before EB reports failure, is autoscaling:SuspendProcesses
+    # on the awseb-managed ASG -- EB suspends ASG processes during a deploy
+    # (and resumes them after) to stop the ASG fighting the update, and this
+    # was never granted despite ElasticBeanstalkAutoScalingDescribe below
+    # covering every read-only ASG action already. Every S3/CFN/EC2 grant
+    # added across #17-#30 was real and necessary but never the blocker.
+    sid = "ElasticBeanstalkAutoScalingSuspendResume"
+    actions = [
+      "autoscaling:SuspendProcesses", "autoscaling:ResumeProcesses",
+    ]
+    resources = ["arn:aws:autoscaling:${var.aws_region}:${data.aws_caller_identity.current.account_id}:autoScalingGroup:*:autoScalingGroupName/awseb-*"]
+  }
+  statement {
     sid       = "FrontendBucketSync"
     actions   = ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
     resources = [aws_s3_bucket.frontend.arn, "${aws_s3_bucket.frontend.arn}/*"]
