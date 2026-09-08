@@ -67,6 +67,11 @@ resource "aws_elastic_beanstalk_environment" "backend" {
   }
 
   setting {
+    # Without this, the environment never actually used aws_iam_role.eb_service
+    # at all -- confirmed the hard way: attaching AWSElasticBeanstalkService to
+    # that role (the previous commit) had zero effect, the exact same
+    # s3:GetObjectAcl / ec2:DescribeSubnets errors recurred identically on the
+    # next deploy, because nothing here ever told EB to assume that role.
     namespace = "aws:elasticbeanstalk:environment"
     name      = "ServiceRole"
     value     = aws_iam_role.eb_service.name
