@@ -50,12 +50,24 @@ def require_https(request: Request) -> None:
     terminate TLS at a reverse proxy/load balancer in front of the app, so
     request.url.scheme alone would see plain http even when the client
     connection was https.
+
+    Also accepts X-Diginyaya-Edge-Https: 1 -- the current production
+    deployment terminates TLS at a CloudFront distribution in front of a
+    SingleInstance Elastic Beanstalk environment (no ALB), and CloudFront
+    was confirmed, empirically, to silently drop a custom origin header
+    named X-Forwarded-Proto specifically (accepted with no error at
+    creation, never arrives at the app) -- undocumented, but consistent
+    across a CloudFront Function attempt (outright rejected as a
+    disallowed header) and a static custom-origin-header attempt (silently
+    dropped) versus an identically-configured, arbitrarily-named header
+    (arrives intact). See infra/cloudfront_backend.tf.
     """
     if not _is_production():
         return
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    if scheme != "https":
-        raise HTTPException(status_code=400, detail="HTTPS required")
+    if scheme == "https" or request.headers.get("x-diginyaya-edge-https") == "1":
+        return
+    raise HTTPException(status_code=400, detail="HTTPS required")
 
 
 def current_user(
