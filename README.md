@@ -22,7 +22,7 @@ actual current state of the code, not aspirational plans.
   replayed from an append-only log so a page refresh never loses or duplicates a run
 - Two-checkpoint safety gate that routes weak, out-of-scope, or contested cases to a
   human reviewer instead of letting the AI decide
-- Deterministic relief-amount clamping against a 120+ real-precedent corpus — no
+- Deterministic relief-amount clamping against a 217+ real-precedent corpus — no
   hallucinated money, deadlines, or citations
 - Multi-provider LLM layer: **Sarvam AI** in production, with automatic fallback to a
   local **Ollama** model or scripted logic if neither is reachable
@@ -65,15 +65,15 @@ _Screenshots to be added — placeholders below, filenames expected under `scree
 | Category | Technologies |
 | --- | --- |
 | Backend | Python, FastAPI, Uvicorn |
-| Database / ORM | SQLAlchemy Core + Alembic — SQLite (dev, current production default) or PostgreSQL (production-ready, identical code path via `DIGINYAYA_DB`) |
-| AI / LLM | Sarvam AI (Sarvam-30B/105B chat, Document AI OCR, Speech-to-Text, Bulbul text-to-speech, Mayura translation), Ollama (local fallback + embeddings) |
+| Database / ORM | SQLAlchemy Core + Alembic — SQLite (dev default) or PostgreSQL (current production database, identical code path via `DIGINYAYA_DB`) |
+| AI / LLM | Sarvam AI (Sarvam-105B/105B-conversations chat, Document AI OCR, Speech-to-Text, Bulbul text-to-speech, Mayura translation), Ollama (local fallback + embeddings) |
 | Retrieval | Custom semantic (cosine over embeddings) + keyword-fallback precedent search |
 | Frontend | React, Vite |
 | Auth | JWT access tokens, rotating refresh tokens, email + phone/OTP |
-| Document processing | PyMuPDF (native-text PDFs), Tesseract OCR (fallback) |
-| Evidence storage | Local filesystem (dev default) or AWS S3 (production-ready via `boto3`, same interface either way) |
+| Document processing | PyMuPDF (native-text PDFs), Sarvam Document AI OCR (primary), Tesseract (fallback) |
+| Evidence storage | Local filesystem (dev default) or AWS S3 (current production storage) |
 | Testing | pytest, Vitest, React Testing Library |
-| Deployment | Render (backend + frontend) |
+| Deployment | AWS: Elastic Beanstalk (backend, Docker) + RDS Postgres + S3 + CloudFront (frontend), Terraform-managed (`infra/`), GitHub Actions CI/CD. Render still exists in parallel, untouched, but AWS is where live traffic is pointed — see **Deployment** below |
 | Version Control | Git, GitHub |
 
 ---
@@ -116,7 +116,8 @@ DigiNyaya/
 │       │                             document relevance + authenticity heuristic, description-quality
 │       │                             check, 0-100 winnability score
 │       └── data/
-│           ├── precedents.json  120+ real Indian consumer-court precedents
+│           ├── precedents.json  217+ real Indian precedents (120 consumer, 33 cheque-bounce,
+│           │                    32 money-recovery, 32 contract-breach)
 │           └── loader.py        Corpus + dispute-type metadata
 │   └── scripts/
 │       ├── ingest_judgments.py       Pulls real judgments from the Indian Kanoon API (billed per call)
@@ -515,35 +516,52 @@ delete. See **Known issues** below for why that's an open decision, not an overs
 
 ## Deployment
 
-The application is deployment-ready and currently deployed on **Render**:
+The application is deployed on **AWS**, provisioned by Terraform (`infra/`):
 
-- **Backend** — FastAPI app deployed as a native Python buildpack (`python -m uvicorn app.main:app`).
-- **Frontend** — the Vite build deployed as a static site.
-- **AI provider** — Sarvam AI, reached over the network from the Render backend (no local model
-  or GPU needed in production).
+- **Backend** — Elastic Beanstalk, Single-Instance environment (`t3.micro`, no load balancer/
+  auto-scaling by design), running the `backend/Dockerfile` image from ECR. Fronted by a
+  CloudFront distribution (`infra/cloudfront_backend.tf`) that terminates HTTPS — the EB
+  environment itself has no TLS listener, so this distribution is what makes the backend
+  reachable over `https://` at all.
+- **Database** — RDS Postgres (`db.t4g.micro`, Single-AZ), not SQLite. Real, persistent, survives
+  redeploys.
+- **Frontend** — Vite build synced to S3, served via a second CloudFront distribution
+  (`infra/cloudfront.tf`).
+- **Evidence storage** — S3 (`DIGINYAYA_STORAGE_PROVIDER=s3`).
+- **Secrets** — SSM Parameter Store (SecureString): Sarvam key, JWT secret, DB URL. Never baked
+  into the image or committed.
+- **CI/CD** — GitHub Actions, OIDC role assumption (no long-lived AWS keys in CI). Every push to
+  `main` runs backend tests + the golden eval suite + frontend tests first; only on success does
+  it build/push images and deploy backend (Elastic Beanstalk) and frontend (S3 + CloudFront
+  invalidation).
 - **Email** — Resend, for verification/reset links and case notifications.
 
-Deployment architecture includes: environment-driven configuration (no secrets in code), a
-modular backend/frontend split deployable independently, and GitHub-integrated redeploys on push.
+**Render still exists in parallel, untouched** (`infra/README.md`) — a deliberate choice made
+during the AWS migration so both platforms could be verified independently before cutting over.
+AWS is the one with a real, persistent database and is where live traffic should be pointed.
 
-The most important current limitation — Render's free tier gives the backend an **ephemeral**
-container disk, so the SQLite database is wiped on every redeploy and idle-timeout spin-down — is
-tracked in **Known issues** below, along with the Postgres migration that resolves it.
+No custom domain yet (`diginyaya.in` pending) — reachable via the AWS-assigned
+`*.elasticbeanstalk.com` / `*.cloudfront.net` URLs (see `infra/outputs.tf` or
+`terraform output` for the current ones; they're not hardcoded here because they change if a
+distribution is ever recreated).
 
 ---
 
 ## Known issues / technical debt
 
-- **No persistent database in production.** `diginyaya.db` lives on Render's free-tier
-  ephemeral container disk. Every redeploy — and the free tier's idle-timeout spin-down/wake
-  cycle — wipes it clean: every account, case, and session, gone. Root cause of "repeated
-  login prompts" on the live site. Needs a real migration (Supabase/Neon Postgres, or a paid
-  Render persistent disk) before relying on the live deployment for anything durable.
+- ~~No persistent database in production~~ — resolved by the AWS migration: production runs on
+  RDS Postgres, not SQLite on an ephemeral disk.
 - ~~Image OCR is broken in production~~ — fixed by switching OCR to Sarvam Document AI (a
-  cloud API call, sidesteps the Render Tesseract-install issue entirely). See the Document
-  upload section above.
-- **`DIGINYAYA_JWT_SECRET`** — confirm it's set as a stable Render env var, or restarts
-  invalidate every session on top of the DB-wipe problem above.
+  cloud API call, no local Tesseract install needed). See the Document upload section above.
+- ~~`DIGINYAYA_JWT_SECRET` restarts invalidate every session~~ — resolved: it's a stable SSM
+  Parameter Store value on AWS, not a per-process random default.
+- **Backend HTTPS was broken end-to-end on AWS until 2026-09-14.** The EB Single-Instance
+  environment has no load balancer or TLS listener; the deployed frontend called the backend
+  over `https://` and `require_https` rejects plain HTTP in production, so no login/signup could
+  complete. Fixed by fronting the backend with its own CloudFront distribution
+  (`infra/cloudfront_backend.tf`) — worth knowing this class of gap exists (any future new AWS
+  compute resource needs its own TLS story, EB doesn't provide one for free) even though this
+  specific instance is fixed.
 - **Backend-sourced content isn't localized.** Dispute-type names/descriptions
   (`app/data/loader.py`) are hardcoded English and never routed through the i18n pipeline —
   switching the language dropdown translates all frontend-owned copy but not this.
@@ -558,6 +576,10 @@ tracked in **Known issues** below, along with the Postgres migration that resolv
   product decision this codebase shouldn't make unilaterally. `GET /api/me/data-export` covers
   the access/portability principle today; a deletion flow is deliberately not built until that
   policy decision is made.
+- **Not yet load-tested at real scale.** `scripts/load_test.py` exists (`light`/`pipeline`
+  modes) but the Single-Instance backend's throughput under concurrent traffic — the 4-worker
+  background job pool (`DIGINYAYA_JOB_WORKERS`), and Sarvam's actual account-level rate limit —
+  hasn't been measured against this specific deployment yet.
 
 ---
 

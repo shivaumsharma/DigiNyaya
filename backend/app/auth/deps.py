@@ -25,12 +25,14 @@ def _reviewer_allowlist() -> set[str]:
 
 def _ensure_reviewer_allowlisted(user: User, db: Session) -> None:
     """Self-healing companion to scripts/promote_reviewer.py's one-off DB
-    write. That script mutates a row directly -- fine for a persistent
-    database, but this app's SQLite file lives on Render's free-tier
-    ephemeral disk, which is wiped on every redeploy/restart. A one-time
-    grant would silently vanish the next time anything merges to main.
-    DIGINYAYA_REVIEWER_EMAILS (a comma-separated allowlist read from the
-    environment, which DOES survive redeploys) re-applies the grant on every
+    write. That script mutates a row directly -- fine against a persistent
+    database (AWS production: RDS Postgres), but this codebase also runs
+    against ephemeral/reset-prone databases in other contexts (a fresh local
+    SQLite file, a CI/eval run, a still-in-parallel Render deployment on a
+    free tier with an ephemeral container disk) where a one-time grant would
+    silently vanish the next time the database resets. DIGINYAYA_REVIEWER_EMAILS
+    (a comma-separated allowlist read from the environment, which survives a
+    database reset the way a DB row can't) re-applies the grant on every
     authenticated request instead -- a no-op once already set, so the cost
     is one cheap membership check per request."""
     if user.is_reviewer:
