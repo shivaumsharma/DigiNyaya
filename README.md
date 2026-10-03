@@ -1,6 +1,6 @@
 # DigiNyaya — AI-Native Civil Dispute Resolution
 
-> Justice in minutes, not years.
+> DigiNyaya is for an Indian consumer or small business with a modest money dispute — an unpaid invoice, a refund, a bounced cheque — that is too small to justify a lawyer's fee and not worth years in court: it turns both sides' evidence into a precedent-cited, human-reviewed settlement proposal they can accept or take to a forum, in the filer's own language.
 
 DigiNyaya reimagines the civil court process from scratch. Instead of filing a case,
 hiring a lawyer and waiting years, a citizen signs up, submits a dispute, and **five
@@ -32,8 +32,9 @@ actual current state of the code, not aspirational plans.
   Bulbul**, read aloud in the citizen's own filing language
 - Real-time UI and content translation across 11 Indian languages via **Sarvam
   Mayura**
-- A real account system: email+password and phone+OTP signup/login, JWT access
-  tokens with rotating refresh tokens
+- A real account system: email+password signup/login (phone+OTP exists in code but is
+  **disabled in production** until a real SMS provider is wired up), JWT access tokens
+  with rotating refresh tokens
 - Role-gated human review workflow with a reviewer queue, case detail view, and
   decision audit trail
 - Tamper-evident, SHA-256 hash-chained event log for every case, with a live
@@ -41,7 +42,33 @@ actual current state of the code, not aspirational plans.
 - Circuit breakers around every direct Sarvam call site, so one product outage
   degrades gracefully instead of cascading
 - DPDP Act 2023-aligned self-service data export
-- A golden-case evaluation harness scored against real court judgments
+- An evaluation harness scored against 23,841 real court judgments — see
+  [Measured results](#measured-results), including where it is weak
+
+---
+
+## Measured results
+
+Run on 23,841 real district-court cases (eCourts / Indian Kanoon), 2026-09-28. Reports live in
+`backend/data_cache/` (`eval_scorecard_v2.json`, `escalation_rate_report.json`); the scripts are
+`scripts/eval_scorecard.py` and `scripts/compare_eval_runs.py`. These are archived judgments scored
+by an LLM judge (`sarvam-105b`) — **not live users**, and the judge has not yet been checked against
+human labels (the blind sheet at `data_cache/human_label_sheet.csv` is still unlabelled).
+
+| Metric | Result |
+| --- | --- |
+| Resolved without escalation | 65.3% (15,575 of 23,841); 34.7% escalated to a human |
+| Full match with the real court (right winner **and** relief amount within ±20%) | 56.3% of 15,573 judged — 39.4% before the amount fix (paired 95% CI +16.1 to +17.5 pts) |
+| Relief amount within ±20% of the real award | 75.7% (7.9% before the fix) |
+| Right winner picked | 75.1% — **below the 83.1% that "claimant always wins" scores** |
+| Macro-F1 (winner) | 0.634, against 0.454 for that baseline |
+| Confidence vs. correctness | correlation 0.19 — the confidence score is only a weak signal |
+| Weakest category | small-claims debt recovery, 47.5% full match (n = 7,549); strongest large category is property/neighbour disputes at 66.3% |
+
+Caveats: the amount fix was designed after looking at this data, so these are not held-out
+numbers; the LLM judge is non-deterministic (it flipped the winner on 50 of 679 identical AI
+outputs); LLM-extracted claim amounts match the real decree slightly more often than
+description-parsed ones (75.3% vs 70.0%), so treat that part of the gain as a soft upper bound.
 
 ---
 
@@ -68,7 +95,7 @@ _Screenshots to be added — placeholders below, filenames expected under `scree
 | Database / ORM | SQLAlchemy Core + Alembic — SQLite (dev default) or PostgreSQL (current production database, identical code path via `DIGINYAYA_DB`) |
 | AI / LLM | Sarvam AI (Sarvam-105B/105B-conversations chat, Document AI OCR, Speech-to-Text, Bulbul text-to-speech, Mayura translation), Ollama (local fallback + embeddings) |
 | Retrieval | Custom semantic (cosine over embeddings) + keyword-fallback precedent search |
-| Frontend | React, Vite |
+| Frontend | React, Vite, TypeScript (migration in progress — core API/auth modules converted, components next) |
 | Auth | JWT access tokens, rotating refresh tokens, email + phone/OTP |
 | Document processing | PyMuPDF (native-text PDFs), Sarvam Document AI OCR (primary), Tesseract (fallback) |
 | Evidence storage | Local filesystem (dev default) or AWS S3 (current production storage) |
@@ -123,8 +150,18 @@ DigiNyaya/
 │       ├── ingest_judgments.py       Pulls real judgments from the Indian Kanoon API (billed per call)
 │       ├── eval_cases.py             Golden-case evaluation harness (scripted, free, runs in CI)
 │       ├── measure_eval_cost.py      Token-cost regression gate against real Sarvam calls (opt-in)
-│       ├── judge_real_outcomes.py    Scores AI output against real court judgments
+│       ├── judge_real_outcomes.py    Scores AI output against real court judgments (--shard-index/
+│       │                             --shard-count for safe multi-process parallelism, scripted mode)
+│       ├── compute_evaluation_matrix.py  Confusion matrix + precision/recall/F1 (both classes, macro
+│       │                             avg, per-category) from judge_real_outcomes.py's output
+│       ├── measure_escalation_rate.py    Real escalation/resolved-without-escalation rate from data
+│       ├── measure_full_relief_rate.py   Real full-relief rate for Tier-1 mediated cases
 │       ├── source_free_judgments.py  Sources more real judgments for $0 via HuggingFace (no API billing)
+│       ├── source_district_court_judgments.py  Sources real judgments for $0 from the eCourts
+│       │                             district-court open dataset on AWS (github.com/vanga/
+│       │                             indian-district-court-judgments) — the main eval-corpus growth
+│       │                             path; supports --states/--years/--out for running many disjoint
+│       │                             slices as separate processes in parallel
 │       ├── train_outcome_classifier.py  Predicts match-vs-not from case features (leave-one-out CV)
 │       ├── explain_mediation_shap.py    SHAP explainability for the scripted relief-ratio decision
 │       ├── error_analysis.py         Confusion-matrix-style breakdown of the real-judgment eval by category
@@ -133,13 +170,13 @@ DigiNyaya/
 │       ├── fill_missing_translations.py  Incrementally fills only the KEYS a locale file is missing
 │       ├── load_test.py              Concurrency/latency load testing + real-pipeline usage generation
 │       └── smoke_http.py             End-to-end HTTP + SSE smoke test
-└── frontend/                React (Vite) — the live demo UI
+└── frontend/                React (Vite) — the live demo UI; TypeScript migration in progress
     └── src/
         ├── pages/           Home, Disputes, NewCase, Respondent, Resolve, ReviewerQueue, ReviewerCaseDetail
         ├── components/      Stepper, ResolutionDoc, EvidenceDropzone, CaseStrengthPanel, ListenButton
         ├── auth/            Signup/login screens, protected-route guards
         ├── i18n/             English + 10 Indic-language dictionaries
-        └── api.js           REST client + auth + SSE streaming helper
+        └── api.ts           REST client + auth + SSE streaming helper (typed)
 ```
 
 ---
@@ -455,9 +492,16 @@ Reusing an already-rotated-out refresh token revokes every token descended from 
 | `DIGINYAYA_DB` | `backend/diginyaya.db` | SQLAlchemy database URL for cases *and* auth tables — a bare path defaults to SQLite; set a full `postgresql+psycopg://user:pass@host:5432/db` URL to run against Postgres instead, same code path either way |
 | `DIGINYAYA_FRONTEND_URL` | `http://localhost:5173` | Base URL for email-verification / password-reset links |
 
-SMS and email are provider-stub interfaces (`app/auth/sms.py`, `app/auth/mail.py`) in local dev
-by default; a real transactional email provider (**Resend**) is wired up for production — see
-`DIGINYAYA_MAIL_FROM`/`RESEND_API_KEY` in `.env.example`.
+**SMS:** there is no real SMS provider yet (`app/auth/sms.py` is a console-log stub). In
+`DIGINYAYA_ENV=production` the phone `.../start` endpoints return `503` ("Phone sign-in is not
+available yet") and never echo an OTP; outside production the code is echoed in the response
+(`dev_otp`) so local testing works. Phone sign-in stays disabled in production until a provider
+that actually delivers is added.
+
+**Email:** `app/auth/mail.py` sends through **Resend** when `RESEND_API_KEY` is set (optionally
+`DIGINYAYA_MAIL_FROM`), otherwise logs to the console. The AWS Terraform environment does **not**
+set `RESEND_API_KEY` (it isn't in `backend/.env.example` either), so verification and
+password-reset emails on AWS are only logged unless that variable is set outside Terraform.
 
 ### Migrations & tests
 
@@ -534,7 +578,8 @@ The application is deployed on **AWS**, provisioned by Terraform (`infra/`):
   `main` runs backend tests + the golden eval suite + frontend tests first; only on success does
   it build/push images and deploy backend (Elastic Beanstalk) and frontend (S3 + CloudFront
   invalidation).
-- **Email** — Resend, for verification/reset links and case notifications.
+- **Email** — Resend in code, but `RESEND_API_KEY` is not set by Terraform, so on AWS emails fall
+  back to console logging until it is configured (see Authentication).
 
 **Render still exists in parallel, untouched** (`infra/README.md`) — a deliberate choice made
 during the AWS migration so both platforms could be verified independently before cutting over.
@@ -565,8 +610,13 @@ distribution is ever recreated).
 - **Backend-sourced content isn't localized.** Dispute-type names/descriptions
   (`app/data/loader.py`) are hardcoded English and never routed through the i18n pipeline —
   switching the language dropdown translates all frontend-owned copy but not this.
-- **Eval dataset is small and costs real money to grow** (Indian Kanoon API is billed per
-  call) — not something to casually expand.
+- ~~Eval dataset is small and costs real money to grow~~ — resolved: the corpus scaled
+  from ~1,900 to well over 10,000 real cases for $0, sourced from the eCourts district-court
+  open dataset on AWS (`scripts/source_district_court_judgments.py`) and a free HuggingFace
+  judgment mirror (`scripts/source_free_judgments.py`), not the paid Indian Kanoon API. Real
+  data availability is uneven though — only a handful of states/years in that open dataset
+  actually have downloadable case documents (most have listing metadata but no bundled PDFs
+  yet), so growth isn't unlimited even though it's free.
 - **No general admin role** — `is_reviewer` is the one deliberately narrow capability that
   exists, granted only via CLI script.
 - **No data retention/erasure policy yet.** DPDP Act 2023 grants a right to erasure, but a
@@ -576,17 +626,17 @@ distribution is ever recreated).
   product decision this codebase shouldn't make unilaterally. `GET /api/me/data-export` covers
   the access/portability principle today; a deletion flow is deliberately not built until that
   policy decision is made.
-- **Not yet load-tested at real scale.** `scripts/load_test.py` exists (`light`/`pipeline`
-  modes) but the Single-Instance backend's throughput under concurrent traffic — the 4-worker
-  background job pool (`DIGINYAYA_JOB_WORKERS`), and Sarvam's actual account-level rate limit —
-  hasn't been measured against this specific deployment yet.
+- ~~Not yet load-tested at real scale~~ — resolved: `scripts/load_test.py` against the live
+  AWS deployment shows `light` mode (cheap read endpoints) at 100% success up to 50 concurrent
+  requests, and `pipeline` mode (real cases through the full 5-agent pipeline, real Sarvam
+  calls) at 100% success up to 20 concurrent full runs, with no Sarvam rate-limit errors
+  observed. The single `t3.micro` EB instance is a real, now-measured throughput ceiling
+  (latency scales with concurrency), not an unknown.
 
 ---
 
 ## Future Enhancements
 
-- A real, persistent production database (Postgres) — the single highest-priority item; see
-  **Known issues** above.
 - All four dispute types reaching real production traffic.
 - Tier 2 → Tier 3: complex civil and criminal matters with mandatory human sign-off.
 - Government ODR integration, High Court partnerships.
@@ -597,8 +647,8 @@ distribution is ever recreated).
   API stay identical either way.
 - A self-service data deletion flow, once the legal retention-vs-erasure policy question
   (see **Known issues**) is resolved.
-- A real SMS provider and cloud object storage (S3/GCS) for evidence uploads, replacing the
-  current local-disk/console-log stubs.
+- A real SMS provider (Twilio / AWS SNS / MSG91) so phone sign-in can be enabled in production,
+  and `RESEND_API_KEY` set in the AWS environment so emails are actually delivered.
 
 ---
 
