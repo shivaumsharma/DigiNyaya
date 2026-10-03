@@ -76,18 +76,27 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _dev_otp_field(code: str) -> str | None:
-    """get_sms_provider() (sms.py) is unconditionally the console-log stub --
-    there is no real SMS provider wired up yet, in production or otherwise --
-    so the OTP-start response always includes the code directly; without
-    this, phone signup/login has no way to reach the user at all. Once a
-    real SMS provider is wired up, gate this back on `not _is_production()`.
-    """
-    return code
+PHONE_AUTH_UNAVAILABLE = "Phone sign-in is not available yet. Please use email to sign up or sign in."
 
 
 def _is_production() -> bool:
     return os.getenv("DIGINYAYA_ENV", "development").strip().lower() == "production"
+
+
+def _dev_otp_field(code: str) -> str | None:
+    """Echo the OTP in the response only outside production, so dev/test can
+    complete the flow without reading server logs. Production never echoes it.
+    """
+    return None if _is_production() else code
+
+
+def _require_sms_delivery() -> None:
+    """get_sms_provider() (sms.py) is still the console-log stub, so in
+    production a code would be issued that no phone ever receives. Refuse up
+    front instead of pretending phone verification works.
+    """
+    if _is_production() and not get_sms_provider().delivers:
+        raise HTTPException(status_code=503, detail=PHONE_AUTH_UNAVAILABLE)
 
 
 def _set_refresh_cookie(response: Response, raw_token: str) -> None:
@@ -217,6 +226,7 @@ def signup_email(body: SignupEmailRequest, response: Response, db: Session = Dep
 
 @router.post("/signup/phone/start", response_model=MessageResponse)
 def signup_phone_start(body: PhoneStartRequest, db: Session = Depends(get_db)):
+    _require_sms_delivery()
     phone = body.phone
     existing = db.query(User).filter(User.phone == phone).first()
     if existing and existing.phone_verified_at is not None:
@@ -273,6 +283,7 @@ def login_email(body: LoginEmailRequest, request: Request, response: Response, d
 
 @router.post("/login/phone/start", response_model=MessageResponse)
 def login_phone_start(body: PhoneStartRequest, db: Session = Depends(get_db)):
+    _require_sms_delivery()
     phone = body.phone
     # Always "send" an OTP whether or not the phone is registered -- an
     # attacker probing this endpoint can't distinguish the two cases.
@@ -305,6 +316,7 @@ def login_phone_verify(body: PhoneVerifyRequest, request: Request, response: Res
 
 @router.post("/link/phone/start", response_model=MessageResponse)
 def link_phone_start(body: PhoneStartRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _require_sms_delivery()
     phone = body.phone
     other = db.query(User).filter(User.phone == phone).first()
     if other and other.id != user.id and other.phone_verified_at is not None:

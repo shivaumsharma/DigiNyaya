@@ -86,10 +86,9 @@ class PasswordResetConfirm(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
-    # Populated only outside production (see router.py's _dev_otp_field) --
-    # there's no real SMS provider wired up yet (see sms.py's console stub),
-    # so this is how a developer/tester sees the code without reading server
-    # logs. Always None once DIGINYAYA_ENV=production.
+    # Populated only outside production (see router.py's _dev_otp_field) so a
+    # developer/tester sees the code without reading server logs. Always None
+    # once DIGINYAYA_ENV=production.
     dev_otp: Optional[str] = None
 
 
