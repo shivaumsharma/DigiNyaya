@@ -71,6 +71,10 @@ _PLAIN_PATH = _DATA_DIR / "eval_judgments.json"
 # identical placeholder for all 46 cases. Falls back to the plain sourced
 # dataset if signal extraction hasn't been run yet.
 DATASET_PATH = _SIGNALS_PATH if _SIGNALS_PATH.exists() else _PLAIN_PATH
+# Point every eval script at a smaller dataset (e.g. a stratified sample built
+# by scripts/build_eval_sample.py) without touching the canonical files.
+if os.environ.get("DIGINYAYA_EVAL_DATASET"):
+    DATASET_PATH = Path(os.environ["DIGINYAYA_EVAL_DATASET"])
 OUT_PATH = _DATA_DIR / "real_judgment_eval_results.json"
 
 # Best-fit mapping onto the 4 categories DigiNyaya actually has registered
@@ -142,9 +146,20 @@ def _infer_party_labels(description: str) -> tuple[str, str]:
     return "Claimant", "Respondent"
 
 
-def _infer_claim_amount(description: str) -> float:
-    amounts = nlp.extract_amounts(description)
-    return amounts[0] if amounts else DEFAULT_CLAIM_AMOUNT
+def _infer_claim_amount(case: dict | str) -> float:
+    """The claim comes from the case description; when the description states
+    no figure (~29% of money cases -- it says "a specified principal sum"),
+    fall back to the claimed amount scripts/extract_claim_amounts.py pulled
+    from the judgment's facts/prayer, and only then to the flat default."""
+    if isinstance(case, str):  # legacy callers pass just the description
+        case = {"case_description": case}
+    amounts = nlp.extract_amounts(case["case_description"])
+    if amounts:
+        return amounts[0]
+    extracted = case.get("claimed_amount_rupees")
+    if isinstance(extracted, (int, float)) and extracted > 0:
+        return float(extracted)
+    return DEFAULT_CLAIM_AMOUNT
 
 
 def _build_ctx(case: dict) -> CaseContext:
@@ -212,7 +227,7 @@ def _build_ctx(case: dict) -> CaseContext:
         dispute_type=dispute_type,
         claimant_name=claimant_name,
         respondent_name=respondent_name,
-        claim_amount=_infer_claim_amount(case["case_description"]),
+        claim_amount=_infer_claim_amount(case),
         description=case["case_description"],
         evidence=evidence,
         respondent_submission=respondent_submission,

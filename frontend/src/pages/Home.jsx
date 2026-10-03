@@ -272,11 +272,11 @@ export default function Home() {
           <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 56, alignItems: 'center' }} className="metrics-grid-responsive">
             <div>
               <div style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                {t('landing.medianLabel')}
+                {t('landing.barsLabel')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {t('landing.metricBars').map((m, i) => (
-                  <MetricBar key={m.label} label={m.label} value={m.value} width={['3%', '7%', '100%'][i]} muted={i === 2} />
+                {t('landing.metricBars').map((m) => (
+                  <MetricBar key={m.label} label={m.label} value={m.value} width={`${m.pct}%`} muted={Boolean(m.muted)} />
                 ))}
               </div>
             </div>

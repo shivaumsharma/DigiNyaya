@@ -40,8 +40,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from .. import llm
-
 logger = logging.getLogger("diginyaya.safety_gate")
 
 
@@ -164,61 +162,32 @@ def _combined_text(case_input: Any) -> str:
 # CHECKPOINT A -- pre-filter (conditions 1 & 5)
 # ---------------------------------------------------------------------------
 
-# LLM second-opinion prompt for a criminal-indicator keyword hit. Real-
-# judgment testing found the keyword list alone produces two distinct kinds
-# of wrong answer: (1) false positives on ordinary civil narratives that
-# happen to mention a crime-adjacent word in passing (30 tenancy/property
-# cases this session), and (2) cases that ARE genuinely retaliatory criminal
-# filings over what's fundamentally a civil dispute -- 2 of the 3 real
-# escalation__criminal_matter test cases are exactly this (a High Court
-# quashed both FIRs under CrPC S482 as "abuse of process", explicitly
-# calling the underlying dispute civil). A keyword hit alone can't tell
-# these apart from genuine crime (the 3rd test case: a real securities-
-# fraud prosecution) -- this asks the question directly instead of trusting
-# keyword presence as dispositive.
-_CRIMINAL_CONFIRM_SCHEMA = (
-    '{"is_genuine_criminal_matter": <bool: true ONLY if this describes conduct a criminal '
-    "court would actually charge/convict on in its own right (real violence, genuine fraud "
-    "with criminal intent, threats, extortion, sexual offenses, etc.) -- false if this is "
-    "fundamentally a civil/commercial dispute (money owed, property, contract, tenancy, "
-    "employment) where a party used criminal-sounding language (mentioning a filed police "
-    'complaint/FIR, alleging "cheating" or "criminal breach of trust") as leverage or '
-    'retaliation, rather than describing conduct that itself meets a real criminal offense\'s '
-    'elements>, "reasoning": "<=20 word explanation"}'
-)
-
-
-def _llm_confirm_criminal(combined_text: str, hits: list[str]) -> bool | None:
-    """Returns True/False when the LLM gives a usable answer, None when it's
-    unavailable/fails -- callers must treat None as "can't confirm, stay
-    safe" (i.e. still escalate), never as a silent false."""
-    prompt = (
-        "A keyword filter flagged this case as possibly describing a criminal matter "
-        f"(matched: {', '.join(hits)}). Decide whether it's genuinely criminal or a civil "
-        f"dispute using crime-adjacent language. Return JSON only, matching this schema: "
-        f"{_CRIMINAL_CONFIRM_SCHEMA}\n\nCASE TEXT:\n{combined_text[:3000]}"
-    )
-    data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, model="classification", max_tokens=200, temperature=0.0)
-    if not data:
-        return None
-    verdict = data.get("is_genuine_criminal_matter")
-    return bool(verdict) if isinstance(verdict, bool) else None
-
-
+# NO LLM SECOND OPINION HERE -- REMOVED DELIBERATELY, DO NOT RE-ADD WITHOUT
+# RE-READING THIS COMMENT. A previous version asked an LLM to confirm a
+# criminal-indicator keyword hit before escalating, specifically to cut
+# false-positive escalations on ordinary civil narratives that mention a
+# crime-adjacent word in passing (30 tenancy/property cases were measured
+# to over-escalate this way). That traded one real problem for a worse one:
+# tested live against this repo's own 2 real escalation__criminal_matter
+# cases (genuine filed FIRs for cheating/criminal breach of trust), the LLM
+# confirmed BOTH as "not genuinely criminal" -- 2 for 2 -- and both then
+# proceeded all the way to a drafted civil "dismissed" resolution instead of
+# escalating. The confirmation prompt's own reasoning wasn't unreasonable
+# (a High Court did eventually quash both FIRs), but "should this criminal
+# complaint be quashed" is exactly the kind of legal judgment call this
+# system must never make autonomously -- an unnecessary escalation costs one
+# extra human review; a wrongly-cancelled one means an AI civil-dispute tool
+# drafted a resolution for a matter with real criminal allegations attached.
+# That asymmetry is decisive: a keyword hit escalates unconditionally, full
+# stop, no veto path, even at the cost of the false-positive rate this was
+# originally trying to fix. If that false-positive rate needs addressing
+# again, do it by tightening CRIMINAL_INDICATORS itself (a keyword either
+# belongs in the list or it doesn't), never by giving anything downstream
+# the power to overrule a hit that's already in it.
 def _check_criminal_matter(combined_text: str) -> str | None:
     hits = _match_any(combined_text, CRIMINAL_INDICATORS)
     if not hits:
         return None
-    confirmed = _llm_confirm_criminal(combined_text, hits)
-    if confirmed is False:
-        logger.info(
-            "criminal-matter keyword hit downgraded by LLM confirmation",
-            extra={"event": "criminal_matter_llm_downgrade", "hits": hits},
-        )
-        return None
-    # confirmed is True, or None (LLM unavailable/unusable) -- fail safe and
-    # still escalate on an unconfirmed hit rather than silently trust a
-    # keyword match with no independent check.
     return f"Criminal-matter indicator(s) detected: {', '.join(hits)}"
 
 

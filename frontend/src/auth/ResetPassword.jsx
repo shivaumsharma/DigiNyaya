@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { authApi } from './authApi.js'
+import { authApi } from './authApi'
 import PasswordInput from './PasswordInput.jsx'
 
 // Landing page for the link the backend's mail stub prints:

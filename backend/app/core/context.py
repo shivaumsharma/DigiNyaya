@@ -32,10 +32,13 @@ class IngestionResult(BaseModel):
     reasoning: str = ""
     engine: str = "scripted"
     # What KIND of relief the claim actually asks for -- "monetary" (default)
-    # or one of "injunction"/"declaration"/"replacement"/"possession". See
-    # app.agents.nlp.detect_relief_type: resolution.py could previously only
-    # ever draft a "pay the claimant Rs X" order, even when the real ask (and
-    # what a real court would order) was non-monetary.
+    # or one of the non-monetary kinds app.agents.nlp.detect_relief_type
+    # recognises (injunction/declaration/heirship_declaration/
+    # specific_performance/replacement/possession/partition/reinstatement/
+    # arbitration_referral). See that
+    # function: resolution.py could previously only ever draft a "pay the
+    # claimant Rs X" order, even when the real ask (and what a real court
+    # would order) was non-monetary.
     relief_type_requested: str = "monetary"
 
 

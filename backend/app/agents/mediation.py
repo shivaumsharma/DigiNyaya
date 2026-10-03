@@ -30,12 +30,66 @@ _ALLOWED_DAYS = [15, 21, 30, 45, 60]
 # phrased in practice, rather than requiring exact date math.
 _DEFAULT_INTEREST_RATE_PCT = 6.0
 
+# proposed_ratio = prec_mean * min(net_strength*1.4, 1.0) means a real, non-
+# trivial claimant edge can still round-trip to a near-zero ratio purely
+# because prec_mean (the retrieved precedents' own average relief ratio)
+# happens to be low -- at net_strength=0.14, the multiplier term is only
+# 0.196, so anything but a strong prec_mean pushes the result under
+# _DISMISSED_RATIO_CUTOFF and the case reads as "no relief at all" rather
+# than "modest relief". Found via real-judgment testing at the 342-case
+# scale: net_strength=0.14 specifically (not a near-tie -- a genuine,
+# repeated, moderate edge) was the single most common value behind
+# small_claims_debt_recovery's wrongly-dismissed cases (13 of 45 non-
+# matches were an outright "AI dismissed" ai_relief=Rs.0 despite a real
+# court awarding the claimant something), and 11 of those 13 were exactly
+# 0.14. This floor only fires once net_strength clears 0.1 -- comfortably
+# above noise (0.01/0.06 edges seen in the same data were left alone,
+# deliberately not "fixed" without separate evidence they're wrong too) --
+# so a genuine near-tie still correctly reaches the r_strength>=c_strength
+# dismissal path below, untouched by this change.
+_DISMISSED_RATIO_CUTOFF = 0.05
+
+# When the pipeline decides a money claim goes the claimant's way, award the
+# claim in full (interest is added separately, see _DEFAULT_INTEREST_RATE_PCT)
+# instead of a strength-scaled fraction capped by the retrieved precedents'
+# best outcome. Found by error analysis of 15,573 judged real district-court
+# cases: on the direction-correct, claimant-won money cases the AI's amount
+# landed within +/-20% of the real decree only 5.9% of the time (median AI
+# award: 10% of the real one) because (a) net_strength*1.4 scales the award
+# down even for a maximally strong claimant, with no measurable relation to
+# what the court awarded (Spearman 0.075 between the AI's ratio and the real
+# award/claim ratio), and (b) the ceiling `hi = min(prec_max, 1.0)` drags it
+# to ~0 whenever the 5 keyword-retrieved precedents happen to all be
+# dismissals -- and 59-66% of the money-recovery/contract/cheque precedents
+# ARE dismissals. Real courts in this corpus award ~100% of the claim when
+# the claimant wins (41% within +/-5% of it, only ~1.6% partly decreed).
+# This only ever changes the AMOUNT of an already claimant-favouring outcome:
+# the who-wins decision (ratio < _DISMISSED_RATIO_CUTOFF -> dismissed) is made
+# before this override and is untouched. Scoped to plain money claims
+# (requested relief "monetary") on the dispute types whose real decrees are
+# adjudicated money decrees; consumer_dispute keeps the proportional model
+# (real consumer refunds genuinely vary and its precedents average 0.63).
+_FULL_CLAIM_DISPUTE_TYPES = {"money_recovery", "contract_breach", "cheque_bounce"}
+_MIN_NET_STRENGTH_FOR_RATIO_FLOOR = 0.1
+_MIN_RATIO_WHEN_CLAIMANT_CLEARLY_AHEAD = 0.1
+
+# A smaller floor for net_strength in (0, 0.1] (tried as
+# _MIN_RATIO_WHEN_CLAIMANT_MARGINALLY_AHEAD = 0.05) was tried and reverted:
+# individual traced cases looked right (real bank/debt-recovery wins with a
+# tiny positive net_strength), but measured end-to-end it made every
+# category flat or worse, same regression as the defense-scoring change in
+# nlp.py.score_defense_substance tried alongside it. Don't re-attempt
+# without a small proof-of-concept run first. See
+# [[diginyaya_real_judgment_eval]].
+
 # Human-readable phrase for each non-monetary relief kind (app.agents.nlp's
 # detect_relief_type values), used in place of the "<kind> of Rs. X" phrasing
 # that only makes sense for a monetary outcome.
 _NON_MONETARY_KINDS = {
     "injunction": "an injunction directing the respondent to stop/undo the conduct complained of",
     "declaration": "a declaration in the claimant's favour on the matter in dispute",
+    "heirship_declaration": "a declaration recognising the claimant(s) as legal heir(s)/successor(s) in respect of the estate in dispute",
+    "specific_performance": "an order compelling the respondent to complete the underlying contract (e.g. execute and register the sale deed) rather than pay money in its place",
     "replacement": "replacement of the goods/services in question",
     "possession": "an order restoring possession of the property to the claimant",
     "partition": "a decree of partition declaring each party's share in the property",
@@ -64,7 +118,10 @@ _NON_MONETARY_KINDS = {
 # standard, expected companion to a reinstatement order (real Labour Court
 # judgments consistently award both together), not a separate speculative
 # damages claim the way incidental compensation is for the other kinds above.
-_NO_INCIDENTAL_AMOUNT_KINDS = {"arbitration_referral", "injunction", "possession", "declaration", "replacement", "partition"}
+_NO_INCIDENTAL_AMOUNT_KINDS = {
+    "arbitration_referral", "injunction", "possession", "declaration",
+    "heirship_declaration", "specific_performance", "replacement", "partition",
+}
 
 
 def run(ctx: CaseContext) -> AgentResult:
@@ -92,7 +149,23 @@ def run(ctx: CaseContext) -> AgentResult:
     # strength lets a respondent whose position matches or beats the
     # claimant's genuinely win no relief.
     net_strength = c_strength - r_strength  # -1..+1, positive favors claimant
-    proposed_ratio = round(prec_mean * min(max(net_strength, 0.0) * 1.4, 1.0), 3)
+    # `prec_mean *` was removed here (see [[diginyaya_real_judgment_eval]]):
+    # a baseline comparison against a plain LLM with none of this pipeline's
+    # machinery found DigiNyaya picks the right WINNER in small-claims cases
+    # more often than the baseline (78.8% vs 72.8% ruling-only), yet scores
+    # dramatically worse on full match (13.2% vs 43.1%) -- the only thing
+    # that gap can be is the AMOUNT. Multiplying by prec_mean means even a
+    # maximally strong claimant case gets discounted by whatever a RETRIEVED
+    # precedent's own historical ratio happened to be -- and retrieval in
+    # this environment is always the keyword-fallback path (semantic search
+    # never fires, no Ollama sidecar), independently measured at F1@3=0.10.
+    # A near-random retrieval's own outcome ratio has no business gating the
+    # current case's award multiplicatively. net_strength is the signal
+    # that's actually been validated (it's what analysis.py's own real-
+    # judgment-tuned scoring produces); precedent data still bounds the
+    # result via `hi = min(prec_max, 1.0)` below, as a ceiling, not a
+    # multiplicative discount.
+    proposed_ratio = round(min(max(net_strength, 0.0) * 1.4, 1.0), 3)
     outcome_type = _ratio_to_type(proposed_ratio)
     compliance_days = median_days
     explanation = ""
@@ -167,10 +240,31 @@ def run(ctx: CaseContext) -> AgentResult:
         # matches the actual outcome. Discard it; the scripted dismissed
         # explanation below (`if not explanation:`) takes over instead.
         explanation = ""
+    elif net_strength > _MIN_NET_STRENGTH_FOR_RATIO_FLOOR and clamped_ratio < _DISMISSED_RATIO_CUTOFF:
+        # See _MIN_RATIO_WHEN_CLAIMANT_CLEARLY_AHEAD above: a genuine,
+        # non-trivial claimant edge should not collapse to "dismissed"
+        # purely because the precedent-scaled ratio rounds near zero.
+        validator_notes.append(
+            f"Relief ratio floored from {round(clamped_ratio, 2)} to {_MIN_RATIO_WHEN_CLAIMANT_CLEARLY_AHEAD}: "
+            f"the claimant's case is genuinely stronger ({int(c_strength * 100)}% vs {int(r_strength * 100)}%), "
+            "so a near-zero precedent-scaled ratio would misrepresent this as no relief at all rather than "
+            "a real, if modest, award."
+        )
+        clamped_ratio = _MIN_RATIO_WHEN_CLAIMANT_CLEARLY_AHEAD
     elif abs(clamped_ratio - proposed_ratio) > 1e-6:
         validator_notes.append(
             f"Relief ratio adjusted from {round(proposed_ratio,2)} to {round(clamped_ratio,2)} to stay within the precedent band."
         )
+    if (
+        ctx.dispute_type in _FULL_CLAIM_DISPUTE_TYPES
+        and (ctx.ingestion.relief_type_requested if ctx.ingestion else "monetary") == "monetary"
+        and _DISMISSED_RATIO_CUTOFF <= clamped_ratio < 1.0
+    ):
+        validator_notes.append(
+            f"Relief ratio raised from {round(clamped_ratio, 2)} to 1.0: the claimant's money claim is "
+            "upheld, and courts decree an upheld money claim in full (see _FULL_CLAIM_DISPUTE_TYPES)."
+        )
+        clamped_ratio = 1.0
     recommended_amount = round(min(claim * clamped_ratio, claim), 2)
 
     if compliance_days not in _ALLOWED_DAYS:
@@ -249,6 +343,25 @@ def run(ctx: CaseContext) -> AgentResult:
         # why tenancy, not property, maps there) -- every other non-monetary
         # kind, and possession claims on any OTHER dispute_type, stays at
         # the stricter original 0.5 pending its own real-data justification.
+        #
+        # A `c_strength > r_strength` guard on this loosened-bar branch
+        # (require the landlord to also be strictly ahead of the tenant's
+        # defense score, not just clear the absolute 0.3 floor) was tried
+        # and reverted: real-judgment testing on the EXACT 10-case
+        # population it would flip (c_strength in [0.3, 0.5), r_strength >=
+        # c_strength, tenancy possession) found the real court had actually
+        # ruled FOR the landlord in 9 of 10 -- adding the guard flipped 7 of
+        # 10 verdicts from match/partial to mismatch, 0 improved. The
+        # keyword-scored tenant defense outscoring the landlord's own
+        # evidence-count score is NOT, in this data, evidence the tenant's
+        # defense actually succeeded -- consistent with why the 0.3 bar
+        # exists at all (real courts granted the landlord SOMETHING at the
+        # lowest observed tenancy c_strength tier in the original finding
+        # above). Whatever is driving the SEPARATE, still-real over-granting
+        # pattern found via reason-text analysis of the full 36 tenancy
+        # mismatches (15+ "AI granted, real court dismissed", 0 the reverse)
+        # is not simply "r_strength >= c_strength at low c_strength" --
+        # needs its own real-data-derived signal before another attempt.
         relief_kind = requested_relief
     if relief_kind in _NO_INCIDENTAL_AMOUNT_KINDS:
         # An arbitration referral means this forum isn't deciding the
@@ -372,7 +485,7 @@ def _non_monetary_threshold(requested_relief: str, dispute_type: str) -> float:
 
 
 def _ratio_to_type(ratio: float) -> str:
-    if ratio < 0.05:
+    if ratio < _DISMISSED_RATIO_CUTOFF:
         return "dismissed"
     if ratio >= 0.99:
         return "full_refund"

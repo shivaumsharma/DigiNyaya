@@ -140,8 +140,17 @@ jobs:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
           IMAGE_URI="$ECR_REGISTRY/diginyaya-backend:${{ github.sha }}"
-          docker build -t "$IMAGE_URI" backend
-          docker push "$IMAGE_URI"
+          # ECR tags are immutable -- re-running this workflow for a commit
+          # whose image was already pushed (e.g. a manual workflow_dispatch
+          # retry after a downstream deploy-backend failure) would otherwise
+          # always fail here with "tag invalid: ... already exists ... and
+          # cannot be overwritten". Same fix as FinSight's deploy-aws.yml.
+          if aws ecr describe-images --repository-name diginyaya-backend --image-ids imageTag="${{ github.sha }}" >/dev/null 2>&1; then
+            echo "Image already exists in ECR for this commit -- skipping build/push."
+          else
+            docker build -t "$IMAGE_URI" backend
+            docker push "$IMAGE_URI"
+          fi
           echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
   deploy-backend:

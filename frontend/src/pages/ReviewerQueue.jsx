@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api.js'
+import { api } from '../api'
 import { Shield, Clock } from '../icons.jsx'
 
 // Internal reviewer tool, not citizen-facing -- plain English throughout

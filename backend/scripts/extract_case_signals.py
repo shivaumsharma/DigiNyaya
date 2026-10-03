@@ -32,8 +32,11 @@ Run (from backend/): python -m scripts.extract_case_signals
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, ".")
@@ -48,6 +51,10 @@ from scripts.source_eval_judgments import html_to_text, _window  # noqa: E402
 
 DATASET_PATH = Path(__file__).resolve().parent.parent / "data_cache" / "eval_judgments.json"
 OUT_PATH = Path(__file__).resolve().parent.parent / "data_cache" / "eval_judgments_with_signals.json"
+PARTIAL_PATH = OUT_PATH.with_name("eval_judgments_with_signals.partial.json")
+CHECKPOINT_EVERY = 200
+_LLM_ATTEMPTS = 2
+_RETRY_BACKOFF_SECONDS = 35.0  # just over CircuitBreaker.COOLDOWN_SECONDS (30s)
 CACHE_DIR = Path(__file__).resolve().parent.parent / "data_cache" / "indiankanoon"
 
 
@@ -109,13 +116,33 @@ def extract_signals(case: dict) -> dict | None:
     # at 2048 on the starter subscription tier (a hard 400, not a graceful
     # truncation, confirmed via a raw API call). See judge_real_outcomes.py
     # for the same fix and full explanation.
-    return llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=2000)
+    # Retry with backoff, only reached once the input is known-good (so an
+    # unusable case -- no cached text -- never sleeps). llm.generate_json()
+    # returns None for BOTH a real failure and app.core.circuit_breaker's
+    # 30s fail-fast window after 3 consecutive failures; under concurrent
+    # workers a transient burst can open that breaker, and without a retry
+    # every case that lands inside the window would be silently dropped to
+    # placeholder signals. Waiting out the cooldown once turns that into a
+    # short stall instead of a wrong result.
+    for attempt in range(_LLM_ATTEMPTS):
+        result = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=2000)
+        if result is not None:
+            return result
+        if attempt < _LLM_ATTEMPTS - 1:
+            time.sleep(_RETRY_BACKOFF_SECONDS)
+    return None
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Extract per-case signals for the real-judgment eval dataset.")
     ap.add_argument("--fresh", action="store_true",
                      help="re-extract every case, ignoring any already-signalled entries in the existing output")
+    ap.add_argument("--workers", type=int, default=1,
+                     help="threads making extraction calls concurrently (default 1 = strictly sequential). "
+                          "Safe to raise here, unlike judge_real_outcomes.py's --workers: extraction is "
+                          "stateless (no per-case env-var toggling). Too many can still hit the API's real "
+                          "rate limit -- watch the FAILED count; failed cases are retried on the next "
+                          "non-fresh run.")
     args = ap.parse_args()
 
     if not llm.is_available():
@@ -130,38 +157,79 @@ def main() -> int:
     # run) need a fresh extraction call, so re-paying for the ones a previous
     # run already signalled would be pure waste.
     already_signalled: dict[str, dict] = {}
-    if not args.fresh and OUT_PATH.exists():
-        prior = json.loads(OUT_PATH.read_text(encoding="utf-8"))
-        already_signalled = {c["case_id"]: c for c in prior if c.get("signals")}
-        print(f"Loaded {len(already_signalled)} already-signalled case(s) from {OUT_PATH} -- "
+    if not args.fresh:
+        # The finished output plus any checkpoint left behind by a run that
+        # was killed mid-way -- the checkpoint (if any) is strictly newer work.
+        for src in (OUT_PATH, PARTIAL_PATH):
+            if src.exists():
+                prior = json.loads(src.read_text(encoding="utf-8"))
+                for c in prior:
+                    if c.get("signals"):
+                        already_signalled[c["case_id"]] = c
+        print(f"Loaded {len(already_signalled)} already-signalled case(s) from {OUT_PATH.name}"
+              f"{' + ' + PARTIAL_PATH.name if PARTIAL_PATH.exists() else ''} -- "
               "only extracting for new/missing cases (use --fresh to redo everything).")
 
-    enriched = []
-    failures = []
+    failures: list[str] = []
     to_extract = [c for c in cases if c["case_id"] not in already_signalled]
-    print(f"{len(cases)} total case(s), {len(to_extract)} need extraction.")
-    for i, case in enumerate(cases):
-        if case["case_id"] in already_signalled:
-            enriched.append(already_signalled[case["case_id"]])
-            continue
-        idx = [c["case_id"] for c in to_extract].index(case["case_id"]) + 1
-        print(f"[{idx}/{len(to_extract)}] {case['case_id']}...", end=" ", flush=True)
-        signals = extract_signals(case)
-        if signals is None:
-            print("FAILED (no signals extracted -- will fall back to placeholder defaults)")
-            failures.append(case["case_id"])
-            case["signals"] = None
-        else:
-            print(
-                f"evidence={signals.get('claimant_evidence_count')} "
-                f"accepts_liability={signals.get('respondent_accepts_liability')} "
-                f"counter={signals.get('respondent_offered_settlement_amount')} "
-                f"ground_supported={signals.get('respondent_ground_has_specific_support')}"
-            )
-            case["signals"] = signals
-        enriched.append(case)
+    to_extract_count = len(to_extract)
+    print(f"{len(cases)} total case(s), {to_extract_count} need extraction "
+          f"({args.workers} worker thread(s)).")
 
+    lock = threading.Lock()
+    done_by_id: dict[str, dict] = {}
+    counter = {"n": 0}
+
+    def process(case: dict) -> None:
+        signals = extract_signals(case)
+        with lock:
+            counter["n"] += 1
+            n = counter["n"]
+            if signals is None:
+                print(f"[{n}/{to_extract_count}] {case['case_id']}... "
+                      "FAILED (no signals extracted -- will fall back to placeholder defaults)")
+                failures.append(case["case_id"])
+                case["signals"] = None
+            else:
+                print(
+                    f"[{n}/{to_extract_count}] {case['case_id']}... "
+                    f"evidence={signals.get('claimant_evidence_count')} "
+                    f"accepts_liability={signals.get('respondent_accepts_liability')} "
+                    f"counter={signals.get('respondent_offered_settlement_amount')} "
+                    f"ground_supported={signals.get('respondent_ground_has_specific_support')}"
+                )
+                case["signals"] = signals
+            done_by_id[case["case_id"]] = case
+            # Checkpoint to a SEPARATE file, never OUT_PATH itself: OUT_PATH is read
+            # by run_real_judgment_eval.py as the ENTIRE dataset, so a mid-run
+            # write there would silently truncate every later eval to whatever
+            # subset happened to be finished. A long run killed mid-way (this has
+            # happened -- ~8,800 extractions lost once) resumes from this
+            # checkpoint on the next non-fresh run instead of starting over.
+            # Order doesn't matter here: the checkpoint is only ever read back
+            # into an already_signalled lookup keyed by case_id.
+            if n % CHECKPOINT_EVERY == 0:
+                PARTIAL_PATH.write_text(
+                    json.dumps(list(already_signalled.values()) + list(done_by_id.values()),
+                               ensure_ascii=False),
+                    encoding="utf-8",
+                )
+
+    if args.workers > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+            list(executor.map(process, to_extract))
+    else:
+        for case in to_extract:
+            process(case)
+
+    # Reassemble in the ORIGINAL dataset order regardless of completion order.
+    enriched = [
+        already_signalled[c["case_id"]] if c["case_id"] in already_signalled else done_by_id[c["case_id"]]
+        for c in cases
+    ]
     OUT_PATH.write_text(json.dumps(enriched, indent=2, ensure_ascii=False), encoding="utf-8")
+    if PARTIAL_PATH.exists():
+        PARTIAL_PATH.unlink()
     print(f"\nWrote {len(enriched)} case(s) -> {OUT_PATH}")
     if failures:
         print(f"{len(failures)} case(s) failed extraction and will use placeholder defaults: {failures}")

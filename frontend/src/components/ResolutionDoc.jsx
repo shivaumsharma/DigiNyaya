@@ -1,6 +1,6 @@
 import { Logo, Download, Check } from '../icons.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
-import { api } from '../api.js'
+import { api } from '../api'
 import ListenButton from './ListenButton.jsx'
 
 export default function ResolutionDoc({ doc, caseId, lang }) {

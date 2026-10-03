@@ -44,9 +44,15 @@ precedents_retrieved for those 2 cases are therefore missing and
 median-imputed with a missingness indicator, not treated as true zeros.
 
 Run (from backend/): python -m scripts.train_outcome_classifier
+  --split all       (default) every judged case -- unchanged behavior
+  --split explore    the exploration bucket only -- iterate freely here
+  --split confirm    the locked confirmation bucket -- run exactly once,
+                      refuses to overwrite an existing confirmation report
 """
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -55,7 +61,8 @@ sys.path.insert(0, ".")
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -98,6 +105,32 @@ CATEGORICAL_FEATURES = [
 ]
 
 
+# --------------------------------------------------------------------------- #
+# Exploration / confirmation split (locked, deterministic, case_id-keyed)
+# --------------------------------------------------------------------------- #
+# The standard fix for the garden-of-forking-paths problem: iterate freely
+# (new features, model swaps, label fixes) on the EXPLORE bucket only, then
+# run the permutation test exactly once on the CONFIRM bucket and report
+# whatever comes out -- good or bad. See --split below.
+#
+# The split is a pure function of case_id (sha256 -> int mod 1000), not a
+# stored list or a random.seed() draw. Two consequences that matter:
+#   1. It can't be silently re-rolled to go looking for a luckier split --
+#      changing the outcome requires visibly editing CONFIRMATION_FRACTION or
+#      this function, which shows up in a diff.
+#   2. An existing case's bucket never changes when new cases are added later
+#      (lever #1: growing the dataset) -- a case_id that hashed to "explore"
+#      stays "explore" forever; new case_ids just land wherever their own
+#      hash puts them. The confirm set only grows, never gets reshuffled.
+CONFIRMATION_FRACTION = 0.35
+
+
+def _split_bucket(case_id: str) -> str:
+    digest = hashlib.sha256(case_id.encode("utf-8")).hexdigest()
+    bucket = int(digest[:8], 16) % 1000
+    return "confirm" if bucket < int(1000 * CONFIRMATION_FRACTION) else "explore"
+
+
 def _infer_claim_amount(description: str) -> float:
     amounts = nlp.extract_amounts(description)
     return amounts[0] if amounts else DEFAULT_CLAIM_AMOUNT
@@ -136,6 +169,7 @@ def build_dataset() -> pd.DataFrame:
             "net_strength": (c_strength - r_strength) if c_strength is not None and r_strength is not None else None,
             "verdict": v["verdict"],
             "label": 1 if v["verdict"] == "match" else 0,
+            "split": _split_bucket(cid),
         })
 
     df = pd.DataFrame(rows)
@@ -172,7 +206,45 @@ def _make_pipeline(model) -> Pipeline:
     return Pipeline([("pre", pre), ("model", model)])
 
 
-def loo_evaluate(df: pd.DataFrame, model, name: str) -> dict:
+class _BlendedClassifier(BaseEstimator, ClassifierMixin):
+    """Averages the predicted probabilities of two already-built pipelines
+    (each with its own preprocessing) -- a plain 50/50 soft-voting blend,
+    nothing learned about how to weight them.
+
+    Motivated by something actually observed across this project's own
+    re-runs, not by theory: logistic_regression and gradient_boosting have
+    flip-flopped on which one clears the permutation-test significance bar
+    across several different data states this session, while the other
+    stayed non-significant. Two models disagreeing on WHICH cases they get
+    right is the textbook situation where averaging tends to be more
+    STABLE than trusting either alone -- worth testing directly rather than
+    assuming. Takes fully-built pipelines (not bare estimators) so each
+    side keeps its own already-tuned preprocessing; nothing here needs
+    _make_pipeline() wrapping."""
+
+    def __init__(self, pipeline_a: Pipeline, pipeline_b: Pipeline) -> None:
+        self.pipeline_a = pipeline_a
+        self.pipeline_b = pipeline_b
+
+    def fit(self, X, y):
+        self.pipeline_a_ = clone(self.pipeline_a).fit(X, y)
+        self.pipeline_b_ = clone(self.pipeline_b).fit(X, y)
+        self.classes_ = self.pipeline_a_.classes_
+        return self
+
+    def predict_proba(self, X):
+        return (self.pipeline_a_.predict_proba(X) + self.pipeline_b_.predict_proba(X)) / 2.0
+
+    def predict(self, X):
+        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
+
+
+def loo_evaluate(df: pd.DataFrame, model, name: str, *, prebuilt: bool = False) -> dict:
+    """prebuilt=True means `model` is already a complete, fittable estimator
+    (e.g. _BlendedClassifier, which wraps its own two preprocessing
+    pipelines internally) -- skip the _make_pipeline() wrapping that bare
+    sklearn estimators (LogisticRegression, GradientBoostingClassifier,
+    RandomForestClassifier) need."""
     X = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
     y = df["label"].to_numpy()
 
@@ -181,7 +253,7 @@ def loo_evaluate(df: pd.DataFrame, model, name: str) -> dict:
     y_score = np.zeros(len(y), dtype=float)
 
     for train_idx, test_idx in loo.split(X):
-        pipe = _make_pipeline(model)
+        pipe = model if prebuilt else _make_pipeline(model)
         pipe.fit(X.iloc[train_idx], y[train_idx])
         y_pred[test_idx] = pipe.predict(X.iloc[test_idx])
         y_score[test_idx] = pipe.predict_proba(X.iloc[test_idx])[:, 1]
@@ -190,6 +262,11 @@ def loo_evaluate(df: pd.DataFrame, model, name: str) -> dict:
     metrics["model"] = name
     metrics["n_cases"] = len(y)
     metrics["n_positive"] = int(y.sum())
+
+    if prebuilt:
+        # A blend of two models' probabilities has no single coherent
+        # feature-importance ranking to report -- skip rather than fake one.
+        return metrics
 
     # Fit once on ALL data purely to report which features the model leaned
     # on -- descriptive only, NOT cross-validated, do not read as "these
@@ -212,21 +289,122 @@ def loo_evaluate(df: pd.DataFrame, model, name: str) -> dict:
     return metrics
 
 
-def main() -> int:
-    df = build_dataset()
+def main(argv: list[str] | None = None) -> int:
+    """argv defaults to None, which makes argparse read sys.argv[1:] as
+    normal for a direct CLI invocation. Pass an explicit list (e.g. [] for
+    all-defaults) when calling this as a function from another script --
+    scripts/judge_real_outcomes.py auto-chains into this after every run to
+    keep the classifier's ground truth fresh, and without this parameter it
+    silently inherited THAT script's own argv (--live-llm, --workers N),
+    which argparse then rejected outright since this parser doesn't define
+    them -- confirmed live, the auto-chain errored out every single time
+    judge_real_outcomes.py was run with any of its own CLI flags."""
+    ap = argparse.ArgumentParser(description="Train/evaluate the outcome classifier.")
+    ap.add_argument(
+        "--split", choices=["all", "explore", "confirm"], default="all",
+        help=(
+            "'all' (default): every judged case, written to outcome_classifier_report.json "
+            "-- unchanged from before, so existing numbers stay comparable. "
+            "'explore': iterate freely here (new features, model swaps, label fixes) -- "
+            "writes outcome_classifier_explore_report.json, safe to re-run as often as you "
+            "like. 'confirm': the locked held-out set -- writes "
+            "outcome_classifier_confirmation_report.json and REFUSES to overwrite an "
+            "existing one (see --force-confirm-rerun). Run this exactly once per real "
+            "change, after you're done iterating on 'explore', and report whatever comes out."
+        ),
+    )
+    ap.add_argument(
+        "--force-confirm-rerun", action="store_true",
+        help="Allow overwriting an existing confirmation report. Only use this for a "
+             "genuine reason (e.g. the dataset grew and you're deliberately re-locking a "
+             "bigger confirmation run) -- rerunning confirm to chase a better p-value is "
+             "exactly the p-hacking failure mode this split exists to prevent.",
+    )
+    ap.add_argument(
+        "--extra-models", action="store_true",
+        help="Also evaluate random_forest and a blended logistic+gradient-boosting "
+             "ensemble alongside the three default models (logistic_regression, "
+             "gradient_boosting, logistic_regression_l1). Model-selection "
+             "experimentation -- intended for --split explore only.",
+    )
+    args = ap.parse_args(argv)
+
+    full_df = build_dataset()
+    bucket_counts = full_df["split"].value_counts().to_dict()
+    print(
+        f"Locked split (case_id-hash, {int(CONFIRMATION_FRACTION * 100)}% target confirm): "
+        f"explore={bucket_counts.get('explore', 0)}  confirm={bucket_counts.get('confirm', 0)}\n"
+    )
+
+    if args.split == "explore":
+        df = full_df[full_df["split"] == "explore"].reset_index(drop=True)
+        out_path = _DATA_DIR / "outcome_classifier_explore_report.json"
+    elif args.split == "confirm":
+        df = full_df[full_df["split"] == "confirm"].reset_index(drop=True)
+        out_path = _DATA_DIR / "outcome_classifier_confirmation_report.json"
+        if out_path.exists() and not args.force_confirm_rerun:
+            print(
+                f"REFUSING to overwrite {out_path} -- it already holds a confirmation "
+                "result. Running the confirmation set more than once and keeping the best "
+                "result is exactly the p-hacking failure mode this split exists to prevent. "
+                "Pass --force-confirm-rerun only if you have a genuine reason (e.g. the "
+                "dataset grew and you're deliberately re-locking a bigger confirmation run)."
+            )
+            return 1
+    else:
+        df = full_df
+        out_path = OUT_PATH
+
     n = len(df)
     n_pos = int(df["label"].sum())
     majority_baseline = round(max(n_pos, n - n_pos) / n, 3)
 
-    print(f"Dataset: {n} judged cases ({n_pos} match / {n - n_pos} partial+mismatch)")
+    print(f"Dataset ({args.split}): {n} judged cases ({n_pos} match / {n - n_pos} partial+mismatch)")
     print(f"Majority-class baseline accuracy (always predict the bigger class): {majority_baseline}\n")
 
+    # (model_or_pipeline, name, prebuilt) -- prebuilt=True means the entry
+    # is already a complete fittable estimator (its own preprocessing
+    # included), skip _make_pipeline() wrapping for it.
+    logistic_l2 = LogisticRegression(max_iter=2000, C=0.5, class_weight="balanced")
+    gradient_boosting = GradientBoostingClassifier(n_estimators=50, max_depth=2, learning_rate=0.1, random_state=0)
+    # L1 ("Lasso") promoted into the DEFAULT set, not gated behind
+    # --extra-models, after the locked --split confirm comparison (5
+    # models, n=115) came back with L1 as the clear best result: highest
+    # F1 (0.65), highest recall (0.776), and the most significant
+    # permutation-test p-value of any model tried (p=0.01) -- beating even
+    # random_forest (p=0.03), which had looked like the front-runner on
+    # the EXPLORE split alone. That reversal is exactly why this was only
+    # promoted after seeing the confirm result, not before: an explore-only
+    # recommendation would have picked random_forest and missed this.
+    # With 11+ candidate features on ~342 rows, L1's sparsity also shows
+    # which features the model can actually afford to keep vs. which it's
+    # just fitting noise to -- a different, arguably more useful signal
+    # than L2's shrink-everything-a-bit "importance" ranking.
+    logistic_l1 = LogisticRegression(
+        max_iter=2000, C=0.5, class_weight="balanced", penalty="l1", solver="liblinear",
+    )
     models = [
-        (LogisticRegression(max_iter=2000, C=0.5, class_weight="balanced"), "logistic_regression"),
-        (GradientBoostingClassifier(n_estimators=50, max_depth=2, learning_rate=0.1, random_state=0), "gradient_boosting"),
+        (logistic_l2, "logistic_regression", False),
+        (gradient_boosting, "gradient_boosting", False),
+        (logistic_l1, "logistic_regression_l1", False),
     ]
+    if args.extra_models:
+        models += [
+            (
+                RandomForestClassifier(
+                    n_estimators=100, max_depth=4, min_samples_leaf=5,
+                    class_weight="balanced", random_state=0,
+                ),
+                "random_forest", False,
+            ),
+            (
+                _BlendedClassifier(_make_pipeline(logistic_l2), _make_pipeline(gradient_boosting)),
+                "blend_logistic_gradient_boosting", True,
+            ),
+        ]
 
     report = {
+        "split": args.split,
         "n_cases": n,
         "n_positive_match": n_pos,
         "majority_class_baseline_accuracy": majority_baseline,
@@ -237,8 +415,8 @@ def main() -> int:
     X_all = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
     y_all = df["label"].to_numpy()
 
-    for model, name in models:
-        m = loo_evaluate(df, model, name)
+    for model, name, prebuilt in models:
+        m = loo_evaluate(df, model, name, prebuilt=prebuilt)
 
         # Is the observed accuracy actually distinguishable from chance, or
         # just what you'd expect from 32 noisy samples? Refit+re-evaluate
@@ -247,8 +425,9 @@ def main() -> int:
         # the real one. This is the honest way to back the "there's real
         # signal here" claim instead of just quoting a point estimate that
         # could easily be luck at this sample size.
+        perm_estimator = model if prebuilt else _make_pipeline(model)
         _, permutation_scores, p_value = permutation_test_score(
-            _make_pipeline(model), X_all, y_all,
+            perm_estimator, X_all, y_all,
             cv=LeaveOneOut(), n_permutations=200, random_state=0, n_jobs=-1,
         )
         m["permutation_test"] = {
@@ -271,8 +450,13 @@ def main() -> int:
                   + ", ".join(f"{t['feature']}={t['weight']}" for t in top))
         print()
 
-    OUT_PATH.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"Wrote full report -> {OUT_PATH}")
+    out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Wrote full report -> {out_path}")
+    if args.split == "confirm":
+        print(
+            "\nThis is the locked confirmation result. Report it as-is -- do not tweak "
+            "features/model and re-run --confirm chasing a different number."
+        )
     return 0
 
 

@@ -63,19 +63,19 @@
       { "day": "Day 3–4", "title": "Agents review", "desc": "Precedent matched, arguments weighed, settlement proposed." },
       { "day": "Day 3–5", "title": "Resolution", "desc": "Written order issued, or escalate to a human panel." }
     ],
-    "metricsEyebrow": "Published quarterly, not a marketing figure",
+    "metricsEyebrow": "Measured on 23,841 archived court judgments (LLM-judged) — no live users yet",
     "metricsTitle": "Outcome transparency, in numbers.",
-    "medianLabel": "Median time to resolution",
+    "barsLabel": "Matched the real court's outcome, by dispute type",
     "metricBars": [
-      { "label": "DigiNyaya, Tier 1", "value": "4 days" },
-      { "label": "DigiNyaya, Tier 2", "value": "9 days" },
-      { "label": "District Consumer Forum, unassisted", "value": "~3–5 years" }
+      { "label": "All dispute types (15,573 judged)", "value": "56%", "pct": 56.3 },
+      { "label": "Property & neighbour disputes (strongest)", "value": "66%", "pct": 66.3 },
+      { "label": "Small-claims debt recovery (weakest)", "value": "47%", "pct": 47.5, "muted": true }
     ],
     "statTiles": [
-      { "value": "78%", "label": "Resolved without escalation, last quarter" },
-      { "value": "82%", "label": "Full-relief rate, Tier 1 mediated cases" },
-      { "value": "22%", "label": "Escalated to a human panel or forum" },
-      { "value": "100%", "label": "Resolutions issued with a written rationale" }
+      { "value": "65%", "label": "Resolved without escalation, across real sourced disputes" },
+      { "value": "56%", "label": "Matched the real court's outcome and relief amount (within ±20%)" },
+      { "value": "35%", "label": "Escalated to a human panel or forum" },
+      { "value": "75%", "label": "Picked the right winner — but a naive “claimant always wins” guess scores 83%, so a human signs off" }
     ],
     "legalEyebrow": "Legal framework",
     "legalTitle": "What DigiNyaya is — and isn't.",

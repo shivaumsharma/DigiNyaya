@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { FileText, Mic, UploadCloud, Check, Clock, AlertTriangle } from '../icons.jsx'
 

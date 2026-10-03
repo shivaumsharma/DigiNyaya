@@ -4,12 +4,12 @@
 // API calls) reads it here instead of localStorage -- decoupling the two
 // without threading the token through every call site by hand.
 
-let _accessToken = null
+let _accessToken: string | null = null
 
-export function setAccessToken(token) {
+export function setAccessToken(token: string | null): void {
   _accessToken = token
 }
 
-export function getAccessToken() {
+export function getAccessToken(): string | null {
   return _accessToken
 }
