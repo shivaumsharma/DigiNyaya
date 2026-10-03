@@ -162,12 +162,35 @@ def run(ctx: CaseContext) -> AgentResult:
         except (TypeError, ValueError):
             llm_claimant_substance = None
 
+    # Uncontested/conceded/defaulted branches below previously scored purely
+    # on evidence COUNT, on the theory that nobody arguing back means the
+    # claimant's version stands. Real-judgment testing on employment_
+    # disputes found this wrong at scale: 6 real cases (all "uncontested",
+    # evidence_count 2-12) scored the claimant at 0.59-0.94 on count alone,
+    # yet every one was dismissed by the real court for the SAME reason --
+    # "failed to prove/substantiate the claimed amount" (twice, the court
+    # cited the claimant's OWN relieving letter showing voluntary
+    # resignation, contradicting the "compelled to resign" claim). An
+    # uncontested suit in Indian civil procedure still requires the
+    # plaintiff to affirmatively prove their case -- silence from the other
+    # side isn't a concession. llm_claimant_substance (the same check the
+    # contested branch below already uses) is now applied here too, tempering
+    # the otherwise-flat formula exactly the same additive way: a case where
+    # the LLM call fails or is unavailable (as in every scripted eval run in
+    # this project so far) degrades to the previously-measured behavior,
+    # unchanged. See [[diginyaya_real_judgment_eval]].
     if respondent is None:
         # Uncontested: claimant's version stands unopposed.
         c_score = round(min(0.55 + min(ev, 3) * 0.13, 0.97), 2)
+        if llm_claimant_substance is not None:
+            c_score = round(min(0.3 + min(ev, 3) * 0.08 + llm_claimant_substance * 0.45, 0.97), 2)
         r_score = 0.15
     elif respondent.get("accepts_liability"):
         # Respondent concedes -- claimant's case is essentially proven.
+        # Deliberately NOT given the substance-check treatment above: a
+        # genuine admission of liability is a fact about the RESPONDENT's
+        # own statement, not about whether the claimant separately proved
+        # their case -- these are real, not the "silence" case above.
         c_score = round(min(0.6 + min(ev, 3) * 0.12, 0.97), 2)
         r_score = 0.15
     elif defaulted:
@@ -176,6 +199,8 @@ def run(ctx: CaseContext) -> AgentResult:
         # uncontested case above, not a generic firm denial. Real courts
         # almost always decree for the claimant by default here.
         c_score = round(min(0.55 + min(ev, 3) * 0.13, 0.97), 2)
+        if llm_claimant_substance is not None:
+            c_score = round(min(0.3 + min(ev, 3) * 0.08 + llm_claimant_substance * 0.45, 0.97), 2)
         r_score = 0.15
     else:
         # Genuinely contested: claimant strength scales with evidence on
@@ -213,6 +238,17 @@ def run(ctx: CaseContext) -> AgentResult:
         c_score = round(min(0.2 + min(ev, 3) * 0.13, 0.85), 2)
         if llm_claimant_substance is not None:
             c_score = round(min(0.2 + min(ev, 3) * 0.065 + llm_claimant_substance * 0.4, 0.85), 2)
+        elif nlp.has_documentary_instrument(ctx.description):
+            # Scripted fallback (LLM unavailable) has no judged specificity
+            # signal at all -- evidence_count alone can't tell "one signed
+            # loan agreement" from "one unrelated photo". Purely additive and
+            # zero when no instrument is named, so a case without one scores
+            # EXACTLY as before -- no regression risk to already-calibrated
+            # categories. Targets small-claims/debt-recovery specifically:
+            # those cases typically rest on one strong instrument with a thin
+            # evidence *count*, which the count-only term can't reward. See
+            # nlp.has_documentary_instrument and [[diginyaya_real_judgment_eval]].
+            c_score = round(min(c_score + 0.15, 0.85), 2)
         # Respondent's strength depends on TWO things, not just the
         # counter-offer: how much they concede via a counter-offer, AND how
         # substantive/specific the defense itself is (a dispositive ground

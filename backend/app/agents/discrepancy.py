@@ -37,11 +37,33 @@ from .. import llm
 from ..core import safety_gate
 from ..core.events import make_event
 from .. import db
-from ..documents import grounding
+from ..documents import grounding, image_forensics
+from ..storage import get_storage
 from .base import wrap_untrusted
 from . import nlp
 
-_VALID_TYPES = {"date_conflict", "amount_mismatch", "name_inconsistency", "missing_element", "other"}
+_VALID_TYPES = {
+    "date_conflict", "amount_mismatch", "name_inconsistency", "missing_element",
+    "image_authenticity", "other",
+}
+
+# Mirrors app.documents.validation._SIGNATURES' sniffed image types -- these
+# are the only mime types image_forensics can actually open as an image.
+_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
+
+# Below this combined score, image_forensics' own signal is too weak to be
+# worth a reviewer's time -- both ELA and EXIF checks are noisy on their own
+# (see image_forensics' module docstring), so a low score is genuinely
+# uninformative, not "probably fine".
+#
+# 0.3, not a rounder/higher-looking number, because that's honestly where
+# the synthetic test in image_forensics.py's own tuning comment actually
+# separated clean (~0.22 combined, given typical EXIF-stripped uploads)
+# from spliced (~0.28 combined) -- picking 0.5 here would mean this check
+# almost never fires on the very signal it exists to catch. This is a
+# provisional split point from limited synthetic testing, not a calibrated
+# threshold -- revisit with real sample images before trusting it either way.
+_IMAGE_AUTHENTICITY_FLAG_THRESHOLD = 0.3
 
 # Heuristic markers for the scripted "missing signature" check: a document
 # that looks like an agreement/contract (uses this vocabulary) but has no
@@ -97,6 +119,58 @@ def _scripted_candidates(complete_docs: list[dict]) -> list[dict[str, Any]]:
                 "severity": "low",
                 "_scripted": True,
             })
+    return candidates
+
+
+def _image_authenticity_candidates(complete_docs: list[dict]) -> list[dict[str, Any]]:
+    """Deterministic, image-BYTE-level authenticity check -- genuinely
+    separate from app.agents.preliminary_review.document_relevance()'s
+    authenticity_flag, which only ever reads OCR'd/extracted TEXT and
+    explicitly cannot see the original image (its own prompt says so). This
+    one never reads text at all; it runs Error Level Analysis and EXIF
+    forensics on the raw image bytes (see app.documents.image_forensics).
+
+    Feeds into the exact same flagged_for_review / severity / confidence
+    pipeline as every other discrepancy candidate below -- no parallel
+    review path, no new flag name, same schema.
+
+    HONESTY NOTE (see image_forensics' module docstring for the long
+    version): both underlying checks are heuristic signals, not proof.
+    A legitimate re-save, WhatsApp/app recompression, or routine
+    privacy-motivated EXIF stripping on upload can all produce the same
+    result as genuine tampering would. This function only creates a
+    candidate at all above _IMAGE_AUTHENTICITY_FLAG_THRESHOLD, and the
+    explanation text says so explicitly -- never presented as a finding.
+    """
+    candidates = []
+    for doc in complete_docs:
+        if doc.get("mime_type") not in _IMAGE_MIME_TYPES:
+            continue
+        try:
+            raw = get_storage().read(doc["storage_path"])
+        except Exception:
+            continue  # can't read the stored file right now -- skip rather than guess
+
+        result = image_forensics.score_document_image(raw)
+        if not result["analyzable"] or result["combined_score"] < _IMAGE_AUTHENTICITY_FLAG_THRESHOLD:
+            continue
+
+        severity = "high" if result["combined_score"] >= 0.7 else "medium"
+        reasons = "; ".join(result["reasons"]) or "elevated, localized recompression-error concentration"
+        candidates.append({
+            "discrepancy_type": "image_authenticity",
+            "document_ids": [doc["id"]],
+            "explanation": (
+                f"Image-level heuristic check on {doc.get('original_filename')}: {reasons}. "
+                "This is a HEURISTIC SIGNAL, not proof of tampering -- a legitimate re-save, "
+                "WhatsApp/app recompression, or routine EXIF stripping on upload can all produce "
+                "the same result. Treat as a prompt for a closer human look, not a finding."
+            ),
+            "source_snippet": None,
+            "severity": severity,
+            "confidence": result["combined_score"],
+            "_scripted": True,
+        })
     return candidates
 
 
@@ -193,6 +267,13 @@ def _confidence(candidate: dict, documents_by_id: dict[str, dict]) -> float:
     formula, deliberately NOT app.core.confidence.composite() (that's wired
     specifically to the 5-agent resolution pipeline's ingestion/retrieval/
     schema/citation weights, which have no equivalent here)."""
+    if "confidence" in candidate:
+        # image_authenticity candidates carry their own pre-computed
+        # ELA+EXIF combined score -- the OCR-reliability formula below is
+        # about TEXT extraction confidence, semantically meaningless for a
+        # finding that never reads text at all.
+        return candidate["confidence"]
+
     ocr_scores = []
     for doc_id in candidate["document_ids"]:
         doc = documents_by_id.get(doc_id)
@@ -224,6 +305,7 @@ def run_discrepancy_check(case_id: str):
     documents_by_id = {d["id"]: d for d in complete_docs}
 
     candidates = _scripted_candidates(complete_docs)
+    candidates.extend(_image_authenticity_candidates(complete_docs))
     llm_candidates = _llm_candidates(complete_docs)
     llm_candidates = grounding.verify_discrepancy_sources(llm_candidates, documents_by_id)
     candidates.extend(_name_similarity_downgrade(c) for c in llm_candidates)

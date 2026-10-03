@@ -47,6 +47,7 @@ except Exception:
     pass
 
 from app import llm  # noqa: E402
+from app.agents import nlp  # noqa: E402
 from app.core import graph  # noqa: E402
 # Reuse the same enriched-dataset-preferring path _build_ctx()'s own module
 # resolves, so this script and run_real_judgment_eval.py can never silently
@@ -129,6 +130,15 @@ _PIPELINE_SOURCE_FILES = [
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _judge_prompt_hash() -> str:
+    """Hash of the judge's own prompt/logic, stamped on every verdict entry so a
+    change in the JUDGE is never mistaken for a change in the model when two
+    result files are compared later (pipeline_fingerprint above only covers the
+    pipeline, not this script)."""
+    import inspect
+    return hashlib.sha256((inspect.getsource(judge) + inspect.getsource(_amount_within_tolerance)).encode()).hexdigest()[:12]
+
+
 def _pipeline_fingerprint() -> str:
     """Hash of every source file that affects the deterministic (scripted)
     pipeline's output. In scripted mode the pipeline is a pure function of
@@ -162,13 +172,65 @@ def _ai_hash(ai: dict) -> str:
     return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
 
+# Numeric tolerance for "same amount". The LLM judge alone decided what counted
+# as "similar" with no stated threshold -- error analysis found ~980 cases
+# scored a full match although the AI's amount was nowhere near the real
+# decree, so the headline full-match rate was partly judge noise. For a
+# monetary relief this is now enforced in code: the AI's amount must land
+# within +/-20% of one of the leading rupee figures in the real outcome (the
+# principal or the total decree sum -- either is a fair comparison point
+# because real decrees state both, and interest/costs are set by rate, not
+# amount). The check can only DOWNGRADE an LLM "similar" to "different"; it
+# never upgrades, so it makes the metric stricter, never more generous.
+AMOUNT_TOLERANCE = 0.20
+_REAL_AMOUNTS_CONSIDERED = 3
+
+
+def _amount_within_tolerance(case: dict, ai: dict) -> bool | None:
+    """None when the check doesn't apply (non-monetary AI relief, an AI
+    amount of 0, or no parseable rupee figure in the real outcome)."""
+    if ai.get("relief_type") not in ("full_refund", "partial_refund", "compensation"):
+        return None
+    ai_amt = ai.get("relief_amount")
+    if not isinstance(ai_amt, (int, float)) or ai_amt <= 0:
+        return None
+    real = nlp.extract_amounts(case.get("expected_outcome") or "")[:_REAL_AMOUNTS_CONSIDERED]
+    real = [r for r in real if r > 0]
+    if not real:
+        return None
+    return any(abs(ai_amt - r) <= AMOUNT_TOLERANCE * r for r in real)
+
+
 def judge(case: dict, ai: dict) -> dict | None:
     # Kept deliberately terse: a longer prompt (e.g. spelling out detailed
     # definitions of match/partial/mismatch) was observed to make the model
     # reason more before answering, which pushed it past the 4096-token
     # ceiling and silently failed every time -- the short version below
     # reliably finishes in ~1200-1700 tokens total.
-    schema = '{"verdict": "match|partial|mismatch", "reason": "<=25 words"}'
+    #
+    # WHY THIS ASKS TWO BOOLEANS INSTEAD OF ONE "verdict" FIELD (see
+    # [[diginyaya_real_judgment_eval]]): the original single-field version
+    # asked the model to blend "who won" and "how much/what relief" into one
+    # holistic judgment. Verified directly against real cases: of 155 small-
+    # claims cases the old judge labelled "opposite side wins", 152 had our
+    # OWN computed scores favoring the claimant, and hand-checking 11 of
+    # those against the actual drafted order found all 11 correctly favored
+    # the claimant -- the model was reliably failing at the SAME step
+    # (resolving "claimant" -> "plaintiff" identity) despite an explicit
+    # instruction telling it how, whenever amounts also differed. Splitting
+    # "did the claimant win" into two separate atomic yes/no questions (one
+    # per side of the comparison) and computing the actual verdict in code
+    # below removes the model's chance to blend that judgment with the
+    # unrelated amount/relief-type question -- a structural fix, not a
+    # wording tweak, since the wording fix already failed.
+    schema = (
+        '{"claimant_prevailed_ai": <true|false: per the AI decision below, did the claimant '
+        "(whoever brought the claim) get real relief -- as opposed to the respondent winning or the "
+        'claim being dismissed>, "claimant_prevailed_real": <true|false: per the REAL court decision, '
+        'did the SAME claimant/plaintiff get real relief>, '
+        '"relief_similarity": "similar|different", '
+        '"reason": "<=20 words"}'
+    )
     relief_type = ai.get("relief_type", "unknown")
     is_monetary = relief_type in ("full_refund", "partial_refund", "compensation")
     relief_line = (
@@ -181,12 +243,19 @@ def judge(case: dict, ai: dict) -> dict | None:
         "'AI DECIDED' always describes the AI's own generic roles: 'the claimant' is whichever party "
         "brought the claim (the plaintiff in the real judgment below, even if that's a bank or company, "
         "not a consumer), and 'the respondent' is the defendant. Map roles by WHO SUED WHOM, not by "
-        "which vocabulary sounds like a refund. "
-        "match=same side wins, similar relief. partial=same side wins, different relief. "
-        "mismatch=opposite side wins, or one side got relief while the real case was dismissed "
-        "(or vice versa). A non-monetary relief type (injunction/declaration/replacement/possession) "
-        "can still 'match' a real court's non-monetary order even with Rs. 0 -- judge by relief TYPE "
-        "and side first, amount second. Answer directly, no long reasoning. JSON only: "
+        "which vocabulary sounds like a refund. Answer claimant_prevailed_ai and claimant_prevailed_real "
+        "as two SEPARATE, independent yes/no facts -- do not let the amount or relief type change either "
+        "answer; a claimant who wins a smaller or non-monetary award than expected still 'prevailed'. "
+        "EVERY AI order carries standard boilerplate calling itself a 'recommendation', 'provisional', "
+        "'non-binding', or 'pending human adjudication/counter-signature (Tier 2)' -- this is fixed "
+        "platform language on every single case regardless of outcome (the platform always requires "
+        "human sign-off) and carries NO information about who won or what relief was decided. Ignore "
+        "that boilerplate entirely: judge claimant_prevailed_ai purely on the substantive relief ordered "
+        "(who gets what), never on whether the order calls itself binding/enforceable/provisional. "
+        "relief_similarity only compares the amount/relief TYPE, and only matters when both prevailed "
+        "booleans agree. A non-monetary relief type (injunction/declaration/replacement/possession) can "
+        "still be 'similar' to a real court's non-monetary order even with Rs. 0 incidental amount. "
+        "Answer directly, no long reasoning. JSON only: "
         f"{schema}\n\n"
         f"REAL COURT DECIDED:\n{case['expected_outcome']}\n\n"
         f"AI DECIDED:\n{relief_line}\n"
@@ -209,9 +278,28 @@ def judge(case: dict, ai: dict) -> dict | None:
     # graceful truncation. The docstring above already established this
     # call's real completions finish in ~1200-1700 tokens, so 2000 keeps
     # the same headroom margin the original 4096 was providing, just under
-    # the new model's actual ceiling.
+    # the new model's actual ceiling. The two-boolean schema adds only a few
+    # tokens of output, so this budget still applies.
     data = llm.generate_json(prompt, system=llm.SYSTEM_PROMPT, max_tokens=2000, temperature=0.0)
-    return data
+    if not data or "claimant_prevailed_ai" not in data or "claimant_prevailed_real" not in data:
+        return data
+    # Verdict is COMPUTED here, not asked of the model -- removes the exact
+    # failure mode this rewrite targets (the model's own final verdict
+    # disagreeing with its own stated facts, or blending the two questions).
+    ai_won = bool(data["claimant_prevailed_ai"])
+    real_won = bool(data["claimant_prevailed_real"])
+    if ai_won != real_won:
+        verdict = "mismatch"
+    else:
+        similar = data.get("relief_similarity") == "similar"
+        within = _amount_within_tolerance(case, ai)
+        if similar and within is False:
+            data["relief_similarity"] = "different"
+            data["similarity_override"] = "amount_outside_tolerance"
+            similar = False
+        verdict = "match" if similar else "partial"
+        data["amount_within_tolerance"] = within
+    return {"verdict": verdict, "reason": data.get("reason"), **data}
 
 
 def main() -> int:
@@ -234,6 +322,18 @@ def main() -> int:
                           "where both the pipeline and the judge want it enabled; NOT true for "
                           "scripted mode, where the pipeline wants it off and the judge wants it on, "
                           "and concurrent threads flipping between the two would race).")
+    ap.add_argument("--shard-index", type=int, default=0,
+                     help="process only cases where case_index %% shard-count == shard-index (0-based). "
+                          "Lets multiple SEPARATE PROCESSES (not threads) each cover a disjoint slice in "
+                          "scripted mode without --live-llm -- each process has its own env var, its own "
+                          "circuit breaker, own everything, so there's no cross-process race the way "
+                          "--workers threads would have. Pair with --out so shards never clobber each "
+                          "other's file; merge the shard files back together afterward.")
+    ap.add_argument("--shard-count", type=int, default=1,
+                     help="total number of shards -- see --shard-index.")
+    ap.add_argument("--out", type=str, default=None,
+                     help="override the output path (default: real_judgment_verdict_comparison.json). "
+                          "Use a distinct path per shard when running --shard-index in parallel.")
     args = ap.parse_args()
 
     if args.workers > 1 and not args.live_llm:
@@ -241,7 +341,15 @@ def main() -> int:
               "env-var toggling isn't safe under concurrency).")
         return 1
 
+    global OUT_PATH
+    if args.out:
+        OUT_PATH = Path(args.out)
+
     cases = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    if args.shard_count > 1:
+        cases = [c for i, c in enumerate(cases) if i % args.shard_count == args.shard_index]
+        print(f"--shard-index {args.shard_index}/--shard-count {args.shard_count}: "
+              f"this process handles {len(cases)} of the total cases.")
     if not llm.is_available():
         print("ERROR: LLM unavailable -- the judge step needs a real LLM call. Aborting.")
         return 1
@@ -335,6 +443,19 @@ def main() -> int:
                 "category": case["category"],
                 "verdict": verdict["verdict"],
                 "reason": verdict.get("reason"),
+                # claimant_prevailed_ai/real and relief_similarity are the raw
+                # judge() outputs the "verdict" string is itself computed
+                # from (see judge()'s docstring/logic above) -- persisted
+                # separately so scripts/compute_evaluation_matrix.py can build
+                # a real confusion matrix / precision-recall for the
+                # "who wins" classification, not just the 3-way verdict.
+                "claimant_prevailed_ai": verdict.get("claimant_prevailed_ai"),
+                "claimant_prevailed_real": verdict.get("claimant_prevailed_real"),
+                "relief_similarity": verdict.get("relief_similarity"),
+                "similarity_override": verdict.get("similarity_override"),
+                "amount_within_tolerance": verdict.get("amount_within_tolerance"),
+                "ai_amount": ai.get("relief_amount"),
+                "judge_prompt_hash": _judge_prompt_hash(),
                 "ai_relief": ai["relief_amount_display"],
                 "real_outcome": case["expected_outcome"][:200],
                 "ai_hash": ai_hash,
@@ -402,12 +523,25 @@ def main() -> int:
     # only needed for the classifier, not for judging outcomes, so a failure
     # here (missing deps, insufficient data) is reported but never discards
     # the real, expensive-to-produce judging results written above.
+    # Only for a run over the canonical corpus writing the canonical verdict
+    # file. A sample/experiment run (custom --out or DIGINYAYA_EVAL_DATASET)
+    # must not kick off an hours-long retrain of the classifier on the FULL
+    # data, nor overwrite its report.
+    if args.out or os.environ.get("DIGINYAYA_EVAL_DATASET"):
+        print("\nCustom --out / DIGINYAYA_EVAL_DATASET: skipping the classifier retrain.")
+        return 0
     try:
         from scripts.train_outcome_classifier import main as retrain_classifier
 
         print("\n" + "=" * 70)
         print("Re-running scripts.train_outcome_classifier (ground truth just changed)...\n")
-        retrain_classifier()
+        # argv=[] (not the default None) -- explicitly all-defaults (--split
+        # all), NOT this process's own sys.argv. Confirmed this used to
+        # break every time judge_real_outcomes.py itself was run with any
+        # CLI flag (--live-llm, --workers N): argparse read THIS script's
+        # argv by default and rejected flags the classifier parser never
+        # defined, aborting the auto-chain outright every time.
+        retrain_classifier(argv=[])
     except Exception as exc:
         print(f"\nWARNING: could not refresh outcome_classifier_report.json: {exc}")
         print("Run `python -m scripts.train_outcome_classifier` manually before trusting its numbers.")

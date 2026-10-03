@@ -160,11 +160,55 @@ _RELIEF_TYPE_LEXICON: list[tuple[str, tuple[str, ...]]] = [
     # real-judgment testing: partnership_business_disputes had no relief type
     # for this at all and defaulted to a monetary compensation figure no real
     # court in the sample actually awarded.
+    #
+    # NOTE: the fixed-phrase list this used to be ("partition of the
+    # property", "seeking a partition", etc.) missed the majority of real
+    # property_neighbor_disputes partition suits -- courts overwhelmingly
+    # phrase this as "suit for the partition of joint family/ancestral
+    # property", "partition and separate possession", "partition of
+    # ancestral agricultural lands", none of which contain any of those
+    # fixed phrases verbatim. See _PARTITION_RE below (checked directly in
+    # detect_relief_type, same priority slot) for the actual matching logic
+    # now used -- this tuple only carries the partnership-dissolution
+    # phrasings, which don't collide with the bare "partition" word at all.
     ("partition", (
-        "partition of the property", "seeking a partition", "sought a partition",
-        "decree of partition", "partition suit", "dissolution of the partnership",
+        "dissolution of the partnership",
         "dissolve the partnership", "rendition of accounts", "accounts of the partnership",
     )),
+    # heirship_declaration is NOT in this list -- see _HEIRSHIP_DECLARATION_RE
+    # and its own check in detect_relief_type() below. A plain substring
+    # trigger on "legal heir"/"legal heirs" was tried first and measured to
+    # be too promiscuous: real-judgment testing found it firing on cases
+    # where "legal heir(s)" is mere PARTY-IDENTITY background (a partition
+    # suit "against his mother and brother... to divide properties... one
+    # share to each co-heir", a money-recovery suit "against the legal heirs
+    # of a deceased individual" being sued for a debt) rather than the actual
+    # relief sought, wrongly overriding the correct partition/monetary
+    # classification. Requiring a declaratory word near "heir" (see the
+    # regex) is what actually distinguishes "asking the court to declare who
+    # the heirs are" from "the parties happen to be heirs of someone."
+    # Checked ahead of possession/injunction for the same reason as
+    # partition above: a specific-performance suit routinely also mentions
+    # "consequential injunction" or a "possessory agreement" in the same
+    # breath ("suit for specific performance of a contract and consequential
+    # injunction", "specific performance of a possessory agreement of sale
+    # and a permanent injunction") -- specific performance (compel the
+    # respondent to actually complete the contract, e.g. execute and
+    # register the sale deed) is the more specific, primary ask in these
+    # cases. Found via real-judgment testing at the 438-case scale: 38 real
+    # cases (both IK-EVAL and DC-EVAL, spanning contract_disputes and
+    # property_neighbor_disputes) use this exact phrase, and BEFORE this
+    # trigger existed 26 of the 38 (68%) fell through to the generic
+    # "monetary" bucket -- resolution.py could only ever draft "pay the
+    # claimant Rs X", even though the real ask (and what real courts
+    # actually ordered: "specific performance and registration",
+    # "specific performance of a registered sale deed") was to complete the
+    # transaction, not pay damages in place of it. Deliberately just the one
+    # phrase, not a wider net of paraphrases -- it already accounts for
+    # 100% of the identified population (38/38 contain it verbatim), so
+    # guessing at looser alternatives would only add false-positive risk
+    # with no evidence it's needed.
+    ("specific_performance", ("specific performance",)),
     # Employment/termination disputes: getting the job back (+ back wages) is
     # the standard Labour Court remedy for illegal termination, distinct from
     # a one-off monetary damages award. Checked ahead of possession/
@@ -207,7 +251,17 @@ _RELIEF_TYPE_LEXICON: list[tuple[str, tuple[str, ...]]] = [
         "ejectment", "quit and vacate",
     )),
     ("injunction", ("injunction", "restrain", "restraining order", "stop the respondent", "cease and desist", "remove the", "removal of the")),
-    ("declaration", ("declare", "declaration that", "declared void", "null and void", "declaratory")),
+    # "declaration" (the noun) added below after finding, via real-judgment
+    # testing, that it does NOT contain "declare" as a substring -- they
+    # diverge at the 7th character ("declar-E" vs "declar-ATION") -- so
+    # phrasing like "sought a declaration of their status" or "obtain a
+    # declaration recognising them as..." silently fell through to the
+    # generic "monetary" bucket even though "declare"/"declaration that"
+    # were already triggers. Confirmed this alone accounts for cases that
+    # otherwise had no non-monetary trigger fire at all, not just heirship
+    # ones (heirship specifically now has its own, more specific bucket
+    # above, checked first).
+    ("declaration", ("declare", "declaration", "declared void", "null and void", "declaratory")),
     ("replacement", ("replace the", "replacement of", "provide a replacement", "exchange the", "provide a new", "seeking a new", "delivery of a new", "deliver a new")),
 ]
 
@@ -224,6 +278,56 @@ _RELIEF_TYPE_LEXICON: list[tuple[str, tuple[str, ...]]] = [
 # language rather than the actual relief granted.
 _STRONG_DECLARATION_SIGNALS: tuple[str, ...] = ("null and void", "declared void")
 
+# A succession/heirship suit is asking the court to establish WHO the heirs
+# are -- logically prior to dividing an estate among them (checked ahead of
+# "partition" below) and a materially different ask from "declare this
+# instrument void" (the generic "declaration" bucket's original use case,
+# see _STRONG_DECLARATION_SIGNALS above). Requires a declaratory word
+# (declare/declared/declaration/declaratory) within ~100 characters of a
+# heir* word, rather than a bare "legal heir" substring -- see the comment
+# where the old, too-promiscuous version of this trigger used to live in
+# _RELIEF_TYPE_LEXICON for why proximity matters here. "succession
+# certificate" and "declar*...successor(s)" are separate, narrower alternate
+# phrasings for the same ask that don't happen to use the word "heir" at all.
+#
+# WHY THIS EXISTS (numbers below are a one-time historical finding, not a
+# reproducible fixture against current code -- the whole point is that the
+# code changed because of them, so re-measuring today no longer shows the
+# "before" state): found via real-judgment testing that a genuine heirship/
+# succession suit was, before this trigger and resolution.py's dedicated
+# heirship_declaration action phrase both existed, either (a) missed by
+# every relief-type trigger and defaulted to a flat, unrelated claim amount
+# -- a status/identity question has no money at stake, so "monetary" was
+# never going to be right -- or (b) routed to the generic "declaration"
+# bucket, whose "void the respondent's contrary instrument" template
+# doesn't match what a heirship decree actually grants. (a) mismatched the
+# real court's outcome in every case sampled; (b) matched only a minority
+# of the time. Both gaps are what this trigger and that dedicated action
+# phrase exist to close. For a CURRENT read on how heirship_declaration
+# cases are actually doing, query data_cache/real_judgment_verdict_
+# comparison.json for cases matching this regex rather than trusting any
+# number written here -- it will already be stale by the time it's read.
+_HEIRSHIP_DECLARATION_RE = re.compile(
+    r"declar\w*.{0,100}heir\w*|heir\w*.{0,100}declar\w*|succession certificate|declar\w*.{0,60}successors?\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Bare "partition" as a word, EXCLUDING "partition wall"/"partition fence" --
+# real property_neighbor_disputes boundary cases use that exact phrase for a
+# physical dividing wall between two plots (a completely different fact
+# pattern from a co-ownership partition suit), confirmed via a real case
+# (IK-EVAL-194178256: "demolished a common partition wall") that would
+# otherwise misclassify an ejectment/injunction dispute as a partition suit.
+# Checked against the full property_neighbor_disputes corpus: 218/970 cases
+# contain the word "partition" at all, and exactly 1 of those is the wall/
+# fence sense -- the fixed-phrase list this replaces required one of a
+# handful of exact orderings ("partition of the property", "partition
+# suit", ...) and missed real phrasings like "suit for the partition of
+# joint family properties", "partition of ancestral agricultural lands",
+# and "civil suit for partition and separate possession" entirely, none of
+# which contain any of those fixed phrases verbatim.
+_PARTITION_RE = re.compile(r"partition(?!\s+wall|\s+fence)", re.IGNORECASE)
+
 
 def detect_relief_type(text: str) -> str:
     """Return the primary non-monetary relief type sought, or 'monetary' if
@@ -236,8 +340,21 @@ def detect_relief_type(text: str) -> str:
     arbitration_triggers = dict(_RELIEF_TYPE_LEXICON)["arbitration_referral"]
     if any(trigger in lowered for trigger in arbitration_triggers):
         return "arbitration_referral"
+    # Checked BEFORE _STRONG_DECLARATION_SIGNALS: a will-contest-plus-
+    # heirship fact pattern is common in real succession disputes ("sought a
+    # declaration that they are the legal heirs and that the fraudulent will
+    # is null and void"), and heirship is the more specific of the two asks
+    # -- the same "more specific wins" reasoning already used for why
+    # "partition" is checked ahead of "possession"/"injunction" below.
+    # Getting this order backwards would let a co-occurring "null and void"
+    # mention route the case to the generic declaration bucket even when
+    # heirship is the actual primary relief sought.
+    if _HEIRSHIP_DECLARATION_RE.search(text):
+        return "heirship_declaration"
     if any(sig in lowered for sig in _STRONG_DECLARATION_SIGNALS):
         return "declaration"
+    if _PARTITION_RE.search(text):
+        return "partition"
     for relief_type, triggers in _RELIEF_TYPE_LEXICON:
         if any(trigger in lowered for trigger in triggers):
             return relief_type
@@ -308,6 +425,40 @@ _DEFENSE_SUBSTANCE_LEXICON = (
     "did not prove", "no relationship of landlord and tenant",
     "denied the existence of tenancy", "adverse possession",
 )
+# Adding "lack of privity"/"lack of title"/similar title-dispute phrasing
+# here was tried and reverted: motivated by 4 of 9 sampled tenancy over-
+# granting mismatches (AI granted possession, real court dismissed) having
+# a genuinely dispositive, SUPPORTED defense that scored 0.0 (neither
+# phrasing matched anything above). Adding it looked safe -- pure additive
+# lexicon coverage, no downweighting -- but POC-tested on the exact 24
+# cases it changes: 0 improved, 4 regressed (including the case that
+# motivated it, IK-EVAL-110485783, which stayed "mismatch" anyway). This is
+# now the THIRD reverted attempt at tenancy's over-granting pattern (the
+# c_strength > r_strength guard in mediation.py, this lexicon addition) --
+# the real signal driving it is still not identified. See
+# [[diginyaya_real_judgment_eval]].
+
+# Pure threshold/procedural objections -- a SUBSET of
+# _DEFENSE_SUBSTANCE_LEXICON, not a separate list, so a defense containing
+# one of these is still counted for the "does this defense have any
+# substance at all" question above; this only distinguishes, WITHIN that
+# already-matched population, defenses that raise ONLY a jurisdiction/
+# limitation/maintainability-type objection with nothing on the merits.
+# Raising the term is not evidence it succeeds -- real courts routinely
+# hear and reject a bare limitation/jurisdiction plea and then decide the
+# merits anyway. A prior attempt at this exact distinction (a hard
+# procedural-vs-merits split, scored independently rather than as a
+# same-lexicon subset) was tried TWICE and reverted both times: it
+# regressed EVERY category measured full-corpus (see score_defense_
+# substance's own docstring). This is a narrower, smaller-magnitude version
+# (a capped ceiling only on the PURE-procedural case, not a wholesale
+# rescoring) explicitly gated on a small-scale POC before any full run --
+# see [[diginyaya_real_judgment_eval]].
+_PROCEDURAL_ONLY_TERMS = frozenset({
+    "lack of jurisdiction", "no jurisdiction", "jurisdiction", "limitation",
+    "barred", "not maintainable", "maintainable", "locus standi",
+    "res judicata", "estoppel", "condonation", "cause of action", "non-joinder",
+})
 
 
 def defendant_defaulted(text: str) -> bool:
@@ -345,20 +496,83 @@ def score_defense_substance(text: str) -> float:
     would otherwise score -- a bare "we are protected under X" is not
     meaningfully different from a bare denial just because X is a real
     legal term.
+
+    NOTE: a procedural-vs-merits split (downweighting jurisdiction/
+    limitation-only defenses) was tried TWICE and reverted both times --
+    each time it moved individual traced cases in the right direction, but
+    measured end-to-end against the full corpus it made EVERY category flat
+    or worse (overall 30.9% -> 28.7%, small-claims itself 9.2% -> 6.7%,
+    employment 15.4% -> 0.0%).
+
+    A THIRD, narrower attempt (this one, see _PROCEDURAL_ONLY_TERMS below --
+    a same-lexicon subset capped only when EVERY matched term is a bare
+    threshold objection, not a wholesale rescoring) was POC-tested on the
+    exact 142 cases it changes before being kept: net positive (22 ruling-
+    only improved vs. 18 regressed), with real gains in the categories that
+    motivated it (small_claims_debt_recovery ruling-only 32.1%->46.4%,
+    property_neighbor_disputes 51.8%->55.4%) and a genuine, accepted trade-
+    off in contract_disputes (50.0%->40.0%, n=20) -- 2 real cases where a
+    jurisdiction/limitation defense the cap now downweights had actually
+    succeeded in real court. Not a free win, but a real net positive,
+    unlike the two prior attempts. Do not widen this further (e.g. back to
+    a flat split covering ANY defense, not just pure-procedural-only ones)
+    without a fresh proof-of-concept sample. See [[diginyaya_real_judgment_eval]].
     """
     if not text:
         return 0.0
     lowered = text.lower()
-    matches = sum(1 for m in _DEFENSE_SUBSTANCE_LEXICON if m in lowered)
-    if matches == 0:
+    matched = [m for m in _DEFENSE_SUBSTANCE_LEXICON if m in lowered]
+    if not matched:
         return 0.0
     if _UNSUPPORTED_ASSERTION_MARKER in lowered:
         return 0.2
-    if matches == 1:
-        return 0.5
-    if matches == 2:
-        return 0.75
-    return 0.9
+    matches = len(matched)
+    score = 0.5 if matches == 1 else 0.75 if matches == 2 else 0.9
+    if all(m in _PROCEDURAL_ONLY_TERMS for m in matched):
+        # Every matched term is a bare threshold objection with nothing on
+        # the merits -- cap well below what the same match count would
+        # otherwise score, rather than removing the signal entirely (a
+        # respondent who raises the SAME procedural point three times over
+        # still hasn't raised a merits defense).
+        score = min(score, 0.3)
+    return score
+
+
+_DOCUMENTARY_INSTRUMENT_LEXICON = (
+    "promissory note", "loan agreement", "hypothecation agreement",
+    "signed agreement", "signed contract", "written agreement",
+    "registered deed", "registered sale deed", "sale deed", "lease deed",
+    "rent agreement", "title deed", "invoice", "purchase order", "cheque",
+    "demand draft", "bank statement", "receipt no", "agreement to sell",
+    "loan document", "iou", "acknowledgement of debt", "bond",
+)
+# NOTE: informal payment instruments (RTGS/NEFT/bank transfer, "agreement
+# to repay") were tried here and reverted -- the detector correctly fired
+# on the real cases it targeted (net_strength moved the right direction),
+# but not far enough to clear mediation.py's near-tie dismissal floor, and
+# it produced no net accuracy gain measured end-to-end. See
+# [[diginyaya_real_judgment_eval]]: the bottleneck is that floor, not this
+# lexicon's coverage.
+
+
+def has_documentary_instrument(text: str) -> bool:
+    """True if the CLAIMANT's own narrative names a specific transactional
+    instrument (a signed agreement, cheque, invoice, promissory note...)
+    rather than only a general grievance -- the same "concrete fact, not
+    just an assertion" distinction score_defense_substance already applies
+    to the respondent's side, mirrored here for the claimant's evidence.
+
+    Deliberately keyword-based (not an LLM call), for the same reason as
+    score_defense_substance: small-claims and debt-recovery cases typically
+    rest on exactly one such instrument with a thin evidence *count*, which
+    the count-only scoring in analysis.py has no way to reward -- see
+    [[diginyaya_real_judgment_eval]] for why that specifically depresses
+    accuracy in those two categories.
+    """
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(m in lowered for m in _DOCUMENTARY_INSTRUMENT_LEXICON)
 
 
 # Word-boundary versions of every SIGNAL_LEXICON trigger, compiled once at

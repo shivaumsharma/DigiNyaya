@@ -35,9 +35,10 @@ def _precedent(id_="P1", ratio=0.8, days=30) -> RetrievedPrecedent:
     )
 
 
-def _ctx(*, c_strength: float, r_strength: float, claim_amount: float = 50000.0) -> CaseContext:
+def _ctx(*, c_strength: float, r_strength: float, claim_amount: float = 50000.0,
+         dispute_type: str = "consumer_dispute", precedent_ratio: float = 0.8) -> CaseContext:
     ctx = CaseContext(
-        case_id="DN-MED-TEST", owner_id="u1", dispute_type="consumer_dispute",
+        case_id="DN-MED-TEST", owner_id="u1", dispute_type=dispute_type,
         claimant_name="Claimant", respondent_name="Respondent", claim_amount=claim_amount,
         description="Test claim.", respondent_submission={"statement": "test", "accepts_liability": False},
     )
@@ -47,7 +48,7 @@ def _ctx(*, c_strength: float, r_strength: float, claim_amount: float = 50000.0)
         relief_type_requested="monetary",
     )
     ctx.research = ResearchResult(
-        precedents=[_precedent()], corpus_size=100, coverage_score=0.8, coverage_label="strong", method="keyword",
+        precedents=[_precedent(ratio=precedent_ratio)], corpus_size=100, coverage_score=0.8, coverage_label="strong", method="keyword",
     )
     ctx.analysis = AnalysisResult(strength_score={"claimant": c_strength, "respondent": r_strength})
     return ctx
@@ -110,6 +111,46 @@ class TestMediationNetStrengthEnforcement(unittest.TestCase):
             result = mediation.run(ctx)
         self.assertEqual(result.output.type, "dismissed")
         self.assertEqual(result.output.amount, 0.0)
+
+
+
+class TestFullClaimAwardForMoneyClaims(unittest.TestCase):
+    """An upheld money claim is decreed in full -- not a strength-scaled
+    fraction capped by whatever the retrieved precedents happened to award."""
+
+    def test_upheld_money_claim_is_awarded_in_full_even_when_precedents_were_all_dismissals(self):
+        # The exact failure found in error analysis: strong claimant (net 0.79)
+        # but every retrieved precedent has ratio 0.0 -> used to collapse to a
+        # 10% floor.
+        ctx = _ctx(c_strength=0.9, r_strength=0.11, claim_amount=400000.0,
+                   dispute_type="money_recovery", precedent_ratio=0.0)
+        result = mediation.run(ctx)
+        self.assertEqual(result.output.type, "full_refund")
+        self.assertEqual(result.output.amount, 400000.0)
+
+    def test_moderate_claimant_edge_also_gets_full_claim(self):
+        ctx = _ctx(c_strength=0.46, r_strength=0.32, claim_amount=100000.0, dispute_type="contract_breach")
+        result = mediation.run(ctx)
+        self.assertEqual(result.output.amount, 100000.0)
+
+    def test_who_wins_is_unchanged_respondent_stronger_still_dismissed(self):
+        ctx = _ctx(c_strength=0.3, r_strength=0.5, dispute_type="money_recovery")
+        result = mediation.run(ctx)
+        self.assertEqual(result.output.type, "dismissed")
+        self.assertEqual(result.output.amount, 0.0)
+
+    def test_near_tie_still_dismissed_not_flipped_to_a_full_award(self):
+        # net_strength 0.01 is below the dismissal cutoff -- the override must
+        # not turn a "dismissed" into an award.
+        ctx = _ctx(c_strength=0.46, r_strength=0.45, dispute_type="money_recovery", precedent_ratio=0.0)
+        result = mediation.run(ctx)
+        self.assertEqual(result.output.type, "dismissed")
+
+    def test_consumer_disputes_keep_the_proportional_model(self):
+        ctx = _ctx(c_strength=0.46, r_strength=0.32, claim_amount=100000.0, dispute_type="consumer_dispute")
+        result = mediation.run(ctx)
+        self.assertLess(result.output.amount, 100000.0)
+        self.assertGreater(result.output.amount, 0.0)
 
 
 if __name__ == "__main__":

@@ -27,6 +27,30 @@ _NON_MONETARY_ACTIONS = {
         "treat the claimant's position as set out in the findings above as upheld, and any contrary "
         "instrument or action asserted by the respondent as of no legal effect"
     ),
+    # Distinct from the generic "declaration" template above, which was
+    # built for voiding/nullifying something (see nlp.py's original
+    # _STRONG_DECLARATION_SIGNALS = "null and void"/"declared void") -- a
+    # heirship/succession suit isn't asking to void anything, it's asking
+    # the court to affirmatively recognise WHO the heirs are. Reusing the
+    # generic template's "contrary instrument...of no legal effect" framing
+    # against real heirship judgments matched only ~23% of the time (see
+    # app.agents.nlp's heirship_declaration trigger comment for the full
+    # real-judgment-testing numbers); this dedicated phrase states the
+    # actual substance a real heirship decree grants.
+    "heirship_declaration": (
+        "recognise the claimant(s) as the legal heir(s)/successor(s) entitled to the estate/property "
+        "described in the findings above, and raise no further claim inconsistent with that status"
+    ),
+    # Found via real-judgment testing: real courts overwhelmingly phrase a
+    # specific-performance grant as "execute and register the sale deed"
+    # (sometimes bundled with delivering possession once the transaction
+    # completes) rather than a generic "comply" instruction -- naming that
+    # concrete act is what a real decree actually orders, not a paraphrase.
+    "specific_performance": (
+        "execute and register the sale deed (or other instrument required to complete the transaction) "
+        "in the claimant's favour on the terms found above, and deliver possession of the property where "
+        "the underlying agreement provides for it"
+    ),
     "replacement": "provide the claimant a replacement of like kind and quality for the goods/services in dispute",
     "possession": "hand over vacant possession of the property in dispute to the claimant",
     "partition": "recognise the claimant's declared share in the property and cooperate in effecting a partition by metes and bounds accordingly",

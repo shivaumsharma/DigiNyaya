@@ -87,6 +87,32 @@ class TestCondition1CriminalMatter(unittest.TestCase):
         result = check_escalation(case)
         self.assertIsNone(result)
 
+    def test_keyword_hit_escalates_even_if_an_llm_call_would_say_otherwise(self):
+        # Regression test for a real bug: an earlier version let an LLM
+        # "second opinion" cancel a criminal-indicator keyword hit if it
+        # decided the matter wasn't genuinely criminal. Tested live against
+        # this repo's own real escalation__criminal_matter eval cases, that
+        # LLM call confirmed BOTH as "not genuinely criminal" and both
+        # proceeded to a drafted civil resolution instead of escalating --
+        # a real, live false negative, not a hypothetical one. This test
+        # would have caught it: it patches app.llm.generate_json (used
+        # process-wide, including by anything a future re-add of an LLM
+        # check here would call) to explicitly answer "not criminal" and
+        # confirms escalation still fires regardless -- proving no LLM
+        # response, however confident, can suppress a keyword hit.
+        from unittest.mock import patch
+
+        case = _case(
+            description="I filed a police complaint (FIR) against the respondent for criminal breach of trust."
+        )
+        with patch(
+            "app.llm.generate_json",
+            return_value={"is_genuine_criminal_matter": False, "reasoning": "civil dispute, not real crime"},
+        ):
+            result = check_escalation(case)
+        self.assertIsNotNone(result)
+        self.assertIn(EscalationCondition.CRIMINAL_MATTER.value, result.triggered_conditions)
+
 
 class TestCondition5JurisdictionMismatch(unittest.TestCase):
     def test_triggers_on_unregistered_dispute_type(self):
