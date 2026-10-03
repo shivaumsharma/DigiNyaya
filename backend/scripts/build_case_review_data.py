@@ -19,7 +19,6 @@ try:
 except Exception:
     pass
 
-import numpy as np  # noqa: E402
 from app.agents import nlp  # noqa: E402
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data_cache"

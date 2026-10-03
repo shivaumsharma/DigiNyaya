@@ -33,7 +33,6 @@ Run (from backend/): python -m scripts.simulate_outcome_model --sample 500
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import random
 import sys

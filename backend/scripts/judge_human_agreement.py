@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import sys
 from pathlib import Path
 
 DATA = Path(__file__).resolve().parent.parent / "data_cache"
