@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api, streamSSE } from '../api.js'
+import { api, streamSSE } from '../api'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { AGENT_ICONS, Check, Clock, Handshake, Gavel, Shield } from '../icons.jsx'
 import Stepper from '../components/Stepper.jsx'

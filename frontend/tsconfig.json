@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode -- Vite handles the actual transpilation/bundling */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Migration in progress: allow .jsx/.js to keep compiling alongside
+       new .tsx/.ts files (see README's tracked migration note) rather than
+       forcing a big-bang rewrite of all 32 files at once. */
+    "allowJs": true,
+    "checkJs": false,
+
+    /* Loose-ish strictness while the migration is incremental -- tighten
+       (strict: true, noUnusedLocals, noUnusedParameters) once every file
+       is converted, not before. */
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}

@@ -2,10 +2,10 @@ import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
-import { authApi } from './authApi.js'
-import { getAccessToken } from './tokenStore.js'
+import { authApi } from './authApi'
+import { getAccessToken } from './tokenStore'
 
-vi.mock('./authApi.js', () => ({
+vi.mock('./authApi', () => ({
   authApi: {
     refresh: vi.fn(),
     me: vi.fn(),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api.js'
+import { api } from '../api'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 import Stepper from '../components/Stepper.jsx'
 

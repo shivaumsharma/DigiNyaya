@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { authApi } from './authApi.js'
-import { getAccessToken, setAccessToken } from './tokenStore.js'
+import { authApi } from './authApi'
+import { getAccessToken, setAccessToken } from './tokenStore'
 
 const AuthContext = createContext(null)
 

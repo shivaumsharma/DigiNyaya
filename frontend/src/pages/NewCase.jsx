@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
-import { api } from '../api.js'
+import { api } from '../api'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { ArrowLeft, ArrowRight, Receipt, Clock, AlertTriangle, XCircle } from '../icons.jsx'

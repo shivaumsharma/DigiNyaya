@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api.js'
+import { api } from '../api'
 import { useLanguage } from '../i18n/LanguageContext.jsx'
 import { Check, Clock, AlertTriangle, ArrowRight } from '../icons.jsx'
 

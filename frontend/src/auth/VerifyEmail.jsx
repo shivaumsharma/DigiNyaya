@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { authApi } from './authApi.js'
+import { authApi } from './authApi'
 
 // Landing page for the link the backend's mail stub prints:
 // {FRONTEND_URL}/verify-email?token=...

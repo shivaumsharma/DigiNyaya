@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api } from '../api.js'
+import { api } from '../api'
 import { ArrowLeft, Check, AlertTriangle } from '../icons.jsx'
 
 export default function ReviewerCaseDetail() {

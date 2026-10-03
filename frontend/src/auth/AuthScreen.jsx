@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { api } from '../api.js'
+import { api } from '../api'
 import { useAuth } from './AuthContext.jsx'
-import { authApi } from './authApi.js'
+import { authApi } from './authApi'
 import EmailPasswordForm from './EmailPasswordForm.jsx'
 import PhoneOtpForm from './PhoneOtpForm.jsx'
 

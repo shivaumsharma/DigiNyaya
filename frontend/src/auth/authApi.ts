@@ -4,10 +4,18 @@
 // different credential scheme: httpOnly refresh cookie + in-memory bearer
 // access token, not a localStorage token.
 
-const API_ROOT = import.meta.env.VITE_API_BASE || ''
+const API_ROOT: string = import.meta.env.VITE_API_BASE || ''
 const AUTH_BASE = `${API_ROOT}/auth`
 
-async function jsonFetch(path, options = {}) {
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+async function jsonFetch(path: string, options: RequestInit = {}): Promise<any> {
   const { headers, ...rest } = options
   const res = await fetch(path, {
     // Required so the browser sends/receives the httpOnly refresh cookie.
@@ -27,40 +35,38 @@ async function jsonFetch(path, options = {}) {
     } catch {
       // Response body wasn't JSON -- fall back to the generic message above.
     }
-    const err = new Error(msg)
-    err.status = res.status
-    throw err
+    throw new ApiError(msg, res.status)
   }
   if (res.status === 204) return null
   return res.json()
 }
 
-function authHeader(token) {
+function authHeader(token?: string | null): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 export const authApi = {
-  signupEmail: (payload) =>
+  signupEmail: (payload: Record<string, unknown>) =>
     jsonFetch(`${AUTH_BASE}/signup/email`, { method: 'POST', body: JSON.stringify(payload) }),
-  signupPhoneStart: (phone) =>
+  signupPhoneStart: (phone: string) =>
     jsonFetch(`${AUTH_BASE}/signup/phone/start`, { method: 'POST', body: JSON.stringify({ phone }) }),
-  signupPhoneVerify: (payload) =>
+  signupPhoneVerify: (payload: Record<string, unknown>) =>
     jsonFetch(`${AUTH_BASE}/signup/phone/verify`, { method: 'POST', body: JSON.stringify(payload) }),
 
-  loginEmail: (email, password) =>
+  loginEmail: (email: string, password: string) =>
     jsonFetch(`${AUTH_BASE}/login/email`, { method: 'POST', body: JSON.stringify({ email, password }) }),
-  loginPhoneStart: (phone) =>
+  loginPhoneStart: (phone: string) =>
     jsonFetch(`${AUTH_BASE}/login/phone/start`, { method: 'POST', body: JSON.stringify({ phone }) }),
-  loginPhoneVerify: (phone, otp) =>
+  loginPhoneVerify: (phone: string, otp: string) =>
     jsonFetch(`${AUTH_BASE}/login/phone/verify`, { method: 'POST', body: JSON.stringify({ phone, otp }) }),
 
-  linkPhoneStart: (phone, token) =>
+  linkPhoneStart: (phone: string, token?: string | null) =>
     jsonFetch(`${AUTH_BASE}/link/phone/start`, {
       method: 'POST',
       headers: authHeader(token),
       body: JSON.stringify({ phone }),
     }),
-  linkPhoneVerify: (phone, otp, token) =>
+  linkPhoneVerify: (phone: string, otp: string, token?: string | null) =>
     jsonFetch(`${AUTH_BASE}/link/phone/verify`, {
       method: 'POST',
       headers: authHeader(token),
@@ -68,15 +74,15 @@ export const authApi = {
     }),
 
   refresh: () => jsonFetch(`${AUTH_BASE}/refresh`, { method: 'POST' }),
-  logout: (token) => jsonFetch(`${AUTH_BASE}/logout`, { method: 'POST', headers: authHeader(token) }),
-  me: (token) => jsonFetch(`${API_ROOT}/me`, { headers: authHeader(token) }),
+  logout: (token?: string | null) => jsonFetch(`${AUTH_BASE}/logout`, { method: 'POST', headers: authHeader(token) }),
+  me: (token?: string | null) => jsonFetch(`${API_ROOT}/me`, { headers: authHeader(token) }),
 
-  passwordResetRequest: (email) =>
+  passwordResetRequest: (email: string) =>
     jsonFetch(`${AUTH_BASE}/password/reset/request`, { method: 'POST', body: JSON.stringify({ email }) }),
-  passwordResetConfirm: (token, new_password) =>
+  passwordResetConfirm: (token: string, new_password: string) =>
     jsonFetch(`${AUTH_BASE}/password/reset/confirm`, {
       method: 'POST',
       body: JSON.stringify({ token, new_password }),
     }),
-  verifyEmail: (token) => jsonFetch(`${AUTH_BASE}/verify-email?token=${encodeURIComponent(token)}`),
+  verifyEmail: (token: string) => jsonFetch(`${AUTH_BASE}/verify-email?token=${encodeURIComponent(token)}`),
 }

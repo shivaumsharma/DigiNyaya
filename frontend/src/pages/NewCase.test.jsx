@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import NewCase from './NewCase.jsx'
 import { LanguageProvider } from '../i18n/LanguageContext.jsx'
-import { api } from '../api.js'
+import { api } from '../api'
 
 const navigateSpy = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -16,7 +16,7 @@ vi.mock('../auth/AuthContext.jsx', () => ({
   useAuth: () => ({ user: { full_name: 'Ada Lovelace' } }),
 }))
 
-vi.mock('../api.js', () => ({
+vi.mock('../api', () => ({
   api: {
     sampleClaim: vi.fn(),
     createCase: vi.fn(),

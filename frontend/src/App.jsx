@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext.jsx'
 import { SUPPORTED_UI_LANGUAGES, useLanguage } from './i18n/LanguageContext.jsx'
-import { api } from './api.js'
+import { api } from './api'
 import { Logo, Cpu } from './icons.jsx'
 
 const HOME_NAV = [
