@@ -24,9 +24,22 @@ answers are hidden from you on purpose — keep it that way.**
    not. Aim for fewer than ~10% unsure. Add a short reason in the optional `notes` column if you like.
 6. Write your name and the time you start/finish each session somewhere. We report time per case.
 
+## Easiest way: the terminal labeller
+
+From `backend/` (PowerShell or any shell):
+
+```
+python -m scripts.label_cases --name yourname
+```
+
+It shows one case at a time, asks the three questions, and saves after every answer. Quit with `q` (or
+Ctrl+C) and run the same command to resume where you stopped. `b` redoes a case, `h` shows the definitions.
+It writes `data_cache/labels_yourname.csv` in the format the agreement script reads and never opens the
+judge's answer key. Everything below describes the questions; the spreadsheet route works too.
+
 ## The sheet
 
-Open `data_cache/human_label_sheet.csv` in a spreadsheet (UTF-8). Columns you read:
+Alternatively, open `data_cache/human_label_sheet.csv` in a spreadsheet (UTF-8). Columns you read:
 
 | Column | Meaning |
 | --- | --- |
