@@ -45,6 +45,17 @@ describe('Home', () => {
     expect(screen.queryByText(/2\.3 min/i)).not.toBeInTheDocument()
   })
 
+  it('cites the primary sources for the problem statistics and drops the unsourced ones', () => {
+    renderHome()
+    expect(screen.getByText(/Sources: National Judicial Data Grid, district and taluka courts/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'NJDG' })).toHaveAttribute('href', 'https://njdg.ecourts.gov.in/njdg_v3/')
+    expect(screen.getByRole('link', { name: 'DAKSH' })).toHaveAttribute('href', 'https://www.dakshindia.org/access-to-justice-survey/')
+    // old figures that had no source behind them
+    expect(screen.queryByText(/4\.2/)).not.toBeInTheDocument()
+    expect(screen.queryByText('₹50,000+')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Typical cost of counsel/)).not.toBeInTheDocument()
+  })
+
   it('sends a logged-out visitor to sign in when they file a dispute', async () => {
     renderHome()
     await userEvent.click(screen.getAllByRole('button', { name: /file a dispute — free to start/i })[0])
