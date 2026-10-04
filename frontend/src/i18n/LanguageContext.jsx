@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import en from './en.json'
 import hi from './hi.json'
 import ta from './ta.json'
@@ -72,6 +72,10 @@ export function LanguageProvider({ children }) {
       // localStorage unavailable (private mode etc.) -- preference just won't persist
     }
   }
+
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
 
   const t = useMemo(() => {
     const dict = DICTIONARIES[lang] || en

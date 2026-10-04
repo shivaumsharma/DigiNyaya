@@ -47,9 +47,9 @@ export default function AuthScreen() {
   return (
     <section className="fade-in" style={{ maxWidth: 440, margin: '48px auto' }}>
       <div className="card card-pad">
-        <h2 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 22, marginBottom: 6 }}>
+        <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 22, marginBottom: 6 }}>
           {mode === 'login' ? 'Sign in to DigiNyaya' : 'Create your account'}
-        </h2>
+        </h1>
         <p className="sub" style={{ marginBottom: 20 }}>
           {mode === 'login' ? 'Welcome back — file, track, and resolve disputes.' : 'Free to start, takes about a minute.'}
         </p>

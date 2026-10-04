@@ -88,15 +88,148 @@
       { "title": "Legal Services Authorities Act, 1987", "sub": "Lok Adalat settlement structure" },
       { "title": "IT Rules, 2021", "sub": "Grievance redressal & data handling" }
     ],
-    "advisoryEyebrow": "Founding team",
+    "advisoryEyebrow": "Founder",
     "advisoryTitle": "The rules AI drafts under are set by people, not the model.",
-    "advisoryNote": "The team building and accountable for DigiNyaya.",
-    "advisoryRole": "Founding Team, DigiNyaya",
+    "advisoryNote": "The person building and accountable for DigiNyaya.",
+    "advisoryRole": "Founder, DigiNyaya",
     "ctaTitle": "Ready to file? It takes about five minutes.",
     "ctaLede": "Describe your dispute, attach your evidence, and the agents take it from there — with a written resolution in 3–5 days for Tier 1 cases.",
     "footerAddr": "DigiNyaya Technologies Pvt. Ltd. · Bengaluru, India",
     "footerGrievance": "Grievance Officer — grievance@diginyaya.in · Response within 15 working days (IT Rules, 2021)",
-    "footerCopyright": "© 2026 DigiNyaya · Not a substitute for legal advice"
+    "footerCopyright": "© 2026 DigiNyaya · Not a substitute for legal advice",
+    "nav": {
+      "why": "Why",
+      "tiers": "Tiers",
+      "agents": "Agents",
+      "safeguards": "Safeguards",
+      "outcomes": "Outcomes",
+      "team": "Founder"
+    },
+    "fileDispute": "File a dispute",
+    "signIn": "Sign in",
+    "myCases": "My cases",
+    "scroll": "Scroll",
+    "languageLabel": "Language",
+    "sampleNote": "Illustrative sample case",
+    "chips": [
+      {
+        "k": "Evidence",
+        "v": "invoice_7731.pdf"
+      },
+      {
+        "k": "CPA 2019",
+        "v": "§37 mediation"
+      },
+      {
+        "k": "Confidence",
+        "v": "Above threshold"
+      },
+      {
+        "k": "Status",
+        "v": "Resolved · reasoning attached"
+      },
+      {
+        "k": "Precedent",
+        "v": "12 comparable orders"
+      },
+      {
+        "k": "Mediation",
+        "v": "₹33,500 proposed"
+      }
+    ],
+    "problem": {
+      "eyebrow": "The problem",
+      "title": "Every delayed case is a person who quietly decided it wasn't worth it.",
+      "body": "So the rational move on a routine dispute is to give up. That is not a backlog problem. It is an entire class of claims that never enters the justice system at all — and therefore never appears in any pendency statistic.",
+      "stats": [
+        {
+          "value": "4.2 Cr+",
+          "label": "Cases pending in India's district courts"
+        },
+        {
+          "value": "33%",
+          "label": "Of that docket has been pending over 5 years — 15% for over a decade"
+        },
+        {
+          "value": "₹50,000+",
+          "label": "Typical cost of counsel — routinely more than the amount in dispute"
+        }
+      ],
+      "source": "Sources: National Judicial Data Grid, district court pendency & age-of-pendency breakdown, 2025–26."
+    },
+    "router": {
+      "label": "Describe your dispute in one line and see where it goes",
+      "placeholder": "e.g. My refund for a defective fridge was refused",
+      "examples": [
+        "Phone stopped working, seller won't refund",
+        "Paid for an order that never arrived",
+        "A client's cheque bounced",
+        "Friend won't repay a ₹40,000 loan",
+        "Contractor broke our written agreement"
+      ],
+      "unknown": "Not sure yet — the Ingestion agent classifies it when you file.",
+      "routed": "Preview: routed to {{tier}} — confirmed when you file",
+      "badge": "Your case goes here"
+    },
+    "kickers": {
+      "working": "Working now",
+      "done": "Done",
+      "queued": "Queued"
+    },
+    "sliderPrev": "Previous agent",
+    "sliderNext": "Next agent",
+    "gate": {
+      "eyebrow": "It knows when to refuse",
+      "titlePre": "Autonomy is easy to demo.",
+      "titleEm": "Calibrated refusal",
+      "titlePost": "is the product.",
+      "body": "Every case gets a confidence score based on how much of the record the system can actually stand on. Below threshold, it does not decide — it escalates to a human, by design and by default.",
+      "tag": "Illustrative",
+      "prompt": "Try it — how strong is each signal on your case?",
+      "signals": [
+        {
+          "label": "Intake completeness",
+          "hint": "How much of the filing is on the record",
+          "weight": "35%"
+        },
+        {
+          "label": "Precedent coverage",
+          "hint": "How well past decisions cover this case",
+          "weight": "35%"
+        },
+        {
+          "label": "Draft needed no correction",
+          "hint": "The validator did not have to rescue the draft",
+          "weight": "20%"
+        },
+        {
+          "label": "Citations verified",
+          "hint": "Share of citations that survived checking",
+          "weight": "10%"
+        }
+      ],
+      "scoreLabel": "composite confidence",
+      "floorLabel": "Escalation floor",
+      "floorValue": "40%",
+      "passTitle": "Above the floor — the checks continue",
+      "passSub": "A high score alone doesn't decide a case: jurisdiction, contested facts and the other safety checks still run first.",
+      "failTitle": "Escalates to a human reviewer",
+      "failSub": "Below the floor the system does not decide, so it hands the case to a person.",
+      "principles": [
+        {
+          "title": "Verbatim citation grounding",
+          "body": "Every precedent citation is checked against the source text. Any citation the model cannot ground is dropped, not surfaced."
+        },
+        {
+          "title": "Deterministic fallbacks",
+          "body": "Scripted logic takes over when the model is unavailable — so an outage degrades quality, it does not fabricate an order."
+        },
+        {
+          "title": "Append-only audit trail",
+          "body": "Every case writes to an append-only event log — every agent step, durably auditable after the fact."
+        }
+      ]
+    }
   },
   "disputes": {
     "title": "What's your dispute about?",
