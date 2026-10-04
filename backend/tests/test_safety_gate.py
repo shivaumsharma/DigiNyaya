@@ -116,7 +116,7 @@ class TestCondition1CriminalMatter(unittest.TestCase):
 
 class TestCondition5JurisdictionMismatch(unittest.TestCase):
     def test_triggers_on_unregistered_dispute_type(self):
-        case = _case(dispute_type="employment_dispute")
+        case = _case(dispute_type="family_dispute")
         result = check_escalation(case)
         self.assertIsNotNone(result)
         self.assertIn(EscalationCondition.JURISDICTION_MISMATCH.value, result.triggered_conditions)
@@ -231,7 +231,7 @@ class TestEscalationResultShape(unittest.TestCase):
         self.assertTrue(d["user_message"])
 
     def test_multiple_conditions_can_trigger_together(self):
-        case = _case(dispute_type="employment_dispute", description="The respondent assaulted me.")
+        case = _case(dispute_type="family_dispute", description="The respondent assaulted me.")
         result = check_escalation(case)
         self.assertIsNotNone(result)
         self.assertEqual(len(result.triggered_conditions), 2)

@@ -40,6 +40,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from ..data.loader import DISPUTE_TYPES
+
 logger = logging.getLogger("diginyaya.safety_gate")
 
 
@@ -80,7 +82,7 @@ CRIMINAL_INDICATORS: tuple[str, ...] = (
 # STUB: category + keyword heuristic for matters this civil-dispute system
 # should never adjudicate at all, regardless of confidence.
 REGISTERED_CIVIL_DISPUTE_TYPES: frozenset[str] = frozenset(
-    {"consumer_dispute", "money_recovery", "contract_breach", "cheque_bounce"}
+    dt["id"] for dt in DISPUTE_TYPES  # every type in the registry (inactive preview types are blocked at filing)
 )
 
 OUT_OF_SCOPE_INDICATORS: tuple[str, ...] = (

@@ -16,6 +16,9 @@ class DisputeType(str, Enum):
     money_recovery = "money_recovery"
     contract_breach = "contract_breach"
     cheque_bounce = "cheque_bounce"
+    tenancy_dispute = "tenancy_dispute"
+    property_dispute = "property_dispute"
+    employment_dispute = "employment_dispute"
 
 
 class CaseStatus(str, Enum):

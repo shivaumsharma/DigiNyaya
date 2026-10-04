@@ -15,6 +15,7 @@ from .. import llm, rag
 from ..rag import statutes as statute_rag
 from ..core import confidence as confidence_module
 from ..core.context import CaseContext, ResolutionDoc
+from ..data.loader import precedent_category
 from . import nlp
 from .base import AgentResult
 
@@ -119,7 +120,7 @@ def _select_citations(ctx: CaseContext, precedents: list) -> tuple[list[str], st
     if not llm.is_available():
         return deterministic, "scripted"
 
-    decoys = rag.decoy_candidates([p.id for p in precedents], ctx.dispute_type, k=2)
+    decoys = rag.decoy_candidates([p.id for p in precedents], precedent_category(ctx.dispute_type), k=2)
     pool = list(precedents[:5]) + [
         type(precedents[0])(
             id=d["id"], title=d["title"], court=d["court"], year=d["year"], citation=d["citation"],

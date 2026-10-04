@@ -13,6 +13,7 @@ import statistics
 
 from .. import llm
 from ..core.context import CaseContext, MediationProposal
+from ..data.loader import effective_type
 from . import nlp
 from .base import AgentResult
 
@@ -256,7 +257,7 @@ def run(ctx: CaseContext) -> AgentResult:
             f"Relief ratio adjusted from {round(proposed_ratio,2)} to {round(clamped_ratio,2)} to stay within the precedent band."
         )
     if (
-        ctx.dispute_type in _FULL_CLAIM_DISPUTE_TYPES
+        effective_type(ctx.dispute_type) in _FULL_CLAIM_DISPUTE_TYPES
         and (ctx.ingestion.relief_type_requested if ctx.ingestion else "monetary") == "monetary"
         and _DISMISSED_RATIO_CUTOFF <= clamped_ratio < 1.0
     ):
@@ -296,7 +297,7 @@ def run(ctx: CaseContext) -> AgentResult:
         # "the claimant lost on the merits", which misrepresents what
         # actually happened.
         relief_kind = requested_relief
-    elif requested_relief != "monetary" and c_strength >= _non_monetary_threshold(requested_relief, ctx.dispute_type):
+    elif requested_relief != "monetary" and c_strength >= _non_monetary_threshold(requested_relief, effective_type(ctx.dispute_type)):
         # A gate on nlp.has_threshold_defense() (does the respondent raise a
         # locus-standi/jurisdiction/non-joinder/res-judicata defense) was
         # tried here and measured: it DID cut the AI-too-liberal pattern

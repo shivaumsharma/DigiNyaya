@@ -26,6 +26,9 @@ _EXPECTED_EVIDENCE_BY_TYPE = {
     "money_recovery": "proof the money actually changed hands -- a bank transfer record, a signed loan agreement, a promissory note, or a receipt",
     "contract_breach": "the written contract or agreement itself, plus anything showing the other side didn't do what it promised",
     "cheque_bounce": "the dishonoured cheque, the bank's return memo, and the demand notice you sent",
+    "tenancy_dispute": "the rent agreement or lease, rent receipts or bank transfers showing what was paid, and any notice sent to the other side",
+    "property_dispute": "the title deed or sale agreement, a survey sketch or boundary record, tax receipts, and photographs of the disputed area",
+    "employment_dispute": "your appointment or offer letter, salary slips or bank statements, your resignation or termination letter, and messages about the dues",
 }
 
 # Below this many characters there usually isn't enough content to judge

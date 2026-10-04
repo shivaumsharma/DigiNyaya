@@ -10,6 +10,7 @@ from __future__ import annotations
 from .. import rag
 from ..rag import statutes as statute_rag
 from ..core.context import CaseContext, ResearchResult, RetrievedPrecedent, RetrievedStatute
+from ..data.loader import precedent_category
 from . import nlp
 from .base import AgentResult
 
@@ -29,7 +30,7 @@ def run(ctx: CaseContext) -> AgentResult:
         query = f"{label} {subtype} {' '.join(signals)}"
         k = 7
 
-    res = rag.retrieve(query, signals, category=ctx.dispute_type, k=k)
+    res = rag.retrieve(query, signals, category=precedent_category(ctx.dispute_type), k=k)
 
     precedents = [RetrievedPrecedent(**p) for p in res["precedents"]]
     statutes = (
