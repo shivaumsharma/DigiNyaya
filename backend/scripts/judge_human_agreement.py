@@ -28,6 +28,17 @@ population-wide accuracy. The per-judge-verdict breakdown at the end is the
 number that is valid under that sampling: "of the cases the judge called X,
 what fraction does a human also call X".
 
+Certified agreement: each judge-vs-human block is followed by one-sided EXACT binomial lower bounds
+(scripts/selective_guarantee.py, same method as "Trust or Escalate", ICLR 2025): "with 1 - delta
+confidence the judge agrees with a human at least this often". Because the sheet is stratified by the
+judge's verdict, the bounds that are valid are the PER-STRATUM ones ("of cases the judge called X, at
+least Y% agree"). Pass --population-shares (the judge's verdict mix over the full corpus) for a
+population-level lower bound (union bound across the three strata). --target-agreement T prints PASS or
+FAIL against T and, on FAIL-by-sample-size, roughly how many more labels would be needed.
+
+If two people labelled DIFFERENT halves of the sheet, --pool merges them (first listed wins on overlap)
+and scores the judge against the combined labels; human-vs-human agreement is computed on the overlap.
+
 Run (from backend/):
   python -m scripts.judge_human_agreement --labels data_cache/human_label_sheet.csv
   python -m scripts.judge_human_agreement --labels a.csv b.csv --names alice bob \\
@@ -39,8 +50,13 @@ import argparse
 import csv
 import json
 import random
+import sys
 from collections import Counter
 from pathlib import Path
+
+sys.path.insert(0, ".")
+
+from scripts.selective_guarantee import agreement_lower_bound, labels_needed  # noqa: E402
 
 DATA = Path(__file__).resolve().parent.parent / "data_cache"
 VERDICTS = ("match", "partial", "mismatch")
@@ -157,6 +173,9 @@ def _fmt_ci(ci) -> str:
 
 def report(title: str, pairs: dict[str, list[tuple]]) -> None:
     print(f"\n== {title}")
+    if not any(pairs[q] for q, _ in _QUESTIONS):
+        print("  (no overlapping cases to compare)")
+        return
     print(f"{'question':44s} {'n':>4s} {'agree%':>7s} {'95% CI':>14s} {'kappa':>7s} {'95% CI':>14s}")
     for q, label in _QUESTIONS:
         p = pairs[q]
@@ -207,13 +226,108 @@ def write_disagreements(path: str, sheets: dict[str, list[dict]], names: list[st
     return len(out)
 
 
+def verdict_pairs(human: dict[str, dict], judge: dict) -> list[tuple[str, str]]:
+    """(judge verdict, human verdict) for every case the human gave a derivable verdict on."""
+    return [(judge[c]["verdict"], v["verdict"]) for c, v in human.items()
+            if c in judge and judge[c] and v["verdict"] is not None]
+
+
+def parse_shares(items: list[str] | None) -> dict[str, float] | None:
+    """['match=0.563', 'partial=0.2', 'mismatch=0.237'] -> {...}; must cover all three verdicts and sum to ~1."""
+    if not items:
+        return None
+    out = {}
+    for it in items:
+        k, _, v = it.partition("=")
+        if k not in VERDICTS or not v:
+            raise ValueError(f"bad --population-shares entry {it!r}; use match=..., partial=..., mismatch=...")
+        out[k] = float(v)
+    if set(out) != set(VERDICTS) or abs(sum(out.values()) - 1.0) > 0.01:
+        raise ValueError("--population-shares must give match, partial and mismatch and sum to 1")
+    return out
+
+
+def certify(title: str, pairs: dict[str, list[tuple]], vpairs: list[tuple[str, str]], delta: float,
+            target: float | None, shares: dict[str, float] | None) -> None:
+    """One-sided exact lower bounds on judge-human agreement. Per question (valid for THIS sample only, because
+    the sheet is stratified by the judge's verdict) and per judge-verdict stratum (valid under the sampling)."""
+    print(f"\n== CERTIFIED AGREEMENT: {title}  (one-sided exact, {100 * (1 - delta):.0f}% confidence)")
+    print(f"{'question':44s} {'n':>4s} {'agree':>6s} {'point':>7s} {'lower bound':>12s}")
+    for q, label in _QUESTIONS:
+        p = pairs[q]
+        agree = sum(a == b for a, b in p)
+        lb = agreement_lower_bound(agree, len(p), delta) if p else float("nan")
+        pt = agree / len(p) if p else float("nan")
+        print(f"{label:44s} {len(p):4d} {agree:6d} {100 * pt:6.1f}% {100 * lb:11.1f}%")
+    print("  (overall rows above describe this stratified sheet, not the whole corpus -- use the strata below)")
+
+    print("\n  Per judge verdict -- valid under the sheet's sampling:")
+    lowers: dict[str, float] = {}
+    for v in VERDICTS:
+        sub = [(j, h) for j, h in vpairs if j == v]
+        agree = sum(j == h for j, h in sub)
+        # Bonferroni across the three strata so the population bound below is a valid union bound
+        lowers[v] = agreement_lower_bound(agree, len(sub), delta / 3) if sub else 0.0
+        lb = agreement_lower_bound(agree, len(sub), delta) if sub else float("nan")
+        pt = agree / len(sub) if sub else float("nan")
+        print(f"    judge said {v:9s} n={len(sub):3d} agree={agree:3d} point={100 * pt:5.1f}%  lower bound={100 * lb:5.1f}%")
+    if shares:
+        pop = sum(shares[v] * lowers[v] for v in VERDICTS)
+        print(f"  Population-weighted lower bound on verdict agreement (union bound, shares {shares}): {100 * pop:.1f}%")
+        if target is not None:
+            print(f"    target {100 * target:.0f}%: {'PASS' if pop >= target else 'FAIL'}")
+    elif target is not None:
+        print("  (give --population-shares to turn the per-verdict bounds into a population-level verdict)")
+
+    if target is not None:
+        print(f"\n  Target agreement {100 * target:.0f}% (one-sided {100 * (1 - delta):.0f}% confidence):")
+        for q, label in _QUESTIONS:
+            p = pairs[q]
+            if not p:
+                continue
+            agree = sum(a == b for a, b in p)
+            lb = agreement_lower_bound(agree, len(p), delta)
+            if lb >= target:
+                status = "PASS"
+            else:
+                need = labels_needed(agree / len(p), target, delta, start=len(p))
+                status = ("FAIL (observed rate is below the target)" if agree / len(p) <= target
+                          else f"FAIL on sample size -- would need roughly {need} labels at this rate" if need
+                          else "FAIL")
+            print(f"    {label:44s} {status}")
+    print("  These bounds are only as good as the labels: they certify agreement with THESE human labels, and assume the"
+          " labelled rows are a random draw from the stratum.")
+
+
+def pool_labels(names: list[str], labels: dict[str, dict]) -> tuple[dict[str, dict], int]:
+    """Merge labellers who covered different cases. First listed wins on overlap. Returns (merged, n_overlap)."""
+    merged: dict[str, dict] = {}
+    overlap = 0
+    for n in names:
+        for cid, v in labels[n].items():
+            if cid in merged:
+                overlap += 1
+            else:
+                merged[cid] = v
+    return merged, overlap
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--labels", required=True, nargs="+", help="one filled CSV per labeller")
     ap.add_argument("--names", nargs="+", help="labeller names, same order as --labels (default: labeller1, ...)")
     ap.add_argument("--key", default=str(DATA / "human_label_key.json"))
     ap.add_argument("--disagreements", help="write the rows where a human differs from the judge to this CSV")
+    ap.add_argument("--delta", type=float, default=0.05, help="1 - confidence for the exact bounds (default 0.05)")
+    ap.add_argument("--target-agreement", type=float, help="print PASS/FAIL (and labels needed) against this agreement level, e.g. 0.8")
+    ap.add_argument("--pool", action="store_true", help="merge labellers who labelled different cases and score the judge against the union")
+    ap.add_argument("--population-shares", nargs=3, metavar="VERDICT=SHARE",
+                    help="the judge's verdict mix over the full corpus, e.g. match=0.563 partial=0.2 mismatch=0.237")
     args = ap.parse_args()
+    try:
+        shares = parse_shares(args.population_shares)
+    except ValueError as e:
+        ap.error(str(e))
 
     names = args.names or [f"labeller{i + 1}" for i in range(len(args.labels))]
     if len(names) != len(args.labels):
@@ -239,6 +353,15 @@ def main() -> int:
 
     for n in names:
         report(f"JUDGE vs {n}", question_pairs(labels[n], judge))
+        certify(f"JUDGE vs {n}", question_pairs(labels[n], judge), verdict_pairs(labels[n], judge),
+                args.delta, args.target_agreement, shares)
+
+    if args.pool and len(names) >= 2:
+        pooled, overlap = pool_labels(names, labels)
+        print(f"\nPOOLED labels: {len(pooled)} distinct cases from {len(names)} labellers ({overlap} overlapping, first listed wins).")
+        report("JUDGE vs POOLED labellers", question_pairs(pooled, judge))
+        certify("JUDGE vs POOLED labellers", question_pairs(pooled, judge), verdict_pairs(pooled, judge),
+                args.delta, args.target_agreement, shares)
 
     if len(names) >= 2:
         for i in range(len(names)):

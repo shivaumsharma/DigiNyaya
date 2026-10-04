@@ -111,5 +111,56 @@ class TestEndToEnd(unittest.TestCase):
         self.assertEqual(rows[0]["b_verdict"], "partial")
 
 
+class TestCertificationAndPooling(unittest.TestCase):
+    def test_parse_shares_validates(self):
+        self.assertEqual(jha.parse_shares(["match=0.5", "partial=0.3", "mismatch=0.2"]),
+                         {"match": 0.5, "partial": 0.3, "mismatch": 0.2})
+        self.assertIsNone(jha.parse_shares(None))
+        with self.assertRaises(ValueError):
+            jha.parse_shares(["match=0.5", "partial=0.3", "mismatch=0.5"])  # sums to 1.3
+        with self.assertRaises(ValueError):
+            jha.parse_shares(["match=0.5", "partial=0.5", "bogus=0.0"])
+
+    def test_pool_labels_first_listed_wins_and_counts_overlap(self):
+        a = {"c1": {"verdict": "match"}, "c2": {"verdict": "partial"}}
+        b = {"c2": {"verdict": "mismatch"}, "c3": {"verdict": "match"}}
+        merged, overlap = jha.pool_labels(["a", "b"], {"a": a, "b": b})
+        self.assertEqual(overlap, 1)
+        self.assertEqual(set(merged), {"c1", "c2", "c3"})
+        self.assertEqual(merged["c2"]["verdict"], "partial")  # a listed first
+
+    def test_cli_pool_target_and_population_shares_run_end_to_end(self):
+        # judge says c1,c2 match, c3,c4 partial, c5,c6 mismatch; two labellers cover different halves
+        key = {}
+        for cid, (ai, real, sim, v) in {
+            "c1": (True, True, True, "match"), "c2": (True, True, True, "match"),
+            "c3": (True, True, False, "partial"), "c4": (True, True, False, "partial"),
+            "c5": (True, False, False, "mismatch"), "c6": (True, False, False, "mismatch"),
+        }.items():
+            key[cid] = {"claimant_prevailed_ai": ai, "claimant_prevailed_real": real, "relief_similar": sim, "verdict": v}
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "key.json").write_text(json.dumps(key), encoding="utf-8")
+            _write_sheet(d / "a.csv", [("c1", "Y", "Y", "Y"), ("c3", "Y", "Y", "N"), ("c5", "Y", "N", "")])
+            _write_sheet(d / "b.csv", [("c2", "Y", "Y", "Y"), ("c4", "Y", "Y", "Y"), ("c6", "Y", "N", "")])  # c4 disagrees
+            out = d / "out.txt"
+            old_argv, old_out = sys.argv, sys.stdout
+            sys.argv = ["x", "--labels", str(d / "a.csv"), str(d / "b.csv"), "--names", "a", "b", "--key", str(d / "key.json"),
+                        "--pool", "--target-agreement", "0.5", "--population-shares", "match=0.5", "partial=0.3", "mismatch=0.2"]
+            with open(out, "w", encoding="utf-8") as f:
+                sys.stdout = f
+                try:
+                    self.assertEqual(jha.main(), 0)
+                finally:
+                    sys.stdout, sys.argv = old_out, old_argv
+            text = out.read_text(encoding="utf-8")
+        self.assertIn("POOLED labels: 6 distinct cases", text)
+        self.assertIn("no overlapping cases", text)  # a and b share none: no empty NaN table
+        self.assertIn("CERTIFIED AGREEMENT: JUDGE vs POOLED labellers", text)
+        self.assertIn("Population-weighted lower bound", text)
+        self.assertIn("Target agreement 50%", text)
+        self.assertIn("judge said partial", text)
+
+
 if __name__ == "__main__":
     unittest.main()
