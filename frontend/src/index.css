@@ -1,14 +1,109 @@
-/* "Classical" design system -- Cormorant Garamond headings over Lora body,
-   serif editorial tone, gold-outline accent (never a solid fill), hairline
-   dividers. Tokens below are the source of truth from the design handoff;
-   component classes further down are re-themed to use them without
-   requiring every consuming page to change its markup/class names. */
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;600&display=swap');
+/* "Chamber Gold" design system: a warm near-black ground, Cormorant Garamond
+   display over Lora body (plus one Noto Serif family per Indic script, loaded
+   from index.html), and a gold accent used as stroke, never as a fill. Tokens
+   below are the source of truth; the neutral and accent scales are inverted
+   (100 = darkest tint, 900 = lightest) so component classes written against
+   the old light theme re-theme without markup changes. The resolution
+   document opts back into light "paper" tokens (see .paper below). */
 
 :root {
+  color-scheme: dark;
+
+  --color-bg: #141210;
+  --color-surface: #1c1916;
+  --color-text: #f3f0ea;
+  --color-text-2: #c9c2b6;
+  --color-text-3: #8c857a;
+  --color-accent: #d9b273;
+  --color-accent-2: #c79e5e;
+  --color-divider: rgba(243, 240, 234, 0.12);
+
+  --color-neutral-100: #1c1916;
+  --color-neutral-200: #25211d;
+  --color-neutral-300: #38332d;
+  --color-neutral-400: #544e46;
+  --color-neutral-500: #7a7368;
+  --color-neutral-600: #8c857a;
+  --color-neutral-700: #a8a094;
+  --color-neutral-800: #c9c2b6;
+  --color-neutral-900: #f3f0ea;
+
+  --color-accent-100: #2a2114;
+  --color-accent-200: #3a2c17;
+  --color-accent-300: #5c4624;
+  --color-accent-400: #86683a;
+  --color-accent-500: #b08a4a;
+  --color-accent-600: #c79e5e;
+  --color-accent-700: #d9b273;
+  --color-accent-800: #e6c994;
+  --color-accent-900: #f3e3c4;
+
+  /* A second, cooler accent for "AI-generated" markers (LLM quotes, live
+     token streaming), kept distinct from the gold used for tier/precedent
+     tags so the two kinds of callout stay separable. */
+  --color-info: #8fb0cc;
+  --color-info-soft: color-mix(in srgb, #8fb0cc 14%, transparent);
+
+  --color-success: #8fbf93;
+  --color-success-soft: color-mix(in srgb, #8fbf93 12%, transparent);
+  --color-danger: #e08a80;
+  --color-danger-soft: color-mix(in srgb, #e08a80 12%, transparent);
+
+  --font-indic: "Noto Serif Devanagari", "Noto Serif Tamil", "Noto Serif Telugu", "Noto Serif Kannada",
+    "Noto Serif Malayalam", "Noto Serif Bengali", "Noto Serif Gujarati", "Noto Serif Gurmukhi", "Noto Serif Oriya";
+  --font-heading: "Cormorant Garamond", var(--font-indic), Georgia, serif;
+  --font-heading-weight: 600;
+  --font-body: "Lora", var(--font-indic), Georgia, serif;
+
+  --space-1: 4.6px;
+  --space-2: 9.2px;
+  --space-3: 13.8px;
+  --space-4: 18.4px;
+  --space-5: 23px;
+  --space-6: 27.6px;
+  --space-8: 36.8px;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 7px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  /* Aliases so the app-specific classes further down re-theme automatically
+     without renaming every var() usage. */
+  --bg: var(--color-bg);
+  --panel: transparent;
+  --panel-2: var(--color-surface);
+  --border: var(--color-divider);
+  --border-strong: var(--color-divider);
+  --text: var(--color-text);
+  --text-dim: color-mix(in srgb, var(--color-text) 72%, transparent);
+  --text-faint: color-mix(in srgb, var(--color-text) 56%, transparent);
+  --gold: var(--color-accent);
+  --gold-soft: var(--color-accent-100);
+  --indigo: var(--color-info);
+  --indigo-2: var(--color-info);
+  --green: var(--color-success);
+  --green-soft: var(--color-success-soft);
+  --red: var(--color-danger);
+  --radius: var(--radius-lg);
+  --radius-sm-alias: var(--radius-md);
+  --shadow: var(--shadow-md);
+  --font-display: var(--font-heading);
+}
+
+/* Light "paper" scope for the printable resolution document: re-declares the
+   original light tokens AND the aliases (aliases are resolved where they are
+   declared, so they must be repeated here to pick up the light values). */
+.paper, .doc {
+  color-scheme: light;
   --color-bg: #f3f2f2;
   --color-surface: #eae9e9;
   --color-text: #201f1d;
+  --color-text-2: #4a4743;
+  --color-text-3: #6d6a65;
   --color-accent: #b68235;
   --color-accent-2: #ac803e;
   --color-divider: color-mix(in srgb, #201f1d 16%, transparent);
@@ -33,42 +128,13 @@
   --color-accent-800: #5a3b0a;
   --color-accent-900: #3a270d;
 
-  /* A second, cooler accent for "AI-generated" markers (LLM quotes, live
-     token streaming) -- distinct from the gold accent used for tier/precedent
-     tags, so the two kinds of callout stay visually separable. Not in the
-     original palette (which has no need for it); chosen to sit quietly
-     alongside the warm neutrals rather than clash with them. */
   --color-info: #46647d;
   --color-info-soft: color-mix(in srgb, #46647d 12%, transparent);
-
   --color-success: #4b7a4f;
   --color-success-soft: color-mix(in srgb, #4b7a4f 12%, transparent);
   --color-danger: #a1433a;
   --color-danger-soft: color-mix(in srgb, #a1433a 10%, transparent);
 
-  --font-heading: "Cormorant Garamond", system-ui, sans-serif;
-  --font-heading-weight: 600;
-  --font-body: "Lora", system-ui, sans-serif;
-
-  --space-1: 4.6px;
-  --space-2: 9.2px;
-  --space-3: 13.8px;
-  --space-4: 18.4px;
-  --space-6: 27.6px;
-  --space-8: 36.8px;
-
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 7px;
-
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
-  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
-  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
-
-  /* Aliases so the app-specific classes further down (ported from the old
-     dark theme) re-theme automatically without renaming every var() usage. */
-  --bg: var(--color-bg);
-  --panel: transparent;
   --panel-2: var(--color-surface);
   --border: var(--color-divider);
   --border-strong: var(--color-divider);
@@ -77,15 +143,9 @@
   --text-faint: color-mix(in srgb, var(--color-text) 55%, transparent);
   --gold: var(--color-accent);
   --gold-soft: var(--color-accent-100);
-  --indigo: var(--color-info);
-  --indigo-2: var(--color-info);
   --green: var(--color-success);
   --green-soft: var(--color-success-soft);
   --red: var(--color-danger);
-  --radius: var(--radius-lg);
-  --radius-sm-alias: var(--radius-md);
-  --shadow: var(--shadow-md);
-  --font-display: var(--font-heading);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -442,4 +502,38 @@ button { font-family: var(--font-body); cursor: pointer; border: none; backgroun
   .side { position: static; }
   .hero-grid-responsive { grid-template-columns: 1fr !important; }
   .metrics-grid-responsive { grid-template-columns: 1fr !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in, .agent-row { animation: none; transition: none; transform: none; }
+  .caret { animation: none; }
+}
+
+/* ---------- Top bar layout (was inline) ---------- */
+.topbar-actions { display: flex; align-items: center; gap: 16px; }
+.topbar-user { display: flex; align-items: center; gap: 16px; }
+.topbar-chip { border-left: 1px solid var(--color-divider); padding-left: 16px; }
+
+@media (max-width: 760px) {
+  .topbar-inner { height: auto; min-height: 60px; padding-block: 8px; flex-wrap: wrap; gap: 10px; }
+  .brand .tagline, .engine-badge, .user-name { display: none; }
+  .topbar-actions, .topbar-user { gap: 10px; flex-wrap: wrap; }
+  .topbar-chip { border-left: 0; padding-left: 0; }
+  .container { padding: 0 var(--space-4); }
+}
+
+/* Indic scripts: negative tracking and tight line-height break conjuncts */
+:root:not(:lang(en)) h1, :root:not(:lang(en)) h2, :root:not(:lang(en)) h3,
+:root:not(:lang(en)) h4, :root:not(:lang(en)) h5, :root:not(:lang(en)) h6 { letter-spacing: 0; line-height: 1.3; }
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+/* Small inline controls: keep the hit area at least 24px (WCAG 2.5.8) */
+.link-button { display: inline-block; padding: 6px 4px; }
+.back-link { padding-block: 6px; min-height: 32px; align-items: center; }
+@media (pointer: coarse) {
+  .btn, .link-button, .back-link, .password-toggle { min-height: 44px; }
+  .password-toggle { min-width: 44px; }
 }
