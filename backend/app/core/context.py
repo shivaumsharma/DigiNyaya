@@ -58,8 +58,18 @@ class RetrievedPrecedent(BaseModel):
     matched_signals: list[str] = Field(default_factory=list)
 
 
+class RetrievedStatute(BaseModel):
+    id: str
+    act: str
+    section: str
+    title: str
+    summary: str
+    matched_keywords: list[str] = Field(default_factory=list)
+
+
 class ResearchResult(BaseModel):
     precedents: list[RetrievedPrecedent] = Field(default_factory=list)
+    statutes: list[RetrievedStatute] = Field(default_factory=list)  # only filled when DIGINYAYA_STATUTE_GROUNDING is on
     corpus_size: int
     coverage_score: float  # 0..1 — how well the corpus covers this case
     coverage_label: str  # "strong" | "moderate" | "thin"
@@ -114,6 +124,7 @@ class ResolutionDoc(BaseModel):
     findings: list[str]
     order: list[str]
     cited_precedents: list[dict[str, str]]
+    cited_statutes: list[dict[str, str]] = Field(default_factory=list)  # only filled when DIGINYAYA_STATUTE_GROUNDING is on
     relief_amount: float
     relief_amount_display: str
     compliance_days: int

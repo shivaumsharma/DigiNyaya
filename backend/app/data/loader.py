@@ -116,3 +116,25 @@ def get_dispute_type(dispute_id: str) -> dict | None:
         if dt["id"] == dispute_id:
             return dt
     return None
+
+
+_STATUTE_REQUIRED = ("id", "act", "section", "title", "summary", "dispute_types", "keywords")
+
+
+def validate_statute(st: dict) -> tuple[bool, str]:
+    for f in _STATUTE_REQUIRED:
+        if f not in st or st[f] in (None, "", []):
+            return False, f"missing field '{f}'"
+    if not isinstance(st["dispute_types"], list) or not isinstance(st["keywords"], list):
+        return False, "dispute_types and keywords must be lists"
+    return True, "ok"
+
+
+@lru_cache(maxsize=1)
+def load_statutes() -> list[dict]:
+    """Bundled statutory provisions used by the optional statute-grounding feature
+    (DIGINYAYA_STATUTE_GROUNDING). The summaries are short neutral paraphrases written for orientation,
+    NOT statutory text, and have not been reviewed by a lawyer -- see docs/STATUTE_GROUNDING.md."""
+    with open(_DATA_DIR / "statutes.json", "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return [st for st in data if validate_statute(st)[0]]

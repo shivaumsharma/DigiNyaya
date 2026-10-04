@@ -12,6 +12,7 @@ import re
 from datetime import datetime, timedelta
 
 from .. import llm, rag
+from ..rag import statutes as statute_rag
 from ..core import confidence as confidence_module
 from ..core.context import CaseContext, ResolutionDoc
 from . import nlp
@@ -76,6 +77,13 @@ def findings_prompt(ctx: CaseContext) -> str:
         if dismissed
         else f"Outcome: relief of {nlp.inr(amount)} payable within {compliance_days} days."
     )
+    statutes = ctx.research.statutes if ctx.research and statute_rag.statute_grounding_enabled() else []
+    statute_line = (
+        "Statutory provisions retrieved (you may refer to ONLY these, by act and section; cite no other "
+        "statute): " + "; ".join(f"{st.act}, section {st.section} ({st.title})" for st in statutes) + "\n"
+        if statutes
+        else ""
+    )
     return (
         f"Draft the 'Findings' section of a {nlp.dispute_label(ctx.dispute_type)} resolution order as 3 to 4 "
         "numbered sentences. Neutral, formal, quasi-judicial tone. Use ONLY these facts; do not invent "
@@ -85,6 +93,7 @@ def findings_prompt(ctx: CaseContext) -> str:
         f"Evidence items: {len(ctx.evidence)}\n"
         f"Respondent responded: {'no, uncontested' if ctx.respondent_submission is None else 'yes'}\n"
         f"Leading precedent: {lead}\n"
+        f"{statute_line}"
         f"{outcome_line}"
     )
 
@@ -209,10 +218,17 @@ def finalize(
 
     engine = "scripted"
     findings = _scripted_findings(ctx, subtype, amount, compliance_days, dismissed=dismissed)
+    grounded_statutes = ctx.research.statutes if ctx.research and statute_rag.statute_grounding_enabled() else []
     if findings_text:
         parsed = _split(findings_text)
+        if grounded_statutes:
+            # a model may not introduce a statute the pipeline never retrieved; if that empties the findings,
+            # fall back to the deterministic scripted findings rather than ship an unverified citation
+            parsed = statute_rag.strip_unretrieved_section_mentions(parsed, grounded_statutes)
         if parsed:
             findings, engine = parsed, "llm"
+    if grounded_statutes:
+        findings = [*findings, statute_rag.statutes_sentence(grounded_statutes)]
 
     # Only a consensual (mediated) settlement carries binding, enforceable language.
     binding = via_mediation and not requires_signoff
@@ -297,6 +313,7 @@ def finalize(
         findings=findings,
         order=order,
         cited_precedents=cited,
+        cited_statutes=[{"citation": f"{st.act}, section {st.section}", "principle": st.summary} for st in grounded_statutes],
         relief_amount=amount,
         relief_amount_display=nlp.inr(amount),
         compliance_days=compliance_days,
@@ -362,5 +379,10 @@ def _split(text: str) -> list[str]:
     lines = [re.sub(r"^\s*(\d+[.)]|[-*•])\s*", "", line).strip() for line in text.splitlines() if line.strip()]
     lines = [line for line in lines if line]
     if len(lines) <= 1:
-        lines = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+        # split the text with any leading list number already stripped; splitting the raw text turned
+        # "1. The respondent..." into a stray "1." item plus the sentence
+        base = lines[0] if lines else text.strip()
+        lines = [s.strip() for s in re.split(r"(?<=[.!?])\s+", base) if s.strip()]
+    # a bare list marker ("1.", "2)") is never a finding
+    lines = [line for line in lines if not re.fullmatch(r"\d+[.)]?", line)]
     return lines[:5]
