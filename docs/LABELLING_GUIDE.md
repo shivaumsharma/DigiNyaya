@@ -108,12 +108,17 @@ the court also ordered something non-monetary of the same kind, even if an incid
 
 ## When you are finished
 
-Save as CSV (UTF-8), keep the same column order, and send it back named `labels_<yourname>.csv`. The project
-owner then runs:
+Save as CSV (UTF-8), keep the same column order, and send it back named `labels_<yourname>.csv` (the terminal
+labeller writes this file for you). The project owner then runs:
 
 ```
-python -m scripts.judge_human_agreement --labels labels_<name1>.csv labels_<name2>.csv --names <name1> <name2>
+python -m scripts.judge_human_agreement --labels labels_<name1>.csv labels_<name2>.csv --names <name1> <name2> --target-agreement 0.8
 ```
+
+It reports agreement and kappa for each labeller, the human-vs-human ceiling on cases you both labelled, and exact
+lower bounds on how well the judge agrees with a human. If two people labelled *different* halves of the sheet, add
+`--pool` to score the judge against the combined labels. Add `--disagreements <file>.csv` afterwards (never before
+labelling is finished) for the rows where a human and the judge differ.
 
 Your answers are used only for this agreement check and may be acknowledged in any resulting write-up if
 you wish; tell the project owner whether you do.

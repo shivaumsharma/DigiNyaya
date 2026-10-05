@@ -25,6 +25,14 @@ export default function ResolutionDoc({ doc, caseId, lang }) {
       lines.push(`  - ${c.citation}`)
       lines.push(`    ${c.principle}`)
     })
+    if (doc.cited_statutes?.length) {
+      lines.push('')
+      lines.push(t('resolutionDoc.txtCitedStatutes'))
+      doc.cited_statutes.forEach((c) => {
+        lines.push(`  - ${c.citation}`)
+        lines.push(`    ${c.principle}`)
+      })
+    }
     lines.push('')
     lines.push(t('resolutionDoc.txtOrder'))
     doc.order.forEach((o, i) => lines.push(`  ${i + 1}. ${o}`))
@@ -86,6 +94,18 @@ export default function ResolutionDoc({ doc, caseId, lang }) {
               </div>
             ))}
           </div>
+
+          {doc.cited_statutes?.length > 0 && (
+            <div className="doc-section">
+              <h4>{t('resolutionDoc.statutesTitle')}</h4>
+              {doc.cited_statutes.map((c, i) => (
+                <div className="doc-cite" key={i}>
+                  <div className="cc">{c.citation}</div>
+                  <div className="cp">{c.principle}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="doc-section">
             <h4>{t('resolutionDoc.orderTitle')}</h4>
