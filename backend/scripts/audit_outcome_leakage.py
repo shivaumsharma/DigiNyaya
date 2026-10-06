@@ -93,12 +93,14 @@ def amounts(text: str) -> set[int]:
 def audit_text(case: dict) -> dict:
     desc = case.get("case_description") or ""
     outcome = case.get("expected_outcome") or ""
-    hits = [name for name, rx in OUTCOME_PATTERNS.items() if rx.search(desc)]
+    matches = {name: m.group(0) for name, rx in OUTCOME_PATTERNS.items() if (m := rx.search(desc))}
+    hits = list(matches)
     echo = amounts(desc) & amounts(outcome)
     return {
         "case_id": case.get("case_id"),
         "category": case.get("category") or "unknown",
         "outcome_language": hits,
+        "matched_text": matches,
         "names_judge": bool(JUDGE_PATTERN.search(desc)),
         "amount_echo": sorted(echo),
     }
@@ -108,9 +110,24 @@ def rate(n: int, d: int) -> str:
     return f"{n}/{d} ({100 * n / d:.1f}%)" if d else "0/0"
 
 
+def _macro_f1(y_true: list[int], y_pred: list[int]) -> tuple[float, float, float]:
+    """(macro-F1, recall of class 1, recall of class 0)."""
+    f1s, recalls = [], []
+    for cls in (1, 0):
+        tp = sum(1 for t, p in zip(y_true, y_pred) if t == cls and p == cls)
+        fp = sum(1 for t, p in zip(y_true, y_pred) if t != cls and p == cls)
+        fn = sum(1 for t, p in zip(y_true, y_pred) if t == cls and p != cls)
+        prec = tp / (tp + fp) if tp + fp else 0.0
+        rec = tp / (tp + fn) if tp + fn else 0.0
+        f1s.append(2 * prec * rec / (prec + rec) if prec + rec else 0.0)
+        recalls.append(rec)
+    return sum(f1s) / 2, recalls[0], recalls[1]
+
+
 def description_only_cv(cases: list[dict], verdicts: dict[str, dict], folds: int = 5, seed: int = 7) -> dict | None:
-    """Cross-validated accuracy of a description-only classifier of claimant_prevailed_real vs the majority rate.
-    None when there is not enough labelled data or scikit-learn is missing."""
+    """Cross-validated performance of a description-only classifier of claimant_prevailed_real vs the majority rate,
+    and -- where the verdict rows carry the pipeline's own call (claimant_prevailed_ai) -- a paired comparison with
+    the pipeline on exactly the same cases. None when there is not enough labelled data or scikit-learn is missing."""
     try:
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.linear_model import LogisticRegression
@@ -118,21 +135,38 @@ def description_only_cv(cases: list[dict], verdicts: dict[str, dict], folds: int
         from sklearn.pipeline import make_pipeline
     except ImportError:
         return None
-    xs, ys = [], []
+    xs, ys, ai = [], [], []
     for c in cases:
         v = verdicts.get(c.get("case_id"))
         if v is None or v.get("claimant_prevailed_real") is None or not c.get("case_description"):
             continue
         xs.append(c["case_description"])
         ys.append(int(bool(v["claimant_prevailed_real"])))
+        ai.append(None if v.get("claimant_prevailed_ai") is None else int(bool(v["claimant_prevailed_ai"])))
     if len(xs) < 50 or len(set(ys)) < 2 or min(Counter(ys).values()) < folds:
         return None
     pipe = make_pipeline(TfidfVectorizer(ngram_range=(1, 2), min_df=2, sublinear_tf=True, max_features=50000),
                          LogisticRegression(max_iter=1000, C=1.0))
-    pred = cross_val_predict(pipe, xs, ys, cv=StratifiedKFold(folds, shuffle=True, random_state=seed))
+    pred = [int(p) for p in cross_val_predict(pipe, xs, ys, cv=StratifiedKFold(folds, shuffle=True, random_state=seed))]
     acc = sum(int(p == y) for p, y in zip(pred, ys)) / len(ys)
     majority = max(Counter(ys).values()) / len(ys)
-    return {"n": len(ys), "cv_accuracy": acc, "majority_rate": majority, "lift_over_majority": acc - majority}
+    f1, rec_claimant, rec_respondent = _macro_f1(ys, pred)
+    out = {"n": len(ys), "cv_accuracy": acc, "majority_rate": majority, "lift_over_majority": acc - majority,
+           "macro_f1": f1, "recall_claimant_wins": rec_claimant, "recall_respondent_wins": rec_respondent}
+    paired = [(y, p, a) for y, p, a in zip(ys, pred, ai) if a is not None]
+    if len(paired) >= 50:
+        from scripts.selective_guarantee import mcnemar_exact
+        ys_p, ai_p = [t[0] for t in paired], [t[2] for t in paired]
+        text_right_pipe_wrong = sum(1 for y, t, a in paired if t == y and a != y)
+        pipe_right_text_wrong = sum(1 for y, t, a in paired if a == y and t != y)
+        pf1, prec_c, prec_r = _macro_f1(ys_p, ai_p)
+        out["pipeline"] = {
+            "n": len(paired), "accuracy": sum(int(a == y) for y, _, a in paired) / len(paired), "macro_f1": pf1,
+            "recall_claimant_wins": prec_c, "recall_respondent_wins": prec_r,
+            "text_right_pipeline_wrong": text_right_pipe_wrong, "pipeline_right_text_wrong": pipe_right_text_wrong,
+            "mcnemar_p": mcnemar_exact(text_right_pipe_wrong, pipe_right_text_wrong),
+        }
+    return out
 
 
 def main() -> int:
@@ -189,7 +223,19 @@ def main() -> int:
     else:
         print(f"   n={cv['n']}  CV accuracy={100 * cv['cv_accuracy']:.1f}%  majority rate={100 * cv['majority_rate']:.1f}%  "
               f"lift={100 * cv['lift_over_majority']:+.1f} points")
+        print(f"   macro-F1={cv['macro_f1']:.3f}  recall when claimant wins={100 * cv['recall_claimant_wins']:.1f}%  "
+              f"recall when respondent wins={100 * cv['recall_respondent_wins']:.1f}%")
         print("   A lift of more than a few points means the description text alone predicts the real outcome.")
+        pl = cv.get("pipeline")
+        if pl:
+            print(f"\n   SAME {pl['n']} cases, DigiNyaya's pipeline vs this text-only classifier (winner = did the claimant prevail):")
+            print(f"     pipeline  accuracy={100 * pl['accuracy']:.1f}%  macro-F1={pl['macro_f1']:.3f}  "
+                  f"recall claimant-wins={100 * pl['recall_claimant_wins']:.1f}%  respondent-wins={100 * pl['recall_respondent_wins']:.1f}%")
+            print(f"     text-only accuracy={100 * cv['cv_accuracy']:.1f}%  macro-F1={cv['macro_f1']:.3f}  "
+                  f"recall claimant-wins={100 * cv['recall_claimant_wins']:.1f}%  respondent-wins={100 * cv['recall_respondent_wins']:.1f}%")
+            print(f"     text right & pipeline wrong: {pl['text_right_pipeline_wrong']}   pipeline right & text wrong: "
+                  f"{pl['pipeline_right_text_wrong']}   McNemar exact p = {pl['mcnemar_p']:.3g}")
+            print("     Report the pipeline against this baseline: it is cheap, needs no LLM, and reviewers will ask.")
 
     flagged = [r for r in rows if r["outcome_language"] or r["names_judge"]]
     if flagged:
@@ -197,9 +243,10 @@ def main() -> int:
         Path(args.flagged).parent.mkdir(parents=True, exist_ok=True)
         with open(args.flagged, "w", encoding="utf-8-sig", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["case_id", "category", "outcome_language", "names_judge", "case_description"])
+            w.writerow(["case_id", "category", "outcome_language", "matched_text", "names_judge", "case_description"])
             for r in flagged:
-                w.writerow([r["case_id"], r["category"], "; ".join(r["outcome_language"]), r["names_judge"],
+                w.writerow([r["case_id"], r["category"], "; ".join(r["outcome_language"]),
+                            " | ".join(f"{k}: {v}" for k, v in r["matched_text"].items()), r["names_judge"],
                             by_id.get(r["case_id"], {}).get("case_description", "")])
         print(f"\nWrote {len(flagged)} flagged row(s) for hand review -> {args.flagged}")
     print("\nRead this as: a high rate in 1 or 2 means the descriptions need regenerating or scrubbing before any "

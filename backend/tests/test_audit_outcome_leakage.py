@@ -94,6 +94,56 @@ class TestDescriptionOnlyPredictability(unittest.TestCase):
         self.assertIsNone(al.description_only_cv(cases, {c["case_id"]: {"claimant_prevailed_real": True} for c in cases}))
 
 
+class TestPairedComparisonWithThePipeline(unittest.TestCase):
+    def _data(self, pipeline_accuracy: float, n: int = 200):
+        rng = random.Random(11)
+        cases, verdicts = [], {}
+        for i in range(n):
+            won = i % 2 == 0
+            words = ["seller", "invoice", "payment", "notice"] * 5 + (["decreed", "granted"] * 3 if won else ["dismissed", "rejected"] * 3)
+            cases.append(_case(f"c{i}", " ".join(words)))
+            ai = won if rng.random() < pipeline_accuracy else (not won)
+            verdicts[f"c{i}"] = {"case_id": f"c{i}", "claimant_prevailed_real": won, "claimant_prevailed_ai": ai}
+        return cases, verdicts
+
+    def test_reports_macro_f1_recalls_and_a_paired_test(self):
+        try:
+            import sklearn  # noqa: F401
+        except ImportError:
+            self.skipTest("scikit-learn not installed")
+        cv = al.description_only_cv(*self._data(0.6))
+        self.assertIn("macro_f1", cv)
+        self.assertTrue(0.0 <= cv["recall_claimant_wins"] <= 1.0 and 0.0 <= cv["recall_respondent_wins"] <= 1.0)
+        pl = cv["pipeline"]
+        self.assertEqual(pl["n"], 200)
+        # the leaky text classifier is near-perfect and the pipeline is ~60% accurate: text should win clearly
+        self.assertGreater(pl["text_right_pipeline_wrong"], pl["pipeline_right_text_wrong"])
+        self.assertLess(pl["mcnemar_p"], 0.05)
+        self.assertAlmostEqual(pl["accuracy"], 0.6, delta=0.12)
+
+    def test_no_pipeline_block_when_verdicts_lack_the_pipelines_call(self):
+        try:
+            import sklearn  # noqa: F401
+        except ImportError:
+            self.skipTest("scikit-learn not installed")
+        cases, verdicts = self._data(0.6)
+        for v in verdicts.values():
+            v.pop("claimant_prevailed_ai")
+        self.assertNotIn("pipeline", al.description_only_cv(cases, verdicts))
+
+    def test_macro_f1_helper(self):
+        f1, rec1, rec0 = al._macro_f1([1, 1, 0, 0], [1, 1, 0, 0])
+        self.assertEqual((f1, rec1, rec0), (1.0, 1.0, 1.0))
+        f1, rec1, rec0 = al._macro_f1([1, 1, 1, 0], [1, 1, 1, 1])  # always predicts class 1
+        self.assertEqual((rec1, rec0), (1.0, 0.0))
+        self.assertLess(f1, 0.5)
+
+    def test_matched_text_records_the_triggering_phrase(self):
+        r = al.audit_text(_case("x", "The court decreed the suit in favour of the plaintiff."))
+        self.assertIn("court held/ordered", r["matched_text"])
+        self.assertTrue(r["matched_text"]["court held/ordered"].lower().startswith("the court decreed"))
+
+
 class TestCli(unittest.TestCase):
     def test_runs_end_to_end_and_writes_flagged_csv(self):
         cases = [

@@ -110,3 +110,15 @@ def fixed_sequence_threshold(confidences, correct, alpha: float, delta: float = 
     if best is None:
         return {"threshold": None, "coverage": 0.0, "kept": 0, "errors": 0, "empirical_risk": None, "risk_upper_bound": None}
     return best
+
+
+def mcnemar_exact(improved: int, worsened: int) -> float:
+    """Exact two-sided McNemar test on the discordant pairs of a paired comparison (A vs B on the SAME cases).
+
+    Only cases where the two disagree matter: under "no difference", `improved` ~ Binomial(improved + worsened, 0.5).
+    Returns the two-sided p-value (1.0 when nothing differs). The bootstrap interval says how big an effect is;
+    this says whether the direction could be luck."""
+    n = improved + worsened
+    if n == 0:
+        return 1.0
+    return min(1.0, 2.0 * binom_cdf(min(improved, worsened), n, 0.5))

@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, ".")
 
 from app.agents import nlp  # noqa: E402
-from scripts.selective_guarantee import binom_cdf  # noqa: E402
+from scripts.selective_guarantee import mcnemar_exact  # noqa: E402,F401  (re-exported)
 
 MONEY_CATEGORIES = {"small_claims_debt_recovery", "contract_disputes", "consumer_complaints", "tenancy_disputes"}
 GOOD = ("match", "partial", "mismatch")
@@ -99,19 +99,6 @@ def bootstrap_diff(pairs: list[tuple[int, int]], iters: int = 5000, seed: int = 
         diffs.append(sum(b - a for a, b in s) / n)
     diffs.sort()
     return diffs[int(0.025 * iters)], diffs[int(0.975 * iters)]
-
-
-def mcnemar_exact(improved: int, worsened: int) -> float:
-    """Exact two-sided McNemar test on the discordant pairs of a paired before/after comparison.
-
-    Only cases that CHANGED matter: under "the change did nothing", an improved case and a worsened case are
-    equally likely, so `improved` ~ Binomial(improved + worsened, 0.5). Returns the two-sided p-value (1.0 when
-    no case changed). Complements the bootstrap interval: the interval says how big the effect is, this says
-    whether the direction could be luck."""
-    n = improved + worsened
-    if n == 0:
-        return 1.0
-    return min(1.0, 2.0 * binom_cdf(min(improved, worsened), n, 0.5))
 
 
 def pct(x) -> str:
