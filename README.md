@@ -178,6 +178,8 @@ DigiNyaya/
 │       ├── audit_outcome_leakage.py  Does the eval corpus's case_description leak the outcome (phrasing, named judges, amount echo)?
 │       ├── narrative_sensitivity.py  Does how a side is written, rather than the merits, move the outcome? (deterministic pipeline)
 │       ├── split_eval_for_precedents.py  Stable hash split: held-out eval set vs precedent-source set, before any precedent is built
+│       ├── build_leakage_free_control.py  Rebuild a sample's inputs (description + signals) from PRE-DECISION text only
+│       ├── leakfree_control_report.py    Paired original-vs-control comparison (McNemar, bootstrap CIs, text-only baseline)
 │       └── smoke_http.py             End-to-end HTTP + SSE smoke test
 └── frontend/                React (Vite) — the live demo UI; TypeScript migration in progress
     └── src/
@@ -360,7 +362,9 @@ The headline numbers above rest on an LLM judge that has **not yet been checked 
 do that is in place: [`docs/LABELLING_GUIDE.md`](docs/LABELLING_GUIDE.md) and `scripts/label_cases.py` for the blind
 labelling, `scripts/judge_human_agreement.py` for kappa plus exact certified lower bounds on agreement,
 `scripts/audit_outcome_leakage.py` for whether the case descriptions give the outcome away, and
-`scripts/split_eval_for_precedents.py` to keep any future precedent corpus out of the evaluation. Until the labels are
+`scripts/split_eval_for_precedents.py` to keep any future precedent corpus out of the evaluation. The eval inputs were written
+by an LLM that could see each judgment's conclusion (the signal extractor passes the last 2,500 characters of every judgment), so
+[`docs/LEAKAGE_FREE_CONTROL.md`](docs/LEAKAGE_FREE_CONTROL.md) describes a control that rebuilds them from pre-decision text only. Until the labels are
 done, treat the judge-dependent figures as provisional.
 
 ## Document upload, OCR & discrepancy detection
