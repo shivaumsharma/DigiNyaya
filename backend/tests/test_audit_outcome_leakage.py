@@ -22,21 +22,42 @@ def _case(cid, desc, outcome="", cat="small_claims_debt_recovery"):
 
 
 class TestPhrases(unittest.TestCase):
-    def test_flags_result_revealing_language(self):
+    def test_flags_strong_result_revealing_language(self):
         for text in ("The court decreed the suit in favour of the plaintiff.",
-                     "The suit was dismissed for want of proof.",
                      "The appeal is partly allowed.",
-                     "The tenant is liable to pay arrears.",
                      "The court ordered the seller to refund the price.",
-                     "Judgment was pronounced on 4 May."):
-            self.assertTrue(al.audit_text(_case("x", text))["outcome_language"], text)
+                     "Judgment was pronounced on 4 May.",
+                     "A decree was passed in favour of the plaintiff.",
+                     "The suit was decreed with costs."):
+            r = al.audit_text(_case("x", text))
+            self.assertTrue(r["outcome_language"], text)
+
+    def test_ambiguous_phrasing_is_weak_not_strong(self):
+        """Regression: on the real corpus 'is entitled to' and 'in favour of the plaintiff' produced 98% of the
+        original 35.7% flag rate, almost all of it neutral facts or claims, not outcomes."""
+        for text in ("The plaintiff asserts that he is entitled to recover the loan.",
+                     "The tenant is liable to pay arrears under the lease.",
+                     "The defendant issued a cheque in favour of the plaintiff.",
+                     "The sale deed was executed in favour of the defendant.",
+                     "The earlier application was dismissed for default.",
+                     "The court held a hearing on 5 May.",
+                     "The claimant therefore approached the forum accordingly."):
+            r = al.audit_text(_case("x", text))
+            self.assertEqual(r["outcome_language"], [], text)
+
+    def test_weak_phrases_are_still_reported_separately(self):
+        r = al.audit_text(_case("x", "The plaintiff asserts that he is entitled to recover the loan."))
+        self.assertIn("entitled/liable", r["weak_language"])
+        r = al.audit_text(_case("x", "The defendant issued a cheque in favour of the plaintiff."))
+        self.assertIn("in favour of party", r["weak_language"])
 
     def test_does_not_flag_a_normal_claim_narrative(self):
         for text in ("The claimant paid Rs. 5,000 and seeks a decree for refund of that sum.",
                      "The respondent denies liability and says the goods were delivered.",
                      "The plaintiff filed a suit for recovery and relies on a promissory note.",
                      "The tenant argues the notice was invalid."):
-            self.assertEqual(al.audit_text(_case("x", text))["outcome_language"], [], text)
+            r = al.audit_text(_case("x", text))
+            self.assertEqual((r["outcome_language"], r["weak_language"]), ([], []), text)
 
     def test_detects_named_judges_including_the_real_leak_example(self):
         for text in ("The case was presented before the Principal Junior Civil Judge, presided over by Smt. K. Pooja.",
@@ -140,8 +161,8 @@ class TestPairedComparisonWithThePipeline(unittest.TestCase):
 
     def test_matched_text_records_the_triggering_phrase(self):
         r = al.audit_text(_case("x", "The court decreed the suit in favour of the plaintiff."))
-        self.assertIn("court held/ordered", r["matched_text"])
-        self.assertTrue(r["matched_text"]["court held/ordered"].lower().startswith("the court decreed"))
+        self.assertIn("court decreed/ordered", r["matched_text"])
+        self.assertTrue(r["matched_text"]["court decreed/ordered"].lower().startswith("the court decreed"))
 
 
 class TestCli(unittest.TestCase):
@@ -167,9 +188,43 @@ class TestCli(unittest.TestCase):
             with open(out, encoding="utf-8-sig", newline="") as f:
                 flagged = {r["case_id"]: r for r in csv.DictReader(f)}
         self.assertEqual(set(flagged), {"a", "c"})
-        self.assertIn("OUTCOME LANGUAGE", log)
+        self.assertIn("STRONG outcome language", log)
+        self.assertIn("WEAK / ambiguous language", log)
         self.assertIn("AMOUNT ECHO", log)
         self.assertIn("skipped", log)  # no verdicts file: predictability check is skipped, not crashed
+
+    def test_ablation_block_runs_and_reports_how_far_the_lift_moves(self):
+        try:
+            import sklearn  # noqa: F401
+        except ImportError:
+            self.skipTest("scikit-learn not installed")
+        rng = random.Random(5)
+        cases, verdicts = [], {}
+        for i in range(300):
+            won = i % 2 == 0
+            words = ["seller", "invoice", "payment", "notice", "refund", "delivery"] * 4
+            words += ["granted", "relief"] * 3 if won else ["rejected", "nothing"] * 3   # a signal NOT in the lexicon
+            text = " ".join(words)
+            if rng.random() < 0.3:
+                text += " The court ordered the parties to appear."   # strong phrase, unrelated to the outcome
+            cases.append(_case(f"c{i}", text))
+            verdicts[f"c{i}"] = {"case_id": f"c{i}", "claimant_prevailed_real": won, "claimant_prevailed_ai": won}
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "ds.json").write_text(json.dumps(cases), encoding="utf-8")
+            (d / "v.json").write_text(json.dumps(list(verdicts.values())), encoding="utf-8")
+            old_argv, old_stdout = sys.argv, sys.stdout
+            sys.argv = ["x", "--dataset", str(d / "ds.json"), "--verdicts", str(d / "v.json"), "--flagged", str(d / "f.csv")]
+            with open(d / "log.txt", "w", encoding="utf-8") as f:
+                sys.stdout = f
+                try:
+                    self.assertEqual(al.main(), 0)
+                finally:
+                    sys.stdout, sys.argv = old_stdout, old_argv
+            log = (d / "log.txt").read_text(encoding="utf-8")
+        self.assertIn("ABLATION", log)
+        self.assertIn("The lift moved by", log)
+        self.assertIn("McNemar", log)
 
     def test_missing_dataset_returns_error_code(self):
         old_argv, old_stdout = sys.argv, sys.stdout

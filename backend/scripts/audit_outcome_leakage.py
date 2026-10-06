@@ -7,14 +7,15 @@ in a way no pipeline improvement explains. ILDC (Malik et al., ACL 2021) deleted
 anonymised judge names for exactly this reason: their legal experts said a judge's identity can be a strong
 indicator of the outcome. This script measures four things, none of which need an LLM:
 
-  1. OUTCOME LANGUAGE   share of descriptions containing result-revealing phrasing ("decreed", "dismissed",
-                        "the court ordered", "is entitled to", ...), by category, with example matches.
+  1. OUTCOME LANGUAGE   share of descriptions containing STRONG result-revealing phrasing ("was decreed",
+                        "the court ordered", "partly allowed", ...), by category; ambiguous WEAK phrasing
+                        ("is entitled to", "in favour of the plaintiff") is reported separately, not as leakage.
   2. JUDGE / COURT      share of descriptions that name a judge or presiding officer (the sourcing prompt
                         explicitly allows this), by category.
   3. AMOUNT ECHO        share where a rupee figure from `expected_outcome` also appears verbatim in the
                         description. Not leakage by itself (a claim amount often equals the award), but it
                         inflates "relief within +/-20%" when the description simply states the figure.
-  4. DESCRIPTION-ONLY   if data_cache/real_judgment_verdict_comparison.json exists, a cross-validated
+  4. DESCRIPTION-ONLY   if data_cache/real_judgment_verdict_comparison_v2.json (or the older file) exists, a cross-validated
      PREDICTABILITY     TF-IDF logistic regression that sees ONLY the description and predicts whether the
                         claimant prevailed in the real judgment, against the majority-class rate. Accuracy
                         well above the majority rate means the text alone gives the answer away.
@@ -40,22 +41,38 @@ from pathlib import Path
 sys.path.insert(0, ".")
 
 DATA = Path(__file__).resolve().parent.parent / "data_cache"
-DEFAULT_VERDICTS = DATA / "real_judgment_verdict_comparison.json"
+DEFAULT_VERDICTS = (DATA / "real_judgment_verdict_comparison_v2.json"
+                    if (DATA / "real_judgment_verdict_comparison_v2.json").exists()
+                    else DATA / "real_judgment_verdict_comparison.json")
 
-# Result-revealing phrasing. Deliberately specific: a description may legitimately say "the claimant seeks
-# a decree", so bare "decree" is NOT here; "was decreed" / "the suit is dismissed" are.
-OUTCOME_PATTERNS: dict[str, re.Pattern] = {
+# Result-revealing phrasing, in two tiers because precision differs enormously. On the real corpus the first
+# version of this lexicon flagged 35.7% of descriptions, but 98% of that came from two broad patterns
+# ("is entitled to ...", "in favour of the plaintiff") that appear all the time in neutral statements of the
+# facts or the claim. So:
+#   STRONG  phrasing that almost only appears when stating what the court decided
+#   WEAK    phrasing that is ambiguous (claims, procedural history, facts) -- reported, but not treated as leakage
+# A description may legitimately say "the claimant seeks a decree", so bare "decree" is in neither tier.
+STRONG_PATTERNS: dict[str, re.Pattern] = {
     name: re.compile(rx, re.IGNORECASE)
     for name, rx in {
-        "was decreed": r"\b(?:was|is|stands?|been)\s+decreed\b|\bdecreed\s+(?:the|in favou?r)",
-        "dismissed": r"\b(?:was|is|stands?|been|were)\s+dismissed\b|\b(?:suit|appeal|complaint|claim|petition)\s+(?:is\s+|was\s+|stands\s+)?dismissed\b",
+        "was decreed": r"\b(?:was|is|stands?|been)\s+decreed\b|\bdecreed\s+(?:the|in\s+favou?r)",
         "allowed": r"\b(?:was|is|stands?|been)\s+(?:partly\s+|partially\s+)?allowed\b|\b(?:partly|partially)\s+allowed\b",
-        "court held/ordered": r"\b(?:the\s+)?(?:court|tribunal|forum|commission|judge)\s+(?:held|ordered|directed|awarded|decreed|found|concluded|ruled)\b",
-        "judgment for": r"\bjudg(?:e)?ment\s+(?:was\s+)?(?:passed|pronounced|rendered|given|entered)\b|\bin\s+favou?r\s+of\s+the\s+(?:plaintiff|claimant|complainant|defendant|respondent|tenant|landlord)\b",
+        "court decreed/ordered": r"\b(?:the\s+)?(?:court|tribunal|forum|commission|judge)\s+(?:decreed|awarded|ordered|directed|concluded|ruled)\b",
+        "judgment pronounced": r"\bjudg(?:e)?ment\s+(?:was\s+)?(?:passed|pronounced|rendered|entered)\b",
+        "decree in favour": r"\b(?:decree|judg(?:e)?ment)\s+(?:is\s+|was\s+)?(?:passed\s+|granted\s+)?in\s+favou?r\s+of\b",
+    }.items()
+}
+WEAK_PATTERNS: dict[str, re.Pattern] = {
+    name: re.compile(rx, re.IGNORECASE)
+    for name, rx in {
+        "dismissed": r"\b(?:was|is|stands?|been|were)\s+dismissed\b|\b(?:suit|appeal|complaint|claim|petition)\s+(?:is\s+|was\s+|stands\s+)?dismissed\b",
+        "court held/found": r"\b(?:the\s+)?(?:court|tribunal|forum|commission|judge)\s+(?:held|found)\b",
         "entitled/liable": r"\b(?:is|was|are|were)\s+(?:held\s+)?(?:entitled\s+to|liable\s+to\s+pay|directed\s+to\s+pay|ordered\s+to\s+pay)\b",
+        "in favour of party": r"\bin\s+favou?r\s+of\s+the\s+(?:plaintiff|claimant|complainant|defendant|respondent|tenant|landlord)\b",
         "accordingly": r"\baccordingly\b|\bthe\s+(?:final\s+)?(?:order|decision|verdict)\s+(?:was|is)\b",
     }.items()
 }
+OUTCOME_PATTERNS = {**STRONG_PATTERNS, **WEAK_PATTERNS}  # kept for callers that want every pattern
 
 # Names a judge or presiding officer (the sourcing prompt says "You MAY name the court and any judge").
 _TITLE = r"(?i:smt|shri|sri|mr|ms|dr)"
@@ -93,14 +110,15 @@ def amounts(text: str) -> set[int]:
 def audit_text(case: dict) -> dict:
     desc = case.get("case_description") or ""
     outcome = case.get("expected_outcome") or ""
-    matches = {name: m.group(0) for name, rx in OUTCOME_PATTERNS.items() if (m := rx.search(desc))}
-    hits = list(matches)
+    strong = {name: m.group(0) for name, rx in STRONG_PATTERNS.items() if (m := rx.search(desc))}
+    weak = {name: m.group(0) for name, rx in WEAK_PATTERNS.items() if (m := rx.search(desc))}
     echo = amounts(desc) & amounts(outcome)
     return {
         "case_id": case.get("case_id"),
         "category": case.get("category") or "unknown",
-        "outcome_language": hits,
-        "matched_text": matches,
+        "outcome_language": list(strong),
+        "weak_language": list(weak),
+        "matched_text": {**strong, **weak},
         "names_judge": bool(JUDGE_PATTERN.search(desc)),
         "amount_echo": sorted(echo),
     }
@@ -174,6 +192,7 @@ def main() -> int:
     ap.add_argument("--dataset")
     ap.add_argument("--verdicts", default=str(DEFAULT_VERDICTS))
     ap.add_argument("--flagged", default=str(DATA / "leakage_flagged.csv"))
+    ap.add_argument("--include-weak", action="store_true", help="also write rows that only have WEAK phrasing (large)")
     args = ap.parse_args()
 
     if args.dataset:
@@ -192,14 +211,18 @@ def main() -> int:
     for r in rows:
         by_cat[r["category"]].append(r)
 
-    print("1. OUTCOME LANGUAGE in case_description")
+    print("1a. STRONG outcome language in case_description (phrasing that states what the court decided)")
     leaked = [r for r in rows if r["outcome_language"]]
     print(f"   overall: {rate(len(leaked), n)}")
-    phrase_counts = Counter(h for r in rows for h in r["outcome_language"])
-    for name, k in phrase_counts.most_common():
+    for name, k in Counter(h for r in rows for h in r["outcome_language"]).most_common():
         print(f"     {name:22s} {rate(k, n)}")
     for cat, rs in sorted(by_cat.items(), key=lambda kv: -len(kv[1])):
         print(f"   {cat:34s} {rate(sum(1 for r in rs if r['outcome_language']), len(rs))}")
+    print("\n1b. WEAK / ambiguous language (often just the facts or the claim; reported, NOT counted as leakage)")
+    weak_rows = [r for r in rows if r["weak_language"]]
+    print(f"   overall: {rate(len(weak_rows), n)}")
+    for name, k in Counter(h for r in rows for h in r["weak_language"]).most_common():
+        print(f"     {name:22s} {rate(k, n)}")
 
     print("\n2. JUDGE / PRESIDING OFFICER named in case_description")
     judged = [r for r in rows if r["names_judge"]]
@@ -237,15 +260,28 @@ def main() -> int:
                   f"{pl['pipeline_right_text_wrong']}   McNemar exact p = {pl['mcnemar_p']:.3g}")
             print("     Report the pipeline against this baseline: it is cheap, needs no LLM, and reviewers will ask.")
 
-    flagged = [r for r in rows if r["outcome_language"] or r["names_judge"]]
+        strong_ids = {r["case_id"] for r in rows if r["outcome_language"] or r["names_judge"]}
+        clean_cases = [c for c in cases if c.get("case_id") not in strong_ids]
+        cv_clean = description_only_cv(clean_cases, verdicts)
+        print(f"\n   ABLATION: drop the {len(cases) - len(clean_cases)} descriptions with STRONG outcome language or a named judge, retrain:")
+        if cv_clean is None:
+            print("     skipped (too few labelled cases left)")
+        else:
+            print(f"     n={cv_clean['n']}  CV accuracy={100 * cv_clean['cv_accuracy']:.1f}%  majority rate={100 * cv_clean['majority_rate']:.1f}%  "
+                  f"lift={100 * cv_clean['lift_over_majority']:+.1f} points  macro-F1={cv_clean['macro_f1']:.3f}")
+            drop = cv["lift_over_majority"] - cv_clean["lift_over_majority"]
+            print(f"     The lift moved by {100 * drop:+.1f} points. If it barely moves, the baseline's edge is NOT coming from "
+                  "explicit result phrasing; if it collapses, those descriptions were giving the answer away.")
+
+    flagged = [r for r in rows if r["outcome_language"] or r["names_judge"] or (args.include_weak and r["weak_language"])]
     if flagged:
         by_id = {c.get("case_id"): c for c in cases}
         Path(args.flagged).parent.mkdir(parents=True, exist_ok=True)
         with open(args.flagged, "w", encoding="utf-8-sig", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["case_id", "category", "outcome_language", "matched_text", "names_judge", "case_description"])
+            w.writerow(["case_id", "category", "outcome_language", "weak_language", "matched_text", "names_judge", "case_description"])
             for r in flagged:
-                w.writerow([r["case_id"], r["category"], "; ".join(r["outcome_language"]),
+                w.writerow([r["case_id"], r["category"], "; ".join(r["outcome_language"]), "; ".join(r["weak_language"]),
                             " | ".join(f"{k}: {v}" for k, v in r["matched_text"].items()), r["names_judge"],
                             by_id.get(r["case_id"], {}).get("case_description", "")])
         print(f"\nWrote {len(flagged)} flagged row(s) for hand review -> {args.flagged}")
