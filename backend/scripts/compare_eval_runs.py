@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, ".")
 
 from app.agents import nlp  # noqa: E402
+from scripts.selective_guarantee import binom_cdf  # noqa: E402
 
 MONEY_CATEGORIES = {"small_claims_debt_recovery", "contract_disputes", "consumer_complaints", "tenancy_disputes"}
 GOOD = ("match", "partial", "mismatch")
@@ -100,6 +101,19 @@ def bootstrap_diff(pairs: list[tuple[int, int]], iters: int = 5000, seed: int = 
     return diffs[int(0.025 * iters)], diffs[int(0.975 * iters)]
 
 
+def mcnemar_exact(improved: int, worsened: int) -> float:
+    """Exact two-sided McNemar test on the discordant pairs of a paired before/after comparison.
+
+    Only cases that CHANGED matter: under "the change did nothing", an improved case and a worsened case are
+    equally likely, so `improved` ~ Binomial(improved + worsened, 0.5). Returns the two-sided p-value (1.0 when
+    no case changed). Complements the bootstrap interval: the interval says how big the effect is, this says
+    whether the direction could be luck."""
+    n = improved + worsened
+    if n == 0:
+        return 1.0
+    return min(1.0, 2.0 * binom_cdf(min(improved, worsened), n, 0.5))
+
+
 def pct(x) -> str:
     return "n/a" if x is None else f"{100 * x:5.1f}%"
 
@@ -151,6 +165,10 @@ def main() -> int:
     lo, hi = bootstrap_diff(pairs)
     print(f"\nPaired full-match: {up} cases improved, {down} worsened, {len(pairs) - up - down} unchanged; "
           f"net {100 * (up - down) / len(pairs):+.1f}pt, bootstrap 95% CI [{100 * lo:+.1f}, {100 * hi:+.1f}]pt")
+    p_mcnemar = mcnemar_exact(up, down)
+    print(f"McNemar exact test on the {up + down} cases that changed: p = {p_mcnemar:.3g} "
+          f"({'unlikely to be luck' if p_mcnemar < 0.05 else 'could be luck'}; this says nothing about whether the "
+          "judge is right or whether the change was tuned on these same cases)")
     dir_changed = sum(
         b["claimant_prevailed_ai"] != a["claimant_prevailed_ai"] for b, a in zip(b_rows, a_rows)
     )
@@ -191,7 +209,7 @@ def main() -> int:
     if args.out:
         Path(args.out).write_text(json.dumps({
             "before": sb, "after": sa, "amount_before": ab, "amount_after": aa,
-            "paired": {"improved": up, "worsened": down, "n": len(pairs), "ci95_pt": [100 * lo, 100 * hi]},
+            "paired": {"improved": up, "worsened": down, "n": len(pairs), "ci95_pt": [100 * lo, 100 * hi], "mcnemar_exact_p": p_mcnemar},
             "leakage_check": {"parsed": pr, "extracted": er},
         }, indent=2), encoding="utf-8")
     return 0
