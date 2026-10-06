@@ -223,6 +223,8 @@ class TestCli(unittest.TestCase):
                     sys.stdout, sys.argv = old_stdout, old_argv
             log = (d / "log.txt").read_text(encoding="utf-8")
         self.assertIn("ABLATION", log)
+        self.assertIn("Does the pipeline's own headline lean on the flagged cases?", log)
+        self.assertIn("clean (no strong cue, no named judge)", log)
         self.assertIn("The lift moved by", log)
         self.assertIn("McNemar", log)
 

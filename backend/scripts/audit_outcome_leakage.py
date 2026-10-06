@@ -261,6 +261,17 @@ def main() -> int:
             print("     Report the pipeline against this baseline: it is cheap, needs no LLM, and reviewers will ask.")
 
         strong_ids = {r["case_id"] for r in rows if r["outcome_language"] or r["names_judge"]}
+        print("\n   Does the pipeline's own headline lean on the flagged cases? (winner accuracy and full-match rate)")
+        for label, keep in (("clean (no strong cue, no named judge)", lambda cid: cid not in strong_ids),
+                            ("flagged (strong cue or named judge)", lambda cid: cid in strong_ids)):
+            sub = [v for cid, v in verdicts.items()
+                   if keep(cid) and v.get("claimant_prevailed_ai") is not None and v.get("claimant_prevailed_real") is not None]
+            if sub:
+                acc = sum(1 for v in sub if bool(v["claimant_prevailed_ai"]) == bool(v["claimant_prevailed_real"])) / len(sub)
+                match = sum(1 for v in sub if v.get("verdict") == "match") / len(sub)
+                print(f"     {label:40s} n={len(sub):6d}  winner accuracy={100 * acc:5.1f}%  full match={100 * match:5.1f}%")
+            else:
+                print(f"     {label:40s} no judged cases")
         clean_cases = [c for c in cases if c.get("case_id") not in strong_ids]
         cv_clean = description_only_cv(clean_cases, verdicts)
         print(f"\n   ABLATION: drop the {len(cases) - len(clean_cases)} descriptions with STRONG outcome language or a named judge, retrain:")
