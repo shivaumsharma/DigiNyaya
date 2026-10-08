@@ -446,6 +446,7 @@
     "basisText": "This order is passed {{basis}}, in the matter concerning a claim of {{amount}}.",
     "findingsTitle": "Findings",
     "precedentsTitle": "Precedents Relied Upon",
+    "statutesTitle": "Statutory Provisions Considered",
     "orderTitle": "Operative Order",
     "download": "Download resolution order",
     "binding": "Binding",
@@ -458,6 +459,7 @@
     "txtBasisPrefix": "Basis: Resolution",
     "txtFindings": "FINDINGS",
     "txtCitedPrecedents": "CITED PRECEDENTS",
+    "txtCitedStatutes": "STATUTORY PROVISIONS CONSIDERED",
     "txtOrder": "ORDER",
     "txtComplianceDeadline": "Compliance deadline:"
   }

@@ -8,7 +8,9 @@ Analysis agent when coverage is thin) it broadens the query.
 from __future__ import annotations
 
 from .. import rag
-from ..core.context import CaseContext, ResearchResult, RetrievedPrecedent
+from ..rag import statutes as statute_rag
+from ..core.context import CaseContext, ResearchResult, RetrievedPrecedent, RetrievedStatute
+from ..data.loader import precedent_category
 from . import nlp
 from .base import AgentResult
 
@@ -28,11 +30,18 @@ def run(ctx: CaseContext) -> AgentResult:
         query = f"{label} {subtype} {' '.join(signals)}"
         k = 7
 
-    res = rag.retrieve(query, signals, category=ctx.dispute_type, k=k)
+    res = rag.retrieve(query, signals, category=precedent_category(ctx.dispute_type), k=k)
 
     precedents = [RetrievedPrecedent(**p) for p in res["precedents"]]
+    statutes = (
+        [RetrievedStatute(**st) for st in statute_rag.retrieve_statutes(
+            ctx.dispute_type, f"{ing.dispute_subtype if ing else ''} {ctx.description}")]
+        if statute_rag.statute_grounding_enabled()
+        else []
+    )
     result = ResearchResult(
         precedents=precedents,
+        statutes=statutes,
         corpus_size=res["corpus_size"],
         coverage_score=res["coverage_score"],
         coverage_label=res["coverage_label"],
@@ -46,6 +55,7 @@ def run(ctx: CaseContext) -> AgentResult:
         f"Searched {res['corpus_size']} judgments via {method_label}{retry_note}. "
         f"Retrieved {len(precedents)} precedents · coverage: {res['coverage_label']}. "
         + (f"Top match: {precedents[0].title} ({precedents[0].relevance}%)." if precedents else "")
+        + (f" Statutes considered: {', '.join(st.act + ' s.' + st.section for st in statutes)}." if statutes else "")
     )
     return AgentResult(
         output=result,

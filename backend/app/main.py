@@ -43,7 +43,7 @@ from .core.logging import configure_app_logging
 from .core.versioning import ApiVersionRewriteMiddleware
 from .routers.documents import router as documents_router
 from .routers.reviews import router as reviews_router
-from .data.loader import DISPUTE_TYPES, get_dispute_type, load_precedents
+from .data.loader import get_dispute_type, list_dispute_types, load_precedents
 from .language.config import (
     SUPPORTED_LANGUAGES,
     config as language_config,
@@ -182,6 +182,85 @@ SAMPLE_CLAIMS = {
             ),
             "accepts_liability": False,
             "counter_offer": 0,
+        },
+    },
+    "tenancy_dispute": {
+        "claim": {
+            "claimant_name": "Meera Iyer",
+            "respondent_name": "Sanjay Kulkarni",
+            "dispute_type": "tenancy_dispute",
+            "claim_amount": 60000,
+            "description": (
+                "I let my flat to Sanjay Kulkarni under a written rent agreement dated 01/04/2023 at "
+                "Rs. 12,000 per month. He has not paid rent for the five months from 01/08/2023 to "
+                "31/12/2023 and vacated on 31/12/2023. I have sent him two written reminders. I am "
+                "seeking the unpaid rent of Rs. 60,000."
+            ),
+            "evidence": [
+                {"filename": "rent_agreement.pdf", "kind": "agreement", "note": "Registered rent agreement"},
+                {"filename": "rent_ledger.pdf", "kind": "statement", "note": "Rent received until July 2023"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "The security deposit of Rs. 36,000 should be adjusted against the rent. I have "
+                "paid up to July and the flat needed repairs that I was not told about."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 24000,
+        },
+    },
+    "property_dispute": {
+        "claim": {
+            "claimant_name": "Ravi Deshmukh",
+            "respondent_name": "Prakash Joshi",
+            "dispute_type": "property_dispute",
+            "claim_amount": 40000,
+            "description": (
+                "My neighbour Prakash Joshi built a compound wall in March 2024 about two feet inside "
+                "the boundary of my plot as shown in the survey sketch. I asked him several times to "
+                "correct it. I am seeking removal of the encroachment and Rs. 40,000 for the cost of "
+                "rebuilding my boundary wall."
+            ),
+            "evidence": [
+                {"filename": "survey_sketch.pdf", "kind": "map", "note": "Municipal survey sketch"},
+                {"filename": "wall_photos.png", "kind": "photo", "note": "Photographs of the new wall"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "The wall is on my side of the line shown on my own sale deed. The sketch relied on "
+                "is old and I will not remove anything."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 0,
+        },
+    },
+    "employment_dispute": {
+        "claim": {
+            "claimant_name": "Neha Kapoor",
+            "respondent_name": "BrightPath Solutions Pvt. Ltd.",
+            "dispute_type": "employment_dispute",
+            "claim_amount": 135000,
+            "description": (
+                "I worked at BrightPath Solutions from 02/01/2022 until I resigned on 28/02/2024 after "
+                "giving one month's notice. My salary of Rs. 45,000 per month for December 2023, "
+                "January 2024 and February 2024 was never paid, and the full and final settlement was "
+                "not issued. I am seeking the unpaid salary of Rs. 1,35,000."
+            ),
+            "evidence": [
+                {"filename": "offer_letter.pdf", "kind": "agreement", "note": "Offer letter with salary"},
+                {"filename": "salary_slips.pdf", "kind": "statement", "note": "Slips up to November 2023"},
+                {"filename": "resignation_email.png", "kind": "screenshot", "note": "Resignation and acceptance"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "Salary was withheld because company laptop and documents were not returned on time. "
+                "We are willing to settle after verification."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 90000,
         },
     },
     "cheque_bounce": {
@@ -376,7 +455,7 @@ def ai_status():
 
 @app.get("/api/dispute-types")
 def dispute_types():
-    return DISPUTE_TYPES
+    return list_dispute_types()
 
 
 # LLM-cost-bearing endpoints -- see auth.rate_limit.enforce_call_limit's
@@ -492,6 +571,11 @@ def export_my_data(user: User = Depends(current_user)):
 @app.post("/api/cases")
 def create_case(submission: ClaimSubmission, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
     enforce_call_limit(auth_db, user.id, "create_case", limit=_CREATE_CASE_LIMIT, window=_CREATE_CASE_WINDOW)
+    chosen = get_dispute_type(submission.dispute_type.value)
+    if chosen is not None and not chosen["active"]:
+        # Preview categories are listed on the roadmap but not open for filing until they are switched on
+        # (DIGINYAYA_ENABLE_PREVIEW_TYPES) -- enforced here, not just by the disabled card in the UI.
+        raise HTTPException(status_code=422, detail=f"'{chosen['label']}' is not open for filing yet.")
     case_id = "DN-" + datetime.utcnow().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
     tier, tier_label = _tier_for(submission.dispute_type.value)
     gw = get_language_gateway()

@@ -169,6 +169,17 @@ DigiNyaya/
 │       ├── translate_ui_strings.py   Regenerates one locale file from en.json via Sarvam
 │       ├── fill_missing_translations.py  Incrementally fills only the KEYS a locale file is missing
 │       ├── load_test.py              Concurrency/latency load testing + real-pipeline usage generation
+│       ├── label_cases.py            Terminal labeller for the blind human-label sheet (resumable, never reads the judge key)
+│       ├── judge_human_agreement.py  Judge-vs-human agreement: kappa, bootstrap CIs, exact certified lower bounds,
+│       │                             per-verdict strata, pooled labellers, --target-agreement
+│       ├── selective_guarantee.py    Exact binomial bounds + fixed-sequence threshold calibration (Trust or Escalate, ICLR 2025)
+│       ├── check_label_key.py        Is the label key still produced by the CURRENT judge? (judge-hash check)
+│       ├── summarise_spot_checks.py  Summarise saved manual spot-check runs
+│       ├── audit_outcome_leakage.py  Does the eval corpus's case_description leak the outcome (phrasing, named judges, amount echo)?
+│       ├── narrative_sensitivity.py  Does how a side is written, rather than the merits, move the outcome? (deterministic pipeline)
+│       ├── split_eval_for_precedents.py  Stable hash split: held-out eval set vs precedent-source set, before any precedent is built
+│       ├── build_leakage_free_control.py  Rebuild a sample's inputs (description + signals) from PRE-DECISION text only
+│       ├── leakfree_control_report.py    Paired original-vs-control comparison (McNemar, bootstrap CIs, text-only baseline)
 │       └── smoke_http.py             End-to-end HTTP + SSE smoke test
 └── frontend/                React (Vite) — the live demo UI; TypeScript migration in progress
     └── src/
@@ -233,6 +244,11 @@ and then streams live — so the demo resumes correctly even if you reload mid-r
 
 - **Tier 1 — fully autonomous**: `consumer_dispute` only.
 - **Tier 2 — AI-drafted, requires human counter-signature**: `money_recovery`, `contract_breach`, `cheque_bounce`.
+- **Preview types (registered, not open for filing)**: `tenancy_dispute`, `property_dispute`, `employment_dispute`.
+  They have their own labels, evidence guidance and safety-gate registration but deliberately *behave exactly like*
+  the type the real-judgment eval already maps them to (tests prove identical decisions), and there are no precedents
+  of their own yet. They show as "roadmap" and filing returns 422 until `DIGINYAYA_ENABLE_PREVIEW_TYPES=1`. See
+  [`docs/CIVIL_EXPANSION.md`](docs/CIVIL_EXPANSION.md) for what is and is not done.
 - Anything else, or anything matching a criminal/out-of-scope keyword, is rejected by the safety gate before any agent runs.
 
 ### Safety gate (`app/core/safety_gate.py`)
@@ -331,6 +347,25 @@ engine is active.
 | `DIGINYAYA_INDIANKANOON_TOKEN` | — | Only needed for `scripts/ingest_judgments.py` (billed per call); not required to run the app |
 
 ---
+
+## Optional flags (all off by default)
+
+| Variable | Effect |
+| --- | --- |
+| `DIGINYAYA_STATUTE_GROUNDING=1` | Research also retrieves up to 3 statutory provisions for the dispute type; findings gain one deterministic sentence naming them and `cited_statutes` is added to the resolution (and shown in the UI when present). Any "Section N" the model mentions that was not retrieved is dropped. Never touches amounts or routing. **The statute summaries are unreviewed paraphrases — see [`docs/STATUTE_GROUNDING.md`](docs/STATUTE_GROUNDING.md) before turning this on for real users.** |
+| `DIGINYAYA_ENABLE_PREVIEW_TYPES=1` | Opens the tenancy / property / employment preview types for filing (see [`docs/CIVIL_EXPANSION.md`](docs/CIVIL_EXPANSION.md)). |
+| `DIGINYAYA_EVAL_NATIVE_TYPES=1` | Eval scripts only: score tenancy / employment / property cases under their native types instead of the approximations. Must not change any decision; it exists to prove that on real data. |
+
+## Validating the evaluation
+
+The headline numbers above rest on an LLM judge that has **not yet been checked against human labels**. The tooling to
+do that is in place: [`docs/LABELLING_GUIDE.md`](docs/LABELLING_GUIDE.md) and `scripts/label_cases.py` for the blind
+labelling, `scripts/judge_human_agreement.py` for kappa plus exact certified lower bounds on agreement,
+`scripts/audit_outcome_leakage.py` for whether the case descriptions give the outcome away, and
+`scripts/split_eval_for_precedents.py` to keep any future precedent corpus out of the evaluation. The eval inputs were written
+by an LLM that could see each judgment's conclusion (the signal extractor passes the last 2,500 characters of every judgment), so
+[`docs/LEAKAGE_FREE_CONTROL.md`](docs/LEAKAGE_FREE_CONTROL.md) describes a control that rebuilds them from pre-decision text only. Until the labels are
+done, treat the judge-dependent figures as provisional.
 
 ## Document upload, OCR & discrepancy detection
 

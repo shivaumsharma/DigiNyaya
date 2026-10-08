@@ -102,6 +102,19 @@ CATEGORY_TO_DISPUTE_TYPE = {
     "cheque_bounce": "cheque_bounce",
 }
 
+# Opt-in: score tenancy / employment / property cases under their own NATIVE dispute types instead of the
+# approximations above. Phase 1 of the civil expansion makes the native types behave EXACTLY like the types
+# they are mapped to here (app/data/loader.py "behaves_as"), so flipping this on must not change any
+# decision -- tests/test_civil_expansion.py proves that. Off by default so the published baseline stays
+# comparable; turn it on to confirm equivalence on real data, and later to measure native precedents (phase 2).
+NATIVE_CATEGORY_TO_DISPUTE_TYPE = {
+    "tenancy_disputes": "tenancy_dispute",
+    "employment_disputes": "employment_dispute",
+    "property_neighbor_disputes": "property_dispute",
+}
+if os.environ.get("DIGINYAYA_EVAL_NATIVE_TYPES", "").strip().lower() in {"1", "true", "yes", "on"}:
+    CATEGORY_TO_DISPUTE_TYPE.update(NATIVE_CATEGORY_TO_DISPUTE_TYPE)
+
 EXPECTED_CONDITION_BY_CATEGORY = {
     "escalation__criminal_matter": "criminal_matter_detected",
     "escalation__jurisdiction_mismatch": "jurisdiction_scope_mismatch",

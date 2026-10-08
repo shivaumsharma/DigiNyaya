@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, ".")
 
 from app.agents import nlp  # noqa: E402
+from scripts.selective_guarantee import mcnemar_exact  # noqa: E402,F401  (re-exported)
 
 MONEY_CATEGORIES = {"small_claims_debt_recovery", "contract_disputes", "consumer_complaints", "tenancy_disputes"}
 GOOD = ("match", "partial", "mismatch")
@@ -151,6 +152,10 @@ def main() -> int:
     lo, hi = bootstrap_diff(pairs)
     print(f"\nPaired full-match: {up} cases improved, {down} worsened, {len(pairs) - up - down} unchanged; "
           f"net {100 * (up - down) / len(pairs):+.1f}pt, bootstrap 95% CI [{100 * lo:+.1f}, {100 * hi:+.1f}]pt")
+    p_mcnemar = mcnemar_exact(up, down)
+    print(f"McNemar exact test on the {up + down} cases that changed: p = {p_mcnemar:.3g} "
+          f"({'unlikely to be luck' if p_mcnemar < 0.05 else 'could be luck'}; this says nothing about whether the "
+          "judge is right or whether the change was tuned on these same cases)")
     dir_changed = sum(
         b["claimant_prevailed_ai"] != a["claimant_prevailed_ai"] for b, a in zip(b_rows, a_rows)
     )
@@ -191,7 +196,7 @@ def main() -> int:
     if args.out:
         Path(args.out).write_text(json.dumps({
             "before": sb, "after": sa, "amount_before": ab, "amount_after": aa,
-            "paired": {"improved": up, "worsened": down, "n": len(pairs), "ci95_pt": [100 * lo, 100 * hi]},
+            "paired": {"improved": up, "worsened": down, "n": len(pairs), "ci95_pt": [100 * lo, 100 * hi], "mcnemar_exact_p": p_mcnemar},
             "leakage_check": {"parsed": pr, "extracted": er},
         }, indent=2), encoding="utf-8")
     return 0

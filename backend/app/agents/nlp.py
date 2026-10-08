@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+from ..data.loader import effective_type
+
 # Maps a domain signal -> trigger phrases that may appear in free text.
 SIGNAL_LEXICON: dict[str, list[str]] = {
     # "not deliver"/"never deliver" alone stopped matching real text once
@@ -86,6 +88,9 @@ DISPUTE_TYPE_PROMPT_LABELS: dict[str, str] = {
     "money_recovery": "money recovery / loan repayment dispute",
     "contract_breach": "breach of contract dispute",
     "cheque_bounce": "cheque bounce (dishonoured cheque) dispute",
+    "tenancy_dispute": "tenancy / rent dispute",
+    "property_dispute": "property / neighbour dispute",
+    "employment_dispute": "employment / unpaid wages dispute",
 }
 
 
@@ -121,7 +126,7 @@ def monetary_relief_phrase(relief_kind: str, dispute_type: str) -> str:
     outstanding debt" is the correct framing for money_recovery/
     cheque_bounce, where the claimant is a creditor collecting a debt, not a
     buyer being refunded."""
-    table = _DEBT_RECOVERY_RELIEF_PHRASES if dispute_type in _DEBT_RECOVERY_DISPUTE_TYPES else _MONETARY_RELIEF_PHRASES
+    table = _DEBT_RECOVERY_RELIEF_PHRASES if effective_type(dispute_type) in _DEBT_RECOVERY_DISPUTE_TYPES else _MONETARY_RELIEF_PHRASES
     return table.get(relief_kind, relief_kind.replace("_", " "))
 
 

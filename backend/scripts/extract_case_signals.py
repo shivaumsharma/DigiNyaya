@@ -58,16 +58,9 @@ _RETRY_BACKOFF_SECONDS = 35.0  # just over CircuitBreaker.COOLDOWN_SECONDS (30s)
 CACHE_DIR = Path(__file__).resolve().parent.parent / "data_cache" / "indiankanoon"
 
 
-def extract_signals(case: dict) -> dict | None:
-    docid = case["source"]["docid"]
-    cache_file = CACHE_DIR / f"{docid}.json"
-    if not cache_file.exists():
-        return None
-    doc = json.loads(cache_file.read_text(encoding="utf-8"))
-    body = html_to_text(doc.get("doc", ""))
-    if len(body) < 200:
-        return None
-
+def build_signals_prompt(window_text: str) -> str:
+    """The signal-extraction prompt for a given slice of judgment text. Split out so the leakage-free control
+    (scripts/build_leakage_free_control.py) can run the IDENTICAL prompt on pre-decision text only."""
     schema = (
         "{"
         '"claimant_evidence_count": <int 0-5, distinct evidence items/documents/witnesses the '
@@ -108,8 +101,22 @@ def extract_signals(case: dict) -> dict | None:
         "Read this Indian court judgment's FACTS AND ARGUMENTS ONLY -- ignore and do not reference "
         "the court's holding, conclusion, or final order anywhere in your answer. Extract what each "
         "side argued BEFORE the court decided. Return JSON only, matching this schema: "
-        f"{schema}\n\nJUDGMENT TEXT:\n{_window(body)}"
+        f"{schema}\n\nJUDGMENT TEXT:\n{window_text}"
     )
+    return prompt
+
+
+def extract_signals(case: dict) -> dict | None:
+    docid = case["source"]["docid"]
+    cache_file = CACHE_DIR / f"{docid}.json"
+    if not cache_file.exists():
+        return None
+    doc = json.loads(cache_file.read_text(encoding="utf-8"))
+    body = html_to_text(doc.get("doc", ""))
+    if len(body) < 200:
+        return None
+
+    prompt = build_signals_prompt(_window(body))
     # max_tokens=2000, not 4096: this resolves to the fast-tier model
     # (sarvam_fast_model), and Sarvam's newer sarvam-105b-conversations --
     # the replacement for the now-deprecated sarvam-30b -- caps max_tokens
