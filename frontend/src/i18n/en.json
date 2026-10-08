@@ -143,19 +143,19 @@
       "body": "So the rational move on a routine dispute is to give up. That is not a backlog problem. It is an entire class of claims that never enters the justice system at all — and therefore never appears in any pendency statistic.",
       "stats": [
         {
-          "value": "4.2 Cr+",
-          "label": "Cases pending in India's district courts"
+          "value": "5.2 Cr",
+          "label": "Cases pending in India's district and taluka courts (civil and criminal)"
         },
         {
-          "value": "33%",
-          "label": "Of that docket has been pending over 5 years — 15% for over a decade"
+          "value": "25%",
+          "label": "Of those cases have been pending over 5 years — 9% for over a decade"
         },
         {
-          "value": "₹50,000+",
-          "label": "Typical cost of counsel — routinely more than the amount in dispute"
+          "value": "₹1,746",
+          "label": "Average wages or business income a litigant loses for each day at a lower-court hearing, separate from any lawyer's fee"
         }
       ],
-      "source": "Sources: National Judicial Data Grid, district court pendency & age-of-pendency breakdown, 2025–26."
+      "source": "Sources: National Judicial Data Grid, district and taluka courts, civil and criminal, updated 21 July 2026; DAKSH Access to Justice Survey, 2015–16 (the lost-income figure is a decade old)."
     },
     "router": {
       "label": "Describe your dispute in one line and see where it goes",

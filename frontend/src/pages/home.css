@@ -214,7 +214,8 @@
 .dn-stat3 { padding: 36px 32px 0 0; display: flex; flex-direction: column; gap: 14px; }
 .dn-bignum { font-family: var(--font-heading); font-size: clamp(52px, 7.5vw, 120px); line-height: 0.9; color: var(--dn-acc); letter-spacing: -0.02em; }
 .dn-stat3-l { font-size: 16px; line-height: 1.5; color: var(--dn-ink2); max-width: 30ch; }
-.dn-source { font-size: 12px; color: var(--dn-ink3); margin-top: 40px; }
+.dn-source { font-size: 12px; line-height: 1.6; color: var(--dn-ink3); margin-top: 40px; max-width: 90ch; }
+.dn-source a { color: var(--dn-acc); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- About ---------- */
 .dn-about { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: clamp(32px, 7vw, 120px); align-items: center; }

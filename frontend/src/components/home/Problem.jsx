@@ -28,7 +28,16 @@ export default function Problem() {
           </div>
         ))}
       </div>
-      <div className="dn-source">{t('landing.problem.source')}</div>
+      <div className="dn-source">
+        {t('landing.problem.source')}{' '}
+        <a href="https://njdg.ecourts.gov.in/njdg_v3/" target="_blank" rel="noopener noreferrer">
+          NJDG
+        </a>
+        {' · '}
+        <a href="https://www.dakshindia.org/access-to-justice-survey/" target="_blank" rel="noopener noreferrer">
+          DAKSH
+        </a>
+      </div>
     </section>
   )
 }
