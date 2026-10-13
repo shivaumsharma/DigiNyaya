@@ -232,3 +232,56 @@ class BatchCheckTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PilotExtractabilityTests(unittest.TestCase):
+    def setUp(self):
+        from scripts import pilot_extractability as pe
+
+        self.pe = pe
+
+    def test_classify_text_statuses(self):
+        self.assertEqual(self.pe.classify_text(None)["status"], "no_text_or_member")
+        self.assertEqual(self.pe.classify_text("short")["status"], "text_under_200")
+        long_text = "The suit is decreed. " + "x " * 200
+        row = self.pe.classify_text(long_text)
+        self.assertEqual(row["status"], "ok")
+        self.assertTrue(row["decision_words"])
+        self.assertFalse(row["criminal_terms"])
+        self.assertTrue(self.pe.classify_text("The accused sought bail. " + "x " * 200)["criminal_terms"])
+
+    def test_choose_complexes_skips_missing_big_and_thin_archives(self):
+        supply = [
+            {"state": "2", "year": "2022", "district": "1", "complex": "a", "candidates": 50, "tar_bytes": 10_000_000},
+            {"state": "2", "year": "2022", "district": "1", "complex": "b", "candidates": 90, "tar_bytes": 500_000_000},  # too big
+            {"state": "2", "year": "2022", "district": "1", "complex": "c", "candidates": 80, "tar_bytes": 0},            # no archive
+            {"state": "2", "year": "2022", "district": "1", "complex": "d", "candidates": 5, "tar_bytes": 1_000_000},     # too few
+            {"state": "2", "year": "2022", "district": "1", "complex": "e", "candidates": 70, "tar_bytes": 20_000_000},
+            {"state": "29", "year": "2022", "district": "1", "complex": "f", "candidates": 99, "tar_bytes": 1_000_000},   # other state
+        ]
+        got = self.pe.choose_complexes(supply, "2", "2022", max_tar_mb=60, count=5)
+        self.assertEqual([g["complex"] for g in got], ["e", "a"])
+
+    def test_summarise(self):
+        rows = [
+            {"state": "2", "year": "2022", "status": "ok", "chars": 5000, "decision_words": True, "criminal_terms": False},
+            {"state": "2", "year": "2022", "status": "ok", "chars": 1000, "decision_words": False, "criminal_terms": True},
+            {"state": "2", "year": "2022", "status": "no_text_or_member", "chars": 0, "decision_words": False, "criminal_terms": False},
+            {"state": "29", "year": "2022", "status": "ok", "chars": 3000, "decision_words": True, "criminal_terms": False},
+        ]
+        s = self.pe.summarise(rows)
+        self.assertEqual((s["attempted"], s["extractable"]), (4, 3))
+        self.assertAlmostEqual(s["extractable_rate"], 0.75)
+        self.assertAlmostEqual(s["by_slice"]["2/2022"]["extractable_rate"], 2 / 3)
+        self.assertAlmostEqual(s["short_order_share"], 1 / 3)
+        self.assertAlmostEqual(s["decision_words_share"], 2 / 3)
+        self.assertEqual(s["by_status"]["no_text_or_member"], 1)
+
+    def test_summarise_with_nothing_extractable(self):
+        s = self.pe.summarise([{"state": "2", "year": "2022", "status": "no_text_or_member", "chars": 0,
+                                "decision_words": False, "criminal_terms": False}])
+        self.assertEqual(s["extractable"], 0)
+        self.assertNotIn("chars", s)
+
+    def test_parse_slices(self):
+        self.assertEqual(self.pe._parse_slices("2:2022, 29:2023"), [("2", "2022"), ("29", "2023")])

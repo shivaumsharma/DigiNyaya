@@ -6,6 +6,7 @@ checked before they are merged.
 | Step | Command (from `backend/`) | What it answers |
 |---|---|---|
 | 1. Supply | `python -m scripts.district_supply_census` | How many civil cases can really be downloaded, by state and year |
+| 1b. Free check | `python -m scripts.pilot_extractability` | Upper bound on the yield with no LLM: how many candidates yield usable text |
 | 2. Pilot | `python -m scripts.plan_corpus_scale --pilot 150` then run the printed commands | What share of attempted cases survives the LLM filter (the **yield**) |
 | 3. Plan | `python -m scripts.plan_corpus_scale --target 60000 --already-have <N> --assumed-yield <measured>` | Per state-year quotas, one command each, archive GB, calls |
 | 4. Source | run `data_cache\corpus_plan.commands.txt` (slices are disjoint; run several in parallel) | |
@@ -20,6 +21,13 @@ checked before they are merged.
   usable text layer** (scanned: they need OCR) and Telangana orders are short (median ~1,500 characters, one page). The
   sample is of archive contents, not of the candidate cases, so treat it as a smoke test.
 * The census checks that an archive exists, not that every case's PDF is in it.
+
+## LLM-free extractability check (measured Oct 2026, no LLM)
+
+360 candidates from 18 of the largest small-archive courts (AP 2022, AP 2023, Telangana 2022): **87% yielded usable text**
+(AP 2022 75%, AP 2023 88%, Telangana 2022 98%). The failures were scanned PDFs with no text layer (no OCR in that run). Of the
+usable text, median 5,638 characters; 23% under 1,500 characters; 91% mention a decree/dismissal/disposal; 2% contain
+criminal-procedure terms. This is an upper bound on the yield, not the yield, and the courts were not randomly chosen.
 
 ## The sourcing script's old default was the ceiling
 
