@@ -303,6 +303,9 @@ def main() -> int:
     ap.add_argument("--max-per-complex", type=int, default=25,
                      help="cap on ACCEPTED cases pulled from any single court complex, so a large --target "
                           "doesn't end up drawing the whole batch from one district court's docket (default 25)")
+    ap.add_argument("--exclude-from", nargs="*", default=[],
+                    help="case JSON file(s) whose docids must not be re-sourced (e.g. the canonical eval_judgments.json "
+                         "when --out points at a separate slice file)")
     ap.add_argument("--out", default=str(OUT_PATH))
     ap.add_argument("--dry-run", action="store_true", help="metadata only -- no PDF download, no LLM calls")
     args = ap.parse_args()
@@ -311,6 +314,7 @@ def main() -> int:
         print("WARNING: LLM unavailable -- extraction will fail for every candidate.")
         return 1
 
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     existing: list[dict] = []
     if Path(args.out).exists():
         existing = json.loads(Path(args.out).read_text(encoding="utf-8"))
@@ -319,6 +323,10 @@ def main() -> int:
         for c in existing
         if c.get("source", {}).get("docid") is not None
     }
+    for extra in args.exclude_from:
+        if Path(extra).exists():
+            exclude_docids |= {str(c.get("source", {}).get("docid")) for c in json.loads(Path(extra).read_text(encoding="utf-8"))
+                               if c.get("source", {}).get("docid") is not None}
     print(f"Loaded {len(existing)} existing case(s), {len(exclude_docids)} docid(s) excluded from re-sourcing.")
 
     s3 = get_s3_client()

@@ -162,6 +162,9 @@ DigiNyaya/
 │       │                             indian-district-court-judgments) — the main eval-corpus growth
 │       │                             path; supports --states/--years/--out for running many disjoint
 │       │                             slices as separate processes in parallel
+│       ├── district_supply_census.py  How many civil cases the free eCourts bucket can really supply (metadata vs downloadable)
+│       ├── plan_corpus_scale.py      Per state-year quotas, pilot and sourcing commands for a corpus-expansion target
+│       ├── corpus_gate.py            Admission checks (duplicates, language, identifiers, leakage, concentration) before new cases are used
 │       ├── train_outcome_classifier.py  Predicts match-vs-not from case features (leave-one-out CV)
 │       ├── explain_mediation_shap.py    SHAP explainability for the scripted relief-ratio decision
 │       ├── error_analysis.py         Confusion-matrix-style breakdown of the real-judgment eval by category

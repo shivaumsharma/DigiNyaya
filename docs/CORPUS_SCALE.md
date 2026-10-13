@@ -1,0 +1,60 @@
+# Scaling the eval corpus (60K goal)
+
+Three scripts, run in this order. Nothing here touches `eval_judgments.json`; new cases go to separate slice files and are
+checked before they are merged.
+
+| Step | Command (from `backend/`) | What it answers |
+|---|---|---|
+| 1. Supply | `python -m scripts.district_supply_census` | How many civil cases can really be downloaded, by state and year |
+| 2. Pilot | `python -m scripts.plan_corpus_scale --pilot 150` then run the printed commands | What share of attempted cases survives the LLM filter (the **yield**) |
+| 3. Plan | `python -m scripts.plan_corpus_scale --target 60000 --already-have <N> --assumed-yield <measured>` | Per state-year quotas, one command each, archive GB, calls |
+| 4. Source | run `data_cache\corpus_plan.commands.txt` (slices are disjoint; run several in parallel) | |
+| 5. Gate | `python -m scripts.corpus_gate --batch-dir data_cache\dc_slices --write-clean data_cache\dc_clean.json` | Which cases are fit to use |
+
+## What the census found (measured on the live bucket, Oct 2026)
+
+* 401,843 civil-coded, decided cases with a PDF flag in the metadata, but only **~230,000 in archives that exist**.
+  Delhi, Haryana, Punjab, Kerala and Goa (~171k) have metadata and no archives.
+* Downloadable supply is **Andhra Pradesh 73%, Telangana 26%**, Bihar 1% (a single court).
+* A 150-PDF sample of AP/Telangana archives: all English (0 of 132 readable files had Telugu-dominant text), but **12% have no
+  usable text layer** (scanned: they need OCR) and Telangana orders are short (median ~1,500 characters, one page). The
+  sample is of archive contents, not of the candidate cases, so treat it as a smoke test.
+* The census checks that an archive exists, not that every case's PDF is in it.
+
+## The sourcing script's old default was the ceiling
+
+`--max-per-complex` defaults to 25, a guard for small targets. With ~125 courts a year it caps the whole corpus near
+18k at a 20% yield. The planner defaults to 150 and the gate separately fails any court above 2% of a batch.
+
+## What decides whether 60K is reachable
+
+Total target 60,000, already held 23,841, so 36,159 new. Reach by assumed yield (per-court cap 150, state share <= 65%, year share <= 25% of a state):
+
+| Yield | New cases plannable |
+|---|---|
+| 10% | 17,856 |
+| 15% | 25,838 |
+| 20% | 33,266 (about 166k extraction attempts, 72% of all downloadable candidates) |
+| 30% | 36,143 (target met) |
+
+The yield is **unmeasured**. Run the pilot. The plan does not subtract the cases you already hold from the supply, so the true
+ceiling is lower by however many of your 23,841 came from this pool.
+
+## What the gate does
+
+Rejects: malformed, duplicate id or docid (against the existing corpus and within the batch), near-duplicate description
+(MinHash estimate, Jaccard >= 0.8), too short, Indic script >= 30%, personal identifiers (phone, Aadhaar-style number, e-mail,
+PAN), a description that states the decision or names the judge, a category the eval cannot map, overlap with the precedent corpus.
+
+Flags (kept): honorific + name left in, some Indic script, weak outcome phrasing, amount echo, very long text.
+
+Batch checks (PASS/WARN/FAIL): rejection rate, category depth, largest state share, largest court share, largest year share,
+weak-phrasing rate, amount-echo rate, human-verified count. **The state-share check will warn on this data.** That is the
+finding to report alongside any result, not something to hide.
+
+## What the gate does not do
+
+* It cannot tell whether the extracted `expected_outcome` is correct. That needs the human labels.
+* It does not remove the narrative leakage the leakage-free control measures; run that on a sample of the new cases too.
+* Redaction relies on the extraction prompt (no party-name list exists for this source): read the `honorific_name_left` flags.
+* After the gate: run `scripts.audit_outcome_leakage` and `scripts.split_eval_for_precedents` on the merged file before scoring.
