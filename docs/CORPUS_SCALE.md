@@ -48,6 +48,15 @@ Total target 60,000, already held 23,841, so 36,159 new. Reach by assumed yield 
 The yield is **unmeasured**. Run the pilot. The plan does not subtract the cases you already hold from the supply, so the true
 ceiling is lower by however many of your 23,841 came from this pool.
 
+## What the pilot taught us (AP 2023, one court, measured)
+
+`added=50 rejected=128 extraction_failed=3` = **27.6% yield** (50 of 181) from a single court complex. Nearly all rejections were
+`is_genuine=True, is_final=False`. On a text sample of 106 AP 2023 cases the endings were: ex parte decrees 43%, compromise 19%,
+withdrawn 10%, dismissed for default 4%, contested decree 6%, dismissed 8%, no operative wording 10%. So (a) about a third end
+without any decision on the merits, which the sourcing script now skips before the LLM (`--no-prescreen` turns that off), and
+(b) **ex parte decrees dominate the usable cases**: the defendant never appeared, so the claimant wins almost by default. Each kept
+case is tagged `source.disposal` and the gate warns when ex parte exceeds 40%. Report results for contested cases separately.
+
 ## Stopping and resuming a sourcing run
 
 Ctrl+C is safe. Each accepted case is written to the slice file the moment it is accepted, and the court archives and

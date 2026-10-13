@@ -288,8 +288,8 @@ class PilotExtractabilityTests(unittest.TestCase):
         self.assertEqual(self.pe._parse_slices("2:2022, 29:2023"), [("2", "2022"), ("29", "2023")])
 
 
-class SourcingResumeTests(unittest.TestCase):
-    """main() of the district-court sourcing script with the network and LLM mocked out: tally, resume, Ctrl+C."""
+class SourcingHarness(unittest.TestCase):
+    """main() of the district-court sourcing script with the network and LLM mocked out. Holds no tests itself."""
 
     def setUp(self):
         import tempfile
@@ -340,6 +340,11 @@ class SourcingResumeTests(unittest.TestCase):
                                           "--max-complexes", "5", "--max-per-complex", "50", "--out", str(self.out)]):
             return self.m.main()
 
+
+
+class SourcingResumeTests(SourcingHarness):
+    """Tally, resume and Ctrl+C."""
+
     def test_tally_and_resume_do_not_repay_for_rejected_cases(self):
         self.assertEqual(self.run_main(target=2), 0)
         # order: case1 rejected, case2 accepted, case3 unreadable, case4 rejected, case5 accepted -> target met
@@ -364,3 +369,52 @@ class SourcingResumeTests(unittest.TestCase):
         self.assertIn("attempted=10", line)
         self.assertIn("yield=30.0%", line)
         self.assertIn("yield=n/a", self.m.tally_line({"added": 0, "rejected": 0, "extraction_failed": 0, "classify_failed": 0}))
+
+
+class DisposalTests(unittest.TestCase):
+    def setUp(self):
+        from scripts import source_district_court_judgments as m
+
+        self.m = m
+
+    def test_classify_disposal(self):
+        pad = "The plaintiff sued for recovery of money lent. " * 30
+        cases = {
+            "compromise": pad + " The parties filed a joint memo of compromise and the suit is disposed accordingly.",
+            "withdrawn": pad + " The plaintiff reported that the suit is not pressed and sought to withdraw.",
+            "dismissed_default": pad + " Accordingly the suit is dismissed for default.",
+            "ex_parte_decreed": pad + " The defendant remained ex parte. The suit is decreed with costs.",
+            "decreed": pad + " After trial the suit is decreed with costs.",
+            "dismissed": pad + " In the result the suit is dismissed without costs.",
+            "unknown": pad,
+        }
+        for want, text in cases.items():
+            with self.subTest(want):
+                self.assertEqual(self.m.classify_disposal(text), want)
+
+    def test_compromise_mentioned_only_early_does_not_hide_a_later_decree(self):
+        early = "The defendant said there was no compromise possible. " + "facts " * 900
+        self.assertEqual(self.m.classify_disposal(early + " After trial the suit is decreed."), "decreed")
+
+    def test_gate_warns_when_ex_parte_dominates(self):
+        survivors = [case(i) for i in range(10)]
+        for i, c in enumerate(survivors):
+            c["source"]["disposal"] = "ex_parte_decreed" if i < 6 else "decreed"
+        res = {name: status for status, name, _ in g.batch_checks(10, survivors, {})}
+        self.assertEqual(res["ex parte decrees (defendant never appeared)"], "WARN")
+
+
+class PrescreenTests(SourcingHarness):
+    def _text(self, tar, case_no):
+        if case_no == "1":
+            return "The matter was settled; a joint memo of compromise was filed. " + "x " * 200
+        return super()._text(tar, case_no)
+
+    def test_compromise_case_costs_no_llm_call_and_is_counted(self):
+        self.run_main(target=1)
+        t = self.m.load_tally(self.out.with_suffix(".tally.json"))
+        self.assertEqual(t["prescreened_out"], 1)
+        self.assertEqual(len(self.calls), 2)       # case 1 skipped; case 2 rejected (call 1); case 4 accepted? see loop
+        self.assertIn("prescreened_out=1", self.m.tally_line(t))
+        saved = json.loads(self.out.read_text(encoding="utf-8"))
+        self.assertIn(saved[0]["source"]["disposal"], {"unknown"})

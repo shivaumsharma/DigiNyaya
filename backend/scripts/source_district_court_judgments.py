@@ -255,6 +255,35 @@ def extract_case_text(tar_path: Path, case_no: str) -> str | None:
     return "\n\n".join(texts) if texts else None
 
 
+# How the case ended, read from the text with keyword rules. A HEURISTIC, used for two things: skipping cases that end
+# without any decision on the merits (so no LLM call is spent on them), and tagging the kept cases so results can be
+# reported separately for contested and ex parte decisions. Measured on 106 Andhra Pradesh 2023 cases: ex parte decrees
+# 43%, compromise 19%, withdrawn 10%, dismissed for default 4%, contested decree 6%, dismissed 8%, no wording 10%.
+PRESCREEN_OUT = {"compromise", "withdrawn", "dismissed_default"}
+_TAIL_FOR_DISPOSAL = 4000
+_DISPOSAL_RULES = (
+    ("compromise", re.compile(r"compromise|lok adalat|razi|joint memo|settled (?:out|between|the matter)|recorded the (?:compromise|settlement)", re.I), True),
+    ("withdrawn", re.compile(r"withdrawn|withdraw the suit|not pressed|memo (?:is )?filed", re.I), True),
+    ("dismissed_default", re.compile(r"dismissed (?:for|in) (?:default|non)|for default|non[- ]?prosecution", re.I), True),
+)
+_EX_PARTE = re.compile(r"ex[- ]?parte", re.I)
+_DECREED = re.compile(r"decreed|decree is passed", re.I)
+_DISMISSED = re.compile(r"suit is (?:hereby )?dismissed|dismissed (?:with|without)|the suit .{0,40}dismissed", re.I)
+
+
+def classify_disposal(text: str) -> str:
+    """One of: compromise, withdrawn, dismissed_default, ex_parte_decreed, decreed, dismissed, unknown."""
+    tail = text[-_TAIL_FOR_DISPOSAL:]
+    for name, rx, tail_only in _DISPOSAL_RULES:
+        if rx.search(tail if tail_only else text):
+            return name
+    if _DECREED.search(text):
+        return "ex_parte_decreed" if _EX_PARTE.search(text) else "decreed"
+    if _DISMISSED.search(text):
+        return "dismissed"
+    return "unknown"
+
+
 def _tally_path(out_path: str) -> Path:
     return Path(out_path).with_suffix(".tally.json")
 
@@ -262,7 +291,8 @@ def _tally_path(out_path: str) -> Path:
 def load_tally(path: Path) -> dict:
     """Cumulative attempt counts for one --out file, kept across stops and resumes so the yield can still be read off a
     run that was interrupted. skip_docids are cases already rejected or unreadable: a resume does not pay the LLM again."""
-    fresh = {"added": 0, "rejected": 0, "extraction_failed": 0, "classify_failed": 0, "skip_docids": []}
+    fresh = {"added": 0, "rejected": 0, "extraction_failed": 0, "classify_failed": 0,
+             "prescreened_out": 0, "skip_docids": []}
     if path.exists():
         try:
             fresh.update(json.loads(path.read_text(encoding="utf-8")))
@@ -276,10 +306,12 @@ def _save_tally(path: Path, t: dict) -> None:
 
 
 def tally_line(t: dict) -> str:
-    attempts = t["added"] + t["rejected"] + t["extraction_failed"] + t["classify_failed"]
+    pre = t.get("prescreened_out", 0)
+    attempts = t["added"] + t["rejected"] + t["extraction_failed"] + t["classify_failed"] + pre
     rate = f"{100 * t['added'] / attempts:.1f}%" if attempts else "n/a"
     return (f"tally (all runs of this file): attempted={attempts} added={t['added']} rejected={t['rejected']} "
-            f"extraction_failed={t['extraction_failed']} classify_failed={t['classify_failed']} yield={rate}")
+            f"extraction_failed={t['extraction_failed']} classify_failed={t['classify_failed']} "
+            f"prescreened_out={pre} yield={rate}")
 
 
 def build_case(row: dict, fields: dict) -> dict | None:
@@ -333,6 +365,9 @@ def main() -> int:
     ap.add_argument("--exclude-from", nargs="*", default=[],
                     help="case JSON file(s) whose docids must not be re-sourced (e.g. the canonical eval_judgments.json "
                          "when --out points at a separate slice file)")
+    ap.add_argument("--no-prescreen", action="store_true",
+                    help="send compromise / withdrawn / dismissed-for-default cases to the LLM too (default: skip them, "
+                         "they end without a decision on the merits)")
     ap.add_argument("--out", default=str(OUT_PATH))
     ap.add_argument("--dry-run", action="store_true", help="metadata only -- no PDF download, no LLM calls")
     args = ap.parse_args()
@@ -358,7 +393,7 @@ def main() -> int:
     tally = load_tally(tally_file)
     exclude_docids |= set(tally["skip_docids"])
     print(f"Loaded {len(existing)} existing case(s), {len(exclude_docids)} docid(s) excluded from re-sourcing.")
-    if tally["added"] + tally["rejected"] + tally["extraction_failed"] + tally["classify_failed"]:
+    if tally["added"] + tally["rejected"] + tally["extraction_failed"] + tally["classify_failed"] + tally["prescreened_out"]:
         print("Resuming. " + tally_line(tally))
 
     s3 = get_s3_client()
@@ -437,6 +472,13 @@ def main() -> int:
                     _save_tally(tally_file, tally)
                     print(f"    - {case_no}: no extractable text (skipped)")
                     continue
+                disposal = classify_disposal(body_text)
+                if disposal in PRESCREEN_OUT and not args.no_prescreen:
+                    tally["prescreened_out"] += 1
+                    tally["skip_docids"].append(str(row["cino"]))
+                    _save_tally(tally_file, tally)
+                    print(f"    - {case_no}: ended without a decision on the merits ({disposal}); no LLM call")
+                    continue
                 fields = extract_and_classify(body_text, row["case_type"])
                 if not fields:
                     classify_failed += 1
@@ -453,6 +495,7 @@ def main() -> int:
                     print(f"    - {case_no}: rejected (is_genuine={fields.get('is_genuine_civil_dispute')}, "
                           f"is_final={fields.get('is_final_merits_decision')}, category={fields.get('category')})")
                     continue
+                case["source"]["disposal"] = disposal
 
                 # Cache the extracted text in the exact shape
                 # source_eval_judgments.py's/source_free_judgments.py's own

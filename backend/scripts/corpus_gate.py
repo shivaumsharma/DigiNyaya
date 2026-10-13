@@ -234,6 +234,11 @@ def batch_checks(batch_size: int, survivors: list[dict], flags: dict[str, list[s
     out.append(("WARN" if weak > 0.25 else "PASS", "weak outcome phrasing in description", f"{100 * weak:.1f}% (flag, not reject)"))
     out.append(("WARN" if echo > 0.5 else "PASS", "amount echo (description amount == outcome amount)",
                 f"{100 * echo:.1f}%: if high, an 'amount within 20%' metric is a soft upper bound"))
+    disp = collections.Counter((c.get("source") or {}).get("disposal") or "untagged" for c in survivors)
+    ex = disp.get("ex_parte_decreed", 0) / n
+    out.append(("WARN" if ex > 0.4 else "PASS", "ex parte decrees (defendant never appeared)",
+                f"{100 * ex:.0f}% ({dict(disp)}): the claimant wins almost by default, so accuracy on these says little; "
+                "report results for contested cases separately"))
     ver = sum(bool(c.get("verified")) for c in survivors)
     out.append(("WARN" if ver == 0 else "PASS", "human-verified cases", f"{ver} of {n} (all LLM-extracted; verified=false is the convention)"))
     return out
