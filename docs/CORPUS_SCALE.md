@@ -48,6 +48,14 @@ Total target 60,000, already held 23,841, so 36,159 new. Reach by assumed yield 
 The yield is **unmeasured**. Run the pilot. The plan does not subtract the cases you already hold from the supply, so the true
 ceiling is lower by however many of your 23,841 came from this pool.
 
+## Stopping and resuming a sourcing run
+
+Ctrl+C is safe. Each accepted case is written to the slice file the moment it is accepted, and the court archives and
+extracted text are cached. A sidecar file next to the slice (`<slice>.tally.json`) records every attempt, so the yield can be
+read off an interrupted run (`tally (all runs of this file): ... yield=NN%` is printed every 10 accepted cases and at the end).
+Cases already rejected or unreadable are skipped on resume, so you are not charged for them again. Rerun the same command to
+resume. The tally only exists for runs started with this version; a slice started earlier has accepted cases saved but no counts.
+
 ## What the gate does
 
 Rejects: malformed, duplicate id or docid (against the existing corpus and within the batch), near-duplicate description

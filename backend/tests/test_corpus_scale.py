@@ -1,6 +1,7 @@
 """Tests for the corpus-scaling tools: scripts.district_supply_census, scripts.plan_corpus_scale, scripts.corpus_gate."""
 from __future__ import annotations
 
+import json
 import os
 import random
 import string
@@ -285,3 +286,81 @@ class PilotExtractabilityTests(unittest.TestCase):
 
     def test_parse_slices(self):
         self.assertEqual(self.pe._parse_slices("2:2022, 29:2023"), [("2", "2022"), ("29", "2023")])
+
+
+class SourcingResumeTests(unittest.TestCase):
+    """main() of the district-court sourcing script with the network and LLM mocked out: tally, resume, Ctrl+C."""
+
+    def setUp(self):
+        import tempfile
+        from unittest import mock
+
+        from scripts import source_district_court_judgments as m
+
+        self.m, self.mock = m, mock
+        self.tmp = Path(tempfile.mkdtemp())
+        self.out = self.tmp / "slice.json"
+        self.calls: list[str] = []
+        rows = [{"cino": f"CINO{i}", "case_no": str(i), "case_type": "OS", "has_pdf": True, "final_orders": 1,
+                 "district_code": "1", "complex_code": "1", "state_name": "S", "state_code": "2", "reg_year": 2020,
+                 "complex_name": "C", "district_name": "D"} for i in range(1, 7)]
+        self.meta = pd.DataFrame(rows)
+        self.patches = [
+            mock.patch.object(m.llm, "is_available", lambda: True),
+            mock.patch.object(m, "get_s3_client", lambda: None),
+            mock.patch.object(m, "load_metadata", lambda s3, state, year: self.meta),
+            mock.patch.object(m, "download_complex_tar", lambda *a, **k: self.tmp / "t.tar"),
+            mock.patch.object(m, "extract_case_text", self._text),
+            mock.patch.object(m, "extract_and_classify", self._classify),
+            mock.patch.object(m, "IK_CACHE_DIR", self.tmp / "ik"),
+            mock.patch.object(m, "BAD_COMPLEX_CACHE_PATH", self.tmp / "bad.json"),
+        ]
+        for p in self.patches:
+            p.start()
+        self.interrupt_at = None
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+
+    def _text(self, tar, case_no):
+        return None if case_no == "3" else "judgment text " * 40  # case 3 is unreadable
+
+    def _classify(self, text, case_type):
+        n = len(self.calls) + 1
+        self.calls.append(str(n))
+        if self.interrupt_at and n == self.interrupt_at:
+            raise KeyboardInterrupt
+        accept = n % 2 == 0  # alternate: reject, accept, reject, accept...
+        return {"is_genuine_civil_dispute": True, "is_final_merits_decision": accept, "category": "small_claims_debt_recovery",
+                "case_description": "d" * 300, "expected_outcome": "o" * 80, "cited_precedent": None}
+
+    def run_main(self, target: int):
+        with self.mock.patch("sys.argv", ["x", "--states", "2", "--years", "2022", "--target", str(target),
+                                          "--max-complexes", "5", "--max-per-complex", "50", "--out", str(self.out)]):
+            return self.m.main()
+
+    def test_tally_and_resume_do_not_repay_for_rejected_cases(self):
+        self.assertEqual(self.run_main(target=2), 0)
+        # order: case1 rejected, case2 accepted, case3 unreadable, case4 rejected, case5 accepted -> target met
+        t = self.m.load_tally(self.out.with_suffix(".tally.json"))
+        self.assertEqual((t["added"], t["rejected"], t["extraction_failed"]), (2, 2, 1))
+        self.assertEqual(len(self.calls), 4)
+        self.run_main(target=2)   # resume: cases 1-5 are accepted, rejected or unreadable; only case 6 is new
+        self.assertEqual(len(self.calls), 5)
+        t2 = self.m.load_tally(self.out.with_suffix(".tally.json"))
+        self.assertEqual((t2["added"], t2["rejected"], t2["extraction_failed"]), (2, 3, 1))
+
+    def test_ctrl_c_saves_progress_and_exits_cleanly(self):
+        self.interrupt_at = 3
+        self.assertEqual(self.run_main(target=5), 0)
+        saved = json.loads(self.out.read_text(encoding="utf-8"))
+        self.assertEqual(len(saved), 1)                                 # the one accepted before the interrupt
+        t = self.m.load_tally(self.out.with_suffix(".tally.json"))
+        self.assertEqual(t["added"], 1)
+
+    def test_tally_line_reports_yield(self):
+        line = self.m.tally_line({"added": 3, "rejected": 6, "extraction_failed": 1, "classify_failed": 0, "skip_docids": []})
+        self.assertIn("attempted=10", line)
+        self.assertIn("yield=30.0%", line)
+        self.assertIn("yield=n/a", self.m.tally_line({"added": 0, "rejected": 0, "extraction_failed": 0, "classify_failed": 0}))

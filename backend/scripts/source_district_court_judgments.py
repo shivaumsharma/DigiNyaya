@@ -255,6 +255,33 @@ def extract_case_text(tar_path: Path, case_no: str) -> str | None:
     return "\n\n".join(texts) if texts else None
 
 
+def _tally_path(out_path: str) -> Path:
+    return Path(out_path).with_suffix(".tally.json")
+
+
+def load_tally(path: Path) -> dict:
+    """Cumulative attempt counts for one --out file, kept across stops and resumes so the yield can still be read off a
+    run that was interrupted. skip_docids are cases already rejected or unreadable: a resume does not pay the LLM again."""
+    fresh = {"added": 0, "rejected": 0, "extraction_failed": 0, "classify_failed": 0, "skip_docids": []}
+    if path.exists():
+        try:
+            fresh.update(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            pass
+    return fresh
+
+
+def _save_tally(path: Path, t: dict) -> None:
+    path.write_text(json.dumps(t), encoding="utf-8")
+
+
+def tally_line(t: dict) -> str:
+    attempts = t["added"] + t["rejected"] + t["extraction_failed"] + t["classify_failed"]
+    rate = f"{100 * t['added'] / attempts:.1f}%" if attempts else "n/a"
+    return (f"tally (all runs of this file): attempted={attempts} added={t['added']} rejected={t['rejected']} "
+            f"extraction_failed={t['extraction_failed']} classify_failed={t['classify_failed']} yield={rate}")
+
+
 def build_case(row: dict, fields: dict) -> dict | None:
     category = fields.get("category")
     description = str(fields.get("case_description") or "").strip()
@@ -327,7 +354,12 @@ def main() -> int:
         if Path(extra).exists():
             exclude_docids |= {str(c.get("source", {}).get("docid")) for c in json.loads(Path(extra).read_text(encoding="utf-8"))
                                if c.get("source", {}).get("docid") is not None}
+    tally_file = _tally_path(args.out)
+    tally = load_tally(tally_file)
+    exclude_docids |= set(tally["skip_docids"])
     print(f"Loaded {len(existing)} existing case(s), {len(exclude_docids)} docid(s) excluded from re-sourcing.")
+    if tally["added"] + tally["rejected"] + tally["extraction_failed"] + tally["classify_failed"]:
+        print("Resuming. " + tally_line(tally))
 
     s3 = get_s3_client()
     states = ALL_STATE_CODES if args.states == "all" else [s.strip() for s in args.states.split(",")]
@@ -378,67 +410,84 @@ def main() -> int:
     added = rejected = extract_failed = classify_failed = tar_missing = 0
     complexes_tried = 0
 
-    for (year, state, district, complex_code), cases in ranked:
-        if added >= args.target or complexes_tried >= args.max_complexes:
-            break
-        complexes_tried += 1
-        print(f"[complex {complexes_tried}/{min(len(ranked), args.max_complexes)}] "
-              f"year={year} state={state} district={district} complex={complex_code} "
-              f"({len(cases)} candidate case(s))")
-        tar_path = download_complex_tar(s3, year, state, district, complex_code, bad_complexes)
-        if tar_path is None:
-            tar_missing += len(cases)
-            _save_bad_complexes(bad_complexes)
-            continue
-
-        added_this_complex = 0
-        for row in cases:
-            if added >= args.target or added_this_complex >= args.max_per_complex:
+    try:
+        for (year, state, district, complex_code), cases in ranked:
+            if added >= args.target or complexes_tried >= args.max_complexes:
                 break
-            case_no = str(row["case_no"])
-            body_text = extract_case_text(tar_path, case_no)
-            if not body_text or len(body_text) < 200:
-                extract_failed += 1
-                print(f"    - {case_no}: no extractable text (skipped)")
-                continue
-            fields = extract_and_classify(body_text, row["case_type"])
-            if not fields:
-                classify_failed += 1
-                print(f"    - {case_no}: LLM extraction failed")
-                continue
-            case = build_case(row, fields)
-            if case is None:
-                rejected += 1
-                print(f"    - {case_no}: rejected (is_genuine={fields.get('is_genuine_civil_dispute')}, "
-                      f"is_final={fields.get('is_final_merits_decision')}, category={fields.get('category')})")
+            complexes_tried += 1
+            print(f"[complex {complexes_tried}/{min(len(ranked), args.max_complexes)}] "
+                  f"year={year} state={state} district={district} complex={complex_code} "
+                  f"({len(cases)} candidate case(s))")
+            tar_path = download_complex_tar(s3, year, state, district, complex_code, bad_complexes)
+            if tar_path is None:
+                tar_missing += len(cases)
+                _save_bad_complexes(bad_complexes)
                 continue
 
-            # Cache the extracted text in the exact shape
-            # source_eval_judgments.py's/source_free_judgments.py's own
-            # cache uses (data_cache/indiankanoon/<docid>.json, {"doc":
-            # ..., "title": ...}) so extract_case_signals.py picks these
-            # cases up with zero code changes on its next incremental run --
-            # same convention those two scripts document for exactly this
-            # reason. Missing this the first time silently sent all 220
-            # cases from this source through extract_case_signals.py's
-            # placeholder-default fallback (verified via a real run before
-            # this fix landed) -- not a hypothetical risk.
-            IK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            (IK_CACHE_DIR / f"{row['cino']}.json").write_text(
-                json.dumps({"doc": body_text, "title": case["source"]["title"]}, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            added_this_complex = 0
+            for row in cases:
+                if added >= args.target or added_this_complex >= args.max_per_complex:
+                    break
+                case_no = str(row["case_no"])
+                body_text = extract_case_text(tar_path, case_no)
+                if not body_text or len(body_text) < 200:
+                    extract_failed += 1
+                    tally["extraction_failed"] += 1
+                    tally["skip_docids"].append(str(row["cino"]))
+                    _save_tally(tally_file, tally)
+                    print(f"    - {case_no}: no extractable text (skipped)")
+                    continue
+                fields = extract_and_classify(body_text, row["case_type"])
+                if not fields:
+                    classify_failed += 1
+                    tally["classify_failed"] += 1
+                    _save_tally(tally_file, tally)
+                    print(f"    - {case_no}: LLM extraction failed")
+                    continue
+                case = build_case(row, fields)
+                if case is None:
+                    rejected += 1
+                    tally["rejected"] += 1
+                    tally["skip_docids"].append(str(row["cino"]))
+                    _save_tally(tally_file, tally)
+                    print(f"    - {case_no}: rejected (is_genuine={fields.get('is_genuine_civil_dispute')}, "
+                          f"is_final={fields.get('is_final_merits_decision')}, category={fields.get('category')})")
+                    continue
 
-            all_cases.append(case)
-            added += 1
-            added_this_complex += 1
-            print(f"    + [{added}/{args.target}] {case['category']}: {case['source']['title']}")
-            Path(args.out).write_text(json.dumps(all_cases, indent=2, ensure_ascii=False), encoding="utf-8")
+                # Cache the extracted text in the exact shape
+                # source_eval_judgments.py's/source_free_judgments.py's own
+                # cache uses (data_cache/indiankanoon/<docid>.json, {"doc":
+                # ..., "title": ...}) so extract_case_signals.py picks these
+                # cases up with zero code changes on its next incremental run --
+                # same convention those two scripts document for exactly this
+                # reason. Missing this the first time silently sent all 220
+                # cases from this source through extract_case_signals.py's
+                # placeholder-default fallback (verified via a real run before
+                # this fix landed) -- not a hypothetical risk.
+                IK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                (IK_CACHE_DIR / f"{row['cino']}.json").write_text(
+                    json.dumps({"doc": body_text, "title": case["source"]["title"]}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+
+                all_cases.append(case)
+                added += 1
+                added_this_complex += 1
+                tally["added"] += 1
+                print(f"    + [{added}/{args.target}] {case['category']}: {case['source']['title']}")
+                Path(args.out).write_text(json.dumps(all_cases, indent=2, ensure_ascii=False), encoding="utf-8")
+                _save_tally(tally_file, tally)
+                if tally["added"] % 10 == 0:
+                    print("    " + tally_line(tally))
+
+    except KeyboardInterrupt:
+        print("\nInterrupted. Everything accepted so far is saved; run the same command again to resume.")
 
     print("\n" + "=" * 60)
     print(f"Done. added={added} rejected={rejected} extraction_failed={extract_failed} "
           f"classify_failed={classify_failed} tar_missing_for={tar_missing} cases "
           f"complexes_tried={complexes_tried}")
+    print(tally_line(tally))
     print(f"Total dataset size now: {len(all_cases)} -> {args.out}")
     print("All new entries marked verified=false -- same convention as the other sourcing scripts.")
     return 0
