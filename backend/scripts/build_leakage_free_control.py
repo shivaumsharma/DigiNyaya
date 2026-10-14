@@ -100,9 +100,11 @@ def pre_decision_text(text: str, max_fraction: float = 0.6, min_keep: int = 800,
     return {"text": kept, "reason": reason, "kept_chars": len(kept), "total_chars": total}
 
 
-def select_sample(cases: list[dict], verdicts: dict[str, dict], n: int, seed: int) -> list[dict]:
-    """Deterministic, stratified (category x real outcome) sample of cases that were judged in `verdicts`."""
-    pool = [c for c in cases if verdicts.get(c["case_id"], {}).get("verdict") in GOOD]
+def select_sample(cases: list[dict], verdicts: dict[str, dict], n: int, seed: int, allowed_ids: set[str] | None = None) -> list[dict]:
+    """Deterministic, stratified (category x real outcome) sample of cases that were judged in `verdicts`.
+    `allowed_ids` (e.g. the frozen dev split of contested cases) restricts the pool before sampling."""
+    pool = [c for c in cases if verdicts.get(c["case_id"], {}).get("verdict") in GOOD
+            and (allowed_ids is None or c["case_id"] in allowed_ids)]
     strata: dict[tuple, list[dict]] = {}
     for c in pool:
         v = verdicts[c["case_id"]]
@@ -229,6 +231,11 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--max-fraction", type=float, default=0.6, help="never keep more than this fraction of the judgment")
     ap.add_argument("--out-dir", default=str(DATA))
+    ap.add_argument("--split", choices=["dev", "test"], default=None,
+                    help="sample only from the frozen dev (or test) contested cases of data_cache/heldout_manifest.json "
+                         "(python -m scripts.freeze_heldout). Use a separate --out-dir so the all-case control is not overwritten. "
+                         "Prefer dev: the test split should be looked at once, for the final comparison")
+    ap.add_argument("--manifest", default=str(DATA / "heldout_manifest.json"))
     ap.add_argument("--cache-dir", default=str(CACHE_DIR))
     args = ap.parse_args()
 
@@ -248,7 +255,16 @@ def main() -> int:
 
     cases = json.loads(ds.read_text(encoding="utf-8"))
     verdicts = {v["case_id"]: v for v in json.loads(vpath.read_text(encoding="utf-8"))}
-    sample = select_sample(cases, verdicts, args.n, args.seed)
+    allowed = None
+    if args.split:
+        from scripts.freeze_heldout import load_split
+
+        if not Path(args.manifest).exists():
+            print(f"No manifest at {args.manifest}. Run: python -m scripts.freeze_heldout")
+            return 1
+        allowed = load_split(Path(args.manifest), args.split)
+        print(f"Restricted to the frozen {args.split} split: {len(allowed):,} contested cases.")
+    sample = select_sample(cases, verdicts, args.n, args.seed, allowed)
     print(f"Sampled {len(sample)} judged cases (stratified by category x real outcome, seed {args.seed}).")
 
     control_path, original_path = out_dir / "eval_leakfree_control.json", out_dir / "eval_leakfree_original.json"

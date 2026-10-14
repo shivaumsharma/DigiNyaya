@@ -301,3 +301,16 @@ class TestReport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AllowedIdsTests(unittest.TestCase):
+    def test_pool_is_restricted_to_allowed_ids(self):
+        from scripts.build_leakage_free_control import select_sample
+
+        cases = [{"case_id": f"c{i}", "category": "a"} for i in range(20)]
+        verdicts = {c["case_id"]: {"verdict": "match", "claimant_prevailed_real": bool(i % 2)} for i, c in enumerate(cases)}
+        allowed = {f"c{i}" for i in range(0, 20, 2)}
+        got = select_sample(cases, verdicts, 50, 11, allowed)
+        self.assertTrue(got and {c["case_id"] for c in got} <= allowed)
+        self.assertEqual(len(select_sample(cases, verdicts, 50, 11)), 20)
+        self.assertEqual(select_sample(cases, verdicts, 50, 11, set()), [])

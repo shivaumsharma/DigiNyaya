@@ -69,3 +69,19 @@ baseline's lift on both sets of descriptions.
   also remove facts the case needs, which would make the control look worse for a reason unrelated to leakage.
 - The verdicts still come from an LLM judge that has **not yet been validated** against human labels.
 - It tests leakage in the **inputs**. It says nothing about whether the labels (who prevailed) are right.
+
+## Contested-only run (the version that bears on the contested-case accuracy figure)
+
+The all-case control is dominated by ex parte decrees. To restrict it to the frozen dev contested cases
+(`python -m scripts.freeze_heldout` first), use a separate output folder so the all-case files are not overwritten:
+
+```powershell
+python -m scripts.build_leakage_free_control --split dev --n 400 --out-dir data_cache\leakfree_contested
+$env:DIGINYAYA_EVAL_DATASET = "data_cache\leakfree_contested\eval_leakfree_control.json"
+python -m scripts.judge_real_outcomes --out data_cache\leakfree_contested\verdicts.json
+Remove-Item Env:DIGINYAYA_EVAL_DATASET
+python -m scripts.leakfree_control_report --control-verdicts data_cache\leakfree_contested\verdicts.json --control-cases data_cache\leakfree_contested\eval_leakfree_control.json --original-cases data_cache\leakfree_contested\eval_leakfree_original.json
+```
+
+Read the respondent-win recall row with care: contested cases have enough respondent wins (about a quarter) to say something,
+but the report does not give an interval for that row, only for winner accuracy and full match.
