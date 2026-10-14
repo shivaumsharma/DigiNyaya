@@ -89,6 +89,10 @@ def main() -> int:
     ap.add_argument("--verdicts", default=None)
     ap.add_argument("--cases", default=str(DATA / "eval_judgments.json"))
     ap.add_argument("--cache-dir", default=str(DATA / "indiankanoon"))
+    ap.add_argument("--split", choices=["dev", "test"], default=None,
+                    help="restrict to the dev or frozen test cases of data_cache/heldout_manifest.json "
+                         "(scripts.freeze_heldout); contested cases only")
+    ap.add_argument("--manifest", default=str(DATA / "heldout_manifest.json"))
     args = ap.parse_args()
 
     from scripts.compare_eval_runs import GOOD
@@ -106,6 +110,15 @@ def main() -> int:
     tagged, _ = tag_cases(cases, Path(args.cache_dir))
     disposal = {c["case_id"]: (c.get("source") or {}).get("disposal") for c in tagged}
     verdicts = [v for v in json.loads(vp.read_text(encoding="utf-8")) if v.get("verdict") in GOOD and v["case_id"] in disposal]
+    if args.split:
+        from scripts.freeze_heldout import load_split
+
+        if not Path(args.manifest).exists():
+            print(f"No manifest at {args.manifest}. Run: python -m scripts.freeze_heldout")
+            return 1
+        keep = load_split(Path(args.manifest), args.split)
+        verdicts = [v for v in verdicts if v["case_id"] in keep]
+        print(f"Restricted to the frozen {args.split} split ({len(keep):,} contested cases).")
     rows = [{**v, "group": group_of(disposal[v["case_id"]])} for v in verdicts]
     if not rows:
         print("No judged district-court cases matched.")

@@ -172,6 +172,7 @@ DigiNyaya/
 │       ├── pilot_extractability.py   LLM-free pilot: share of candidate cases that yield usable text (upper bound on sourcing yield)
 │       ├── tag_disposal.py           Tags sourced district-court cases with how they ended; reports the ex parte share (no LLM)
 │       ├── accuracy_by_disposal.py   Pipeline winner accuracy split by ex parte / contested / no-merits endings
+│       ├── freeze_heldout.py         Freezes a stable dev/test split of contested cases before any architecture change is tuned
 │       ├── plan_corpus_scale.py      Per state-year quotas, pilot and sourcing commands for a corpus-expansion target
 │       ├── corpus_gate.py            Admission checks (duplicates, language, identifiers, leakage, concentration) before new cases are used
 │       ├── train_outcome_classifier.py  Predicts match-vs-not from case features (leave-one-out CV)

@@ -533,3 +533,45 @@ class ExParteCapTests(SourcingHarness):
             self.m.main()
         kinds = [c["source"]["disposal"] for c in json.loads(self.out.read_text(encoding="utf-8"))]
         self.assertGreaterEqual(kinds.count("ex_parte_decreed"), 2)
+
+
+class FreezeHeldoutTests(unittest.TestCase):
+    def cases(self, n=2000):
+        out = []
+        for i in range(n):
+            out.append({"case_id": f"DC-EVAL-{i}", "category": "a" if i % 2 else "b",
+                        "source": {"disposal": ["decreed", "dismissed", "ex_parte_decreed", "compromise"][i % 4]}})
+        return out
+
+    def test_only_contested_are_split_and_fraction_is_respected(self):
+        from scripts import freeze_heldout as f
+
+        m = f.build_manifest(self.cases(), 0.3)
+        contested = len(m["test_ids"]) + len(m["dev_ids"])
+        self.assertEqual(contested, 1000)                    # decreed + dismissed only
+        self.assertEqual(m["not_contested_ids"], 1000)
+        self.assertAlmostEqual(len(m["test_ids"]) / contested, 0.3, delta=0.05)
+        self.assertFalse(set(m["test_ids"]) & set(m["dev_ids"]))
+
+    def test_split_is_stable_when_the_corpus_grows_and_ignores_order(self):
+        from scripts import freeze_heldout as f
+
+        small = f.build_manifest(self.cases(1000), 0.3)
+        big = f.build_manifest(list(reversed(self.cases(2000))), 0.3)
+        self.assertTrue(set(small["test_ids"]) <= set(big["test_ids"]))
+        self.assertTrue(set(small["dev_ids"]) <= set(big["dev_ids"]))
+
+    def test_refuses_to_overwrite_and_load_split(self):
+        import tempfile
+        from unittest import mock
+
+        from scripts import freeze_heldout as f
+
+        tmp = Path(tempfile.mkdtemp())
+        out = tmp / "m.json"
+        out.write_text(json.dumps(f.build_manifest(self.cases(100), 0.3)), encoding="utf-8")
+        with mock.patch("sys.argv", ["x", "--cases", str(tmp / "none.json"), "--out", str(out)]):
+            self.assertEqual(f.main(), 1)                    # exists, no --force
+        test_ids = f.load_split(out, "test")
+        dev_ids = f.load_split(out, "dev")
+        self.assertTrue(test_ids and dev_ids and not (test_ids & dev_ids))

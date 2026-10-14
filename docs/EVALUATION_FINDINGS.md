@@ -40,3 +40,9 @@ Not supported:
 `scripts/plan_corpus_scale.py` now passes `--max-ex-parte-share 0.3` to every sourcing command. Ex parte decrees past that share
 are skipped before any LLM call. Contested cases are scarcer, so lower `--assumed-yield` (or raise `--max-complexes`) when the
 cap is on; the measured 27.6% yield was taken with no cap and no pre-screen.
+
+## 6. Held-out test set (freeze before any rework)
+`python -m scripts.freeze_heldout` splits the contested cases into dev and test by a hash of the case id (stable as the corpus
+grows, refuses to overwrite). Develop and compare on `python -m scripts.accuracy_by_disposal --split dev`; run `--split test`
+only for the final reported comparison. The existing figures above were computed on all cases, so the test set is clean only
+for changes designed after it was frozen.
