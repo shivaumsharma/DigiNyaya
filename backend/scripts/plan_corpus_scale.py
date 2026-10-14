@@ -115,10 +115,11 @@ def build_plan(groups: list[dict], target: int, assumed_yield: float, *, min_yea
 
 
 def command_for(row: dict, per_complex_cap: int, out_dir: str = r"data_cache\dc_slices",
-                exclude_from: str = r"data_cache\eval_judgments.json") -> str:
+                exclude_from: str = r"data_cache\eval_judgments.json", max_ex_parte_share: float = 1.0) -> str:
+    cap = f"--max-ex-parte-share {max_ex_parte_share} " if max_ex_parte_share < 1.0 else ""
     return (f"python -m scripts.source_district_court_judgments --states {row['state']} --years {row['year']} "
             f"--target {row['quota']} --max-complexes {row['complexes']} --max-per-complex {per_complex_cap} "
-            f"--exclude-from {exclude_from} --out {out_dir}\\dc_{row['state']}_{row['year']}.json")
+            f"--exclude-from {exclude_from} {cap}--out {out_dir}\\dc_{row['state']}_{row['year']}.json")
 
 
 def pilot_commands(groups: list[dict], n: int, *, min_year: int = 2015, per_complex_cap: int = 25) -> list[str]:
@@ -160,6 +161,10 @@ def main() -> int:
                     help="max accepted cases from one court complex. The sourcing script's own default of 25 is a guard "
                          "for tiny targets; at tens of thousands of cases it, not the data, becomes the ceiling. "
                          "scripts/corpus_gate.py separately fails any court above 2%% of the batch")
+    ap.add_argument("--max-ex-parte-share", type=float, default=0.3,
+                    help="passed to every sourcing command: ex parte decrees are skipped (before the LLM) once they reach this "
+                         "share of a slice file. 1.0 turns the cap off. Contested cases are scarcer, so the plan's yield "
+                         "assumption should be lowered when this is on")
     ap.add_argument("--already-have", type=int, default=0, help="cases already in the corpus; the plan sources target - already-have")
     ap.add_argument("--states", default="", help="comma-separated state codes to restrict to")
     ap.add_argument("--pilot", type=int, default=0, help="print only pilot commands totalling about this many accepted-target cases")
@@ -196,7 +201,7 @@ def main() -> int:
     print(f"\nCapacity: ~{plan['attempts_estimate']:,} extraction attempts, {plan['archive_gb']:.0f} GB of archives to download, "
           f"~{plan['judge_hours_estimate']:.0f} h of judging (extrapolated from the repo's ~4 h per 23,841 cases; sourcing "
           f"time is NOT estimated - measure it in the pilot).")
-    cmds = [command_for(r, plan["per_complex_cap"]) for r in plan["rows"]]
+    cmds = [command_for(r, plan["per_complex_cap"], max_ex_parte_share=args.max_ex_parte_share) for r in plan["rows"]]
     cmd_path = Path(args.out).with_suffix(".commands.txt")
     cmd_path.write_text("\n".join(cmds) + "\n", encoding="utf-8")
     Path(args.out).write_text(json.dumps(plan, indent=2), encoding="utf-8")

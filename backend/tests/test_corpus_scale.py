@@ -501,3 +501,35 @@ class BootstrapCiTests(unittest.TestCase):
         from scripts import accuracy_by_disposal as a
 
         self.assertIsNone(a.bootstrap_cis([{"claimant_prevailed_real": True, "claimant_prevailed_ai": True}] * 5))
+
+
+class ExParteCapTests(SourcingHarness):
+    def _text(self, tar, case_no):
+        # odd cases are ex parte decrees, even cases are contested decrees
+        tail = " The defendant was ex parte. The suit is decreed." if int(case_no) % 2 else " After trial the suit is decreed."
+        return "facts " * 60 + tail
+
+    def _classify(self, text, case_type):
+        self.calls.append("x")
+        return {"is_genuine_civil_dispute": True, "is_final_merits_decision": True, "category": "small_claims_debt_recovery",
+                "case_description": "d" * 300, "expected_outcome": "o" * 80, "cited_precedent": None}
+
+    def run_capped(self, target, share):
+        with self.mock.patch("sys.argv", ["x", "--states", "2", "--years", "2022", "--target", str(target), "--max-complexes", "5",
+                                          "--max-per-complex", "50", "--max-ex-parte-share", str(share), "--out", str(self.out)]):
+            return self.m.main()
+
+    def test_cap_limits_ex_parte_share_and_saves_llm_calls(self):
+        self.run_capped(target=4, share=0.25)       # cap = int(0.25 * (0 + 4)) = 1 ex parte case
+        saved = json.loads(self.out.read_text(encoding="utf-8"))
+        kinds = [c["source"]["disposal"] for c in saved]
+        self.assertEqual(kinds.count("ex_parte_decreed"), 1)
+        self.assertEqual(len(saved), 4)
+        self.assertEqual(len(self.calls), 4)        # skipped ex parte cases never reached the LLM
+
+    def test_no_cap_by_default(self):
+        with self.mock.patch("sys.argv", ["x", "--states", "2", "--years", "2022", "--target", "4", "--max-complexes", "5",
+                                          "--max-per-complex", "50", "--out", str(self.out)]):
+            self.m.main()
+        kinds = [c["source"]["disposal"] for c in json.loads(self.out.read_text(encoding="utf-8"))]
+        self.assertGreaterEqual(kinds.count("ex_parte_decreed"), 2)

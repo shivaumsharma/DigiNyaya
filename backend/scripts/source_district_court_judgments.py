@@ -368,6 +368,10 @@ def main() -> int:
     ap.add_argument("--no-prescreen", action="store_true",
                     help="send compromise / withdrawn / dismissed-for-default cases to the LLM too (default: skip them, "
                          "they end without a decision on the merits)")
+    ap.add_argument("--max-ex-parte-share", type=float, default=1.0,
+                    help="cap ex parte decrees at this share of the --out file (default 1.0 = no cap). At 0.3, once ex parte "
+                         "cases make up 30%% of what is saved they are skipped before the LLM, so the batch fills with "
+                         "contested decisions. Ex parte decrees are ~53%% of the existing corpus (scripts/tag_disposal.py).")
     ap.add_argument("--out", default=str(OUT_PATH))
     ap.add_argument("--dry-run", action="store_true", help="metadata only -- no PDF download, no LLM calls")
     args = ap.parse_args()
@@ -389,6 +393,8 @@ def main() -> int:
         if Path(extra).exists():
             exclude_docids |= {str(c.get("source", {}).get("docid")) for c in json.loads(Path(extra).read_text(encoding="utf-8"))
                                if c.get("source", {}).get("docid") is not None}
+    ex_parte_cap = int(args.max_ex_parte_share * (len(existing) + args.target)) if args.max_ex_parte_share < 1.0 else None
+    ex_parte_have = sum((c.get("source") or {}).get("disposal") == "ex_parte_decreed" for c in existing)
     tally_file = _tally_path(args.out)
     tally = load_tally(tally_file)
     exclude_docids |= set(tally["skip_docids"])
@@ -479,6 +485,9 @@ def main() -> int:
                     _save_tally(tally_file, tally)
                     print(f"    - {case_no}: ended without a decision on the merits ({disposal}); no LLM call")
                     continue
+                if disposal == "ex_parte_decreed" and ex_parte_cap is not None and ex_parte_have >= ex_parte_cap:
+                    print(f"    - {case_no}: ex parte decree skipped (cap of {ex_parte_cap} reached); no LLM call")
+                    continue
                 fields = extract_and_classify(body_text, row["case_type"])
                 if not fields:
                     classify_failed += 1
@@ -496,6 +505,8 @@ def main() -> int:
                           f"is_final={fields.get('is_final_merits_decision')}, category={fields.get('category')})")
                     continue
                 case["source"]["disposal"] = disposal
+                if disposal == "ex_parte_decreed":
+                    ex_parte_have += 1
 
                 # Cache the extracted text in the exact shape
                 # source_eval_judgments.py's/source_free_judgments.py's own

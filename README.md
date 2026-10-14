@@ -65,6 +65,12 @@ human labels (the blind sheet at `data_cache/human_label_sheet.csv` is still unl
 | Confidence vs. correctness | correlation 0.19 — the confidence score is only a weak signal |
 | Weakest category | small-claims debt recovery, 47.5% full match (n = 7,549); strongest large category is property/neighbour disputes at 66.3% |
 
+**By how the case ended.** About half of these cases (53%) are ex parte decrees, where the defendant never appeared and the
+claimant wins almost by default. On the 5,498 contested cases the pipeline's balanced accuracy is 58.6% (95% CI 57.1-60.0%)
+against 50% for chance, with 53.3% recall on respondent wins; its raw winner accuracy there (61.0%) is below the 73.4% that
+"claimant always wins" scores. The pooled 75.1% figure above is therefore not a headline. Details and caveats:
+`docs/EVALUATION_FINDINGS.md`. Reproduce with `scripts/tag_disposal.py` and `scripts/accuracy_by_disposal.py`.
+
 Caveats: the amount fix was designed after looking at this data, so these are not held-out
 numbers; the LLM judge is non-deterministic (it flipped the winner on 50 of 679 identical AI
 outputs); LLM-extracted claim amounts match the real decree slightly more often than
