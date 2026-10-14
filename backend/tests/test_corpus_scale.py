@@ -465,3 +465,39 @@ class AccuracyByDisposalTests(unittest.TestCase):
         self.assertAlmostEqual(s["g"]["claimant_win_recall"], 1.0)     # both real claimant wins predicted
         self.assertAlmostEqual(s["g"]["balanced_accuracy"], 0.75)
         self.assertIsNone(s["h"]["balanced_accuracy"])
+
+
+class BootstrapCiTests(unittest.TestCase):
+    def rows(self, n_claim, n_resp, claim_recall, resp_recall):
+        import random
+
+        rng = random.Random(1)
+        out = []
+        for _ in range(n_claim):
+            out.append({"claimant_prevailed_real": True, "claimant_prevailed_ai": rng.random() < claim_recall})
+        for _ in range(n_resp):
+            out.append({"claimant_prevailed_real": False, "claimant_prevailed_ai": not (rng.random() < resp_recall)})
+        return out
+
+    def test_interval_contains_the_point_estimate_and_narrows_with_n(self):
+        from scripts import accuracy_by_disposal as a
+
+        small = a.bootstrap_cis(self.rows(150, 50, 0.64, 0.53))
+        large = a.bootstrap_cis(self.rows(3000, 1000, 0.64, 0.53))
+        for ci in (small, large):
+            lo, hi = ci["balanced_accuracy"]
+            self.assertLess(lo, 0.585)
+            self.assertGreater(hi, 0.585)
+        self.assertGreater(small["balanced_accuracy"][1] - small["balanced_accuracy"][0],
+                           large["balanced_accuracy"][1] - large["balanced_accuracy"][0])
+
+    def test_gap_is_negative_when_pipeline_underperforms_the_base_rate(self):
+        from scripts import accuracy_by_disposal as a
+
+        ci = a.bootstrap_cis(self.rows(3000, 1000, 0.64, 0.53))
+        self.assertLess(ci["accuracy_minus_base_rate"][1], 0)
+
+    def test_undefined_with_one_kind_of_case(self):
+        from scripts import accuracy_by_disposal as a
+
+        self.assertIsNone(a.bootstrap_cis([{"claimant_prevailed_real": True, "claimant_prevailed_ai": True}] * 5))

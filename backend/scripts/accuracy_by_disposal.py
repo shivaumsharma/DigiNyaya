@@ -60,6 +60,30 @@ def summarise_groups(rows: list[dict]) -> dict:
     return out
 
 
+def bootstrap_cis(rows: list[dict], reps: int = 2000, seed: int = 11) -> dict | None:
+    """95% percentile bootstrap (resampling cases) for balanced accuracy and for pipeline accuracy minus the
+    always-claimant base rate. None when there is no case of one of the two kinds (balanced accuracy undefined)."""
+    import numpy as np
+
+    real = np.array([bool(r["claimant_prevailed_real"]) for r in rows])
+    pred = np.array([bool(r["claimant_prevailed_ai"]) for r in rows])
+    if real.all() or (~real).all():
+        return None
+    rng = np.random.default_rng(seed)
+    n = len(rows)
+    bal, gap = np.empty(reps), np.empty(reps)
+    for i in range(reps):
+        idx = rng.integers(0, n, n)
+        r, p_ = real[idx], pred[idx]
+        if r.all() or (~r).all():
+            bal[i] = gap[i] = np.nan
+            continue
+        bal[i] = ((p_[r]).mean() + (~p_[~r]).mean()) / 2
+        gap[i] = (p_ == r).mean() - r.mean()
+    return {"balanced_accuracy": tuple(float(x) for x in np.nanpercentile(bal, [2.5, 97.5])),
+            "accuracy_minus_base_rate": tuple(float(x) for x in np.nanpercentile(gap, [2.5, 97.5]))}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--verdicts", default=None)
@@ -96,6 +120,16 @@ def main() -> int:
         cr = "n/a" if d["claimant_win_recall"] is None else f"{100 * d['claimant_win_recall']:.1f}%"
         ba = "n/a" if d["balanced_accuracy"] is None else f"{100 * d['balanced_accuracy']:.1f}%"
         print(f"{g:36s}{d['n']:>7,}{100 * d['claimant_win_rate']:>19.1f}%{100 * d['pipeline_accuracy']:>13.1f}%{rec:>17s}{cr:>18s}{ba:>14s}")
+    print("\n95% bootstrap intervals (resampling cases, 2,000 draws):")
+    for g in s:
+        ci = bootstrap_cis([r for r in rows if r["group"] == g])
+        if ci is None:
+            print(f"  {g:36s} not defined (all cases have the same real winner)")
+            continue
+        b, d = ci["balanced_accuracy"], ci["accuracy_minus_base_rate"]
+        print(f"  {g:36s} balanced accuracy {100 * b[0]:.1f}% to {100 * b[1]:.1f}%   "
+              f"accuracy minus claimant base rate {100 * d[0]:+.1f} to {100 * d[1]:+.1f} points")
+    print("  (Intervals cover sampling noise only, not errors in the judge's verdicts or the disposal tag.)")
     c = s.get("contested (decreed or dismissed)")
     if c:
         print(f"\nOn contested cases a 'claimant always wins' predictor scores {100 * c['claimant_win_rate']:.1f}%; "
