@@ -418,3 +418,24 @@ class PrescreenTests(SourcingHarness):
         self.assertIn("prescreened_out=1", self.m.tally_line(t))
         saved = json.loads(self.out.read_text(encoding="utf-8"))
         self.assertIn(saved[0]["source"]["disposal"], {"unknown"})
+
+
+class TagDisposalTests(unittest.TestCase):
+    def test_tags_from_cached_text_and_counts_missing(self):
+        import tempfile
+
+        from scripts import tag_disposal as td
+
+        d = Path(tempfile.mkdtemp())
+        (d / "A.json").write_text(json.dumps({"doc": "The defendant was ex parte. " + "x " * 100 + " The suit is decreed."}), encoding="utf-8")
+        (d / "B.json").write_text(json.dumps({"doc": "x " * 100 + " After trial the suit is decreed."}), encoding="utf-8")
+        cases = [{"case_id": "DC-EVAL-A", "category": "c1", "source": {"docid": "A"}},
+                 {"case_id": "DC-EVAL-B", "category": "c1", "source": {"docid": "B"}},
+                 {"case_id": "DC-EVAL-C", "category": "c2", "source": {"docid": "C"}}]   # no cached text
+        out, s = td.tag_cases(cases, d)
+        self.assertEqual((s["tagged"], s["no_cached_text"]), (2, 1))
+        self.assertEqual(s["counts"], {"ex_parte_decreed": 1, "decreed": 1})
+        self.assertAlmostEqual(s["shares"]["ex_parte_decreed"], 0.5)
+        self.assertEqual(out[0]["source"]["disposal"], "ex_parte_decreed")
+        self.assertNotIn("disposal", out[2]["source"])
+        self.assertNotIn("disposal", cases[0]["source"])   # inputs are not mutated
