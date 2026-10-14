@@ -53,7 +53,10 @@ def summarise_groups(rows: list[dict]) -> dict:
             "pipeline_accuracy": correct / n,
             "respondent_wins": len(real_loss),
             "respondent_win_recall": (sum(not r["claimant_prevailed_ai"] for r in real_loss) / len(real_loss)) if real_loss else None,
+            "claimant_win_recall": (sum(bool(r["claimant_prevailed_ai"]) for r in real_win) / len(real_win)) if real_win else None,
         }
+        c, r_ = out[g]["claimant_win_recall"], out[g]["respondent_win_recall"]
+        out[g]["balanced_accuracy"] = (c + r_) / 2 if c is not None and r_ is not None else None
     return out
 
 
@@ -86,14 +89,18 @@ def main() -> int:
 
     s = summarise_groups(rows)
     print(f"Verdicts: {vp.name}  |  {len(rows)} judged district-court cases\n")
-    print(f"{'group':36s}{'n':>7s}{'real claimant wins':>20s}{'pipeline acc':>14s}{'resp-win recall':>17s}")
+    print(f"{'group':36s}{'n':>7s}{'real claimant wins':>20s}{'pipeline acc':>14s}{'resp-win recall':>17s}"
+          f"{'claim-win recall':>18s}{'balanced acc':>14s}")
     for g, d in s.items():
         rec = "n/a" if d["respondent_win_recall"] is None else f"{100 * d['respondent_win_recall']:.1f}% ({d['respondent_wins']})"
-        print(f"{g:36s}{d['n']:>7,}{100 * d['claimant_win_rate']:>19.1f}%{100 * d['pipeline_accuracy']:>13.1f}%{rec:>17s}")
+        cr = "n/a" if d["claimant_win_recall"] is None else f"{100 * d['claimant_win_recall']:.1f}%"
+        ba = "n/a" if d["balanced_accuracy"] is None else f"{100 * d['balanced_accuracy']:.1f}%"
+        print(f"{g:36s}{d['n']:>7,}{100 * d['claimant_win_rate']:>19.1f}%{100 * d['pipeline_accuracy']:>13.1f}%{rec:>17s}{cr:>18s}{ba:>14s}")
     c = s.get("contested (decreed or dismissed)")
     if c:
         print(f"\nOn contested cases a 'claimant always wins' predictor scores {100 * c['claimant_win_rate']:.1f}%; "
-              f"the pipeline scores {100 * c['pipeline_accuracy']:.1f}%. Only the gap over that base rate is evidence of skill.")
+              f"the pipeline scores {100 * c['pipeline_accuracy']:.1f}%. Only the gap over that base rate is evidence of skill.\n"
+              "Balanced accuracy (mean of the two recalls) is the fairer score when one side almost always wins: 50% is chance.")
     print("\nCaveat: disposal is a keyword heuristic; judge verdicts are not yet validated against human labels.")
     return 0
 

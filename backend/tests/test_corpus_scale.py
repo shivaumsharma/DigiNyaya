@@ -462,3 +462,6 @@ class AccuracyByDisposalTests(unittest.TestCase):
         self.assertAlmostEqual(s["g"]["pipeline_accuracy"], 0.75)
         self.assertAlmostEqual(s["g"]["respondent_win_recall"], 0.5)   # 1 of the 2 respondent wins predicted
         self.assertIsNone(s["h"]["respondent_win_recall"])
+        self.assertAlmostEqual(s["g"]["claimant_win_recall"], 1.0)     # both real claimant wins predicted
+        self.assertAlmostEqual(s["g"]["balanced_accuracy"], 0.75)
+        self.assertIsNone(s["h"]["balanced_accuracy"])
