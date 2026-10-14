@@ -31,9 +31,27 @@ Not supported:
 * "Scored on 60K cases": more cases of the same kind add volume, not evidence. Report the contested subset size.
 * Anything that treats the LLM judge's verdicts as ground truth, until the human-label agreement has been run.
 
+## 3b. Leakage-free control (inputs rebuilt from pre-decision text only)
+Same cases scored twice, original inputs vs inputs rebuilt from the part of the judgment before the decision. Paired comparison.
+
+| Sample | Cases judged in both | Winner accuracy | Full match | Respondent-win recall |
+|---|---|---|---|---|
+| All cases (mostly ex parte) | 303 | 80.9% to 81.2% (+0.3; 95% CI -4.3 to +5.3) | 61.4% to 60.7% (-0.7; CI -6.9 to +5.6) | 51.0% to 62.7% (about 50 cases, no interval) |
+| Contested dev cases | 279 | 71.0% to 73.1% (+2.2; CI -3.2 to +7.2) | 48.7% to 42.7% (-6.1; CI -12.5 to +0.4, p = 0.086) | 44.7% to 47.1% |
+
+Reading: no detectable inflation of winner accuracy. On contested cases full match was 6.1 points lower, driven by the amount
+component (within +/-20%: 77.5% to 73.6%), with an interval that just reaches zero: suggestive of some amount echo in the
+original descriptions, not established. The text-only baseline scored exactly the majority rate on both versions. The predicted
+winner changed in about 20% of cases, partly judge and pipeline noise.
+
+Limits: 31 to 49 cases per run were judged originally but not in the control, so the comparison is on a subset; an inflation
+under about 5 points cannot be ruled out; the control inputs are LLM-written; the verdicts come from the unvalidated judge.
+
+Supportable wording: "Rebuilding inputs from pre-decision text did not reduce winner accuracy on contested cases (+2.2 points,
+95% CI -3.2 to +7.2, n = 279). Full match was 6.1 points lower (95% CI -12.5 to +0.4), so the amount component may be modestly inflated."
+
 ## 4. Still open
 * Human labels (the blind sheet) to validate the judge and the disposal tag.
-* The leakage-free control (`scripts/build_leakage_free_control.py`) to test whether the skill survives inputs that cannot hint at the decision.
 * Intervals above cover sampling noise only, not judge or tag errors.
 
 ## 5. Sourcing more contested cases
