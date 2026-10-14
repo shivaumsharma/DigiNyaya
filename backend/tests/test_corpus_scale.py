@@ -439,3 +439,26 @@ class TagDisposalTests(unittest.TestCase):
         self.assertEqual(out[0]["source"]["disposal"], "ex_parte_decreed")
         self.assertNotIn("disposal", out[2]["source"])
         self.assertNotIn("disposal", cases[0]["source"])   # inputs are not mutated
+
+
+class AccuracyByDisposalTests(unittest.TestCase):
+    def test_groups_and_rates(self):
+        from scripts import accuracy_by_disposal as a
+
+        self.assertEqual(a.group_of("ex_parte_decreed"), "ex parte decree")
+        self.assertEqual(a.group_of("dismissed"), "contested (decreed or dismissed)")
+        self.assertEqual(a.group_of("compromise"), "ended without a merits decision")
+        self.assertEqual(a.group_of(None), "untagged")
+        rows = [
+            {"group": "g", "claimant_prevailed_ai": True, "claimant_prevailed_real": True},
+            {"group": "g", "claimant_prevailed_ai": True, "claimant_prevailed_real": False},
+            {"group": "g", "claimant_prevailed_ai": False, "claimant_prevailed_real": False},
+            {"group": "g", "claimant_prevailed_ai": True, "claimant_prevailed_real": True},
+            {"group": "h", "claimant_prevailed_ai": True, "claimant_prevailed_real": True},
+        ]
+        s = a.summarise_groups(rows)
+        self.assertEqual(s["g"]["n"], 4)
+        self.assertAlmostEqual(s["g"]["claimant_win_rate"], 0.5)
+        self.assertAlmostEqual(s["g"]["pipeline_accuracy"], 0.75)
+        self.assertAlmostEqual(s["g"]["respondent_win_recall"], 0.5)   # 1 of the 2 respondent wins predicted
+        self.assertIsNone(s["h"]["respondent_win_recall"])
