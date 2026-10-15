@@ -575,3 +575,23 @@ class FreezeHeldoutTests(unittest.TestCase):
         test_ids = f.load_split(out, "test")
         dev_ids = f.load_split(out, "dev")
         self.assertTrue(test_ids and dev_ids and not (test_ids & dev_ids))
+
+
+class DisclaimerMisjudgmentTests(unittest.TestCase):
+    def test_finds_only_judge_driven_flips_that_mention_the_disclaimer(self):
+        from scripts import find_disclaimer_misjudgments as f
+
+        def row(cid, verdict, reason, ai_hash="h", ph="p"):
+            return {"case_id": cid, "verdict": verdict, "reason": reason, "ai_hash": ai_hash, "judge_prompt_hash": ph}
+
+        before = [row("a", "mismatch", "AI order is provisional and non-binding, so claimant did not prevail"),
+                  row("b", "mismatch", "different winner"),
+                  row("c", "mismatch", "order is a recommendation only", ai_hash="old"),   # AI output changed: excluded
+                  row("d", "match", "same")]
+        after = [row("a", "match", "claimant prevailed", ph="q"), row("b", "match", "ok", ph="q"),
+                 row("c", "match", "ok", ai_hash="new", ph="q"), row("d", "match", "same", ph="q")]
+        r = f.find_candidates(before, after)
+        self.assertEqual(r["same_ai_output"], 3)
+        self.assertEqual(r["flipped_mismatch_to_agree"], ["a", "b"])
+        self.assertEqual(r["flipped_and_old_reason_mentions_disclaimer"], ["a"])
+        self.assertEqual((r["prompt_hash_before"], r["prompt_hash_after"]), (["p"], ["q"]))
