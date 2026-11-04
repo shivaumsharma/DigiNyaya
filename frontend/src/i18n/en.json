@@ -24,10 +24,22 @@
     "previewTag": "Illustrative",
     "previewCta": "See this on your own case →",
     "previewSteps": [
-      { "title": "Ingestion — evidence parsed & classified", "detail": "3 evidence items read, claim matched to category at 98% confidence." },
-      { "title": "Precedent research — semantic retrieval", "detail": "Querying District & State consumer forum decisions for comparable outcomes." },
-      { "title": "Argument analysis & mediation", "detail": "Both sides weighed against precedent; settlement drafted." },
-      { "title": "Resolution issued — reasoning attached", "detail": "Written order with citations. Escalation always available." }
+      {
+        "title": "Ingestion — evidence parsed & classified",
+        "detail": "3 evidence items read, claim matched to category at 98% confidence."
+      },
+      {
+        "title": "Precedent research — semantic retrieval",
+        "detail": "Querying District & State consumer forum decisions for comparable outcomes."
+      },
+      {
+        "title": "Argument analysis & mediation",
+        "detail": "Both sides weighed against precedent; settlement drafted."
+      },
+      {
+        "title": "Resolution issued — reasoning attached",
+        "detail": "Written order with citations. Escalation always available."
+      }
     ],
     "trust": [
       "Consumer Protection Act, 2019 §37 mediation route",
@@ -49,33 +61,89 @@
     "agentsEyebrow": "Under the hood",
     "agentsTitle": "Five specialised agents, working in sequence.",
     "agents": [
-      { "title": "Ingestion", "desc": "Parses filings & evidence, classifies the claim, routes to a tier." },
-      { "title": "Precedent research", "desc": "Semantic retrieval over forum decisions, keyword fallback where needed." },
-      { "title": "Argument analysis", "desc": "Weighs both sides' evidence strength against comparable outcomes." },
-      { "title": "Mediation", "desc": "Proposes a settlement both parties can accept before any order is drafted." },
-      { "title": "Resolution drafting", "desc": "Writes the order with findings, precedents relied upon, and next steps." }
+      {
+        "title": "Ingestion",
+        "desc": "Parses filings & evidence, classifies the claim, routes to a tier."
+      },
+      {
+        "title": "Precedent research",
+        "desc": "Semantic retrieval over forum decisions, keyword fallback where needed."
+      },
+      {
+        "title": "Argument analysis",
+        "desc": "Weighs both sides' evidence strength against comparable outcomes."
+      },
+      {
+        "title": "Mediation",
+        "desc": "Proposes a settlement both parties can accept before any order is drafted."
+      },
+      {
+        "title": "Resolution drafting",
+        "desc": "Writes the order with findings, precedents relied upon, and next steps."
+      }
     ],
     "lifecycleEyebrow": "Case lifecycle",
     "lifecycleTitle": "From filing to a written resolution.",
     "lifecycle": [
-      { "day": "Day 0", "title": "File & notify", "desc": "Case filed with evidence; respondent served digitally." },
-      { "day": "Day 1–3", "title": "Response window", "desc": "72-hour fixed window for the other party to reply." },
-      { "day": "Day 3–4", "title": "Agents review", "desc": "Precedent matched, arguments weighed, settlement proposed." },
-      { "day": "Day 3–5", "title": "Resolution", "desc": "Written order issued, or escalate to a human panel." }
+      {
+        "day": "Day 0",
+        "title": "File & notify",
+        "desc": "Case filed with evidence; respondent served digitally."
+      },
+      {
+        "day": "Day 1–3",
+        "title": "Response window",
+        "desc": "72-hour fixed window for the other party to reply."
+      },
+      {
+        "day": "Day 3–4",
+        "title": "Agents review",
+        "desc": "Precedent matched, arguments weighed, settlement proposed."
+      },
+      {
+        "day": "Day 3–5",
+        "title": "Resolution",
+        "desc": "Written order issued, or escalate to a human panel."
+      }
     ],
     "metricsEyebrow": "Measured on 23,841 archived court judgments (LLM-judged) — no live users yet",
     "metricsTitle": "Outcome transparency, in numbers.",
     "barsLabel": "Matched the real court's outcome, by dispute type",
     "metricBars": [
-      { "label": "All dispute types (15,573 judged)", "value": "56%", "pct": 56.3 },
-      { "label": "Property & neighbour disputes (strongest)", "value": "66%", "pct": 66.3 },
-      { "label": "Small-claims debt recovery (weakest)", "value": "47%", "pct": 47.5, "muted": true }
+      {
+        "label": "All dispute types (15,573 judged)",
+        "value": "56%",
+        "pct": 56.3
+      },
+      {
+        "label": "Property & neighbour disputes (strongest)",
+        "value": "66%",
+        "pct": 66.3
+      },
+      {
+        "label": "Small-claims debt recovery (weakest)",
+        "value": "47%",
+        "pct": 47.5,
+        "muted": true
+      }
     ],
     "statTiles": [
-      { "value": "65%", "label": "Resolved without escalation, across real sourced disputes" },
-      { "value": "56%", "label": "Matched the real court's outcome and relief amount (within ±20%)" },
-      { "value": "35%", "label": "Escalated to a human panel or forum" },
-      { "value": "75%", "label": "Picked the right winner — but a naive “claimant always wins” guess scores 83%, so a human signs off" }
+      {
+        "value": "65%",
+        "label": "Resolved without escalation, across real sourced disputes"
+      },
+      {
+        "value": "56%",
+        "label": "Matched the real court's outcome and relief amount (within ±20%)"
+      },
+      {
+        "value": "35%",
+        "label": "Escalated to a human panel or forum"
+      },
+      {
+        "value": "75%",
+        "label": "Picked the right winner — but a naive “claimant always wins” guess scores 83%, so a human signs off"
+      }
     ],
     "legalEyebrow": "Legal framework",
     "legalTitle": "What DigiNyaya is — and isn't.",
@@ -83,10 +151,22 @@
     "legalLedeBold": "not a court",
     "legalLedePost": ". Tier 1 outcomes are consensual settlements under the Consumer Protection Act's mediation route; either party can withdraw at any stage for the Consumer Forum, Lok Adalat, or civil courts.",
     "legal": [
-      { "title": "Consumer Protection Act, 2019", "sub": "§37 mediation — Consumer Dispute" },
-      { "title": "Negotiable Instruments Act, 1881", "sub": "§138 — Cheque Bounce" },
-      { "title": "Legal Services Authorities Act, 1987", "sub": "Lok Adalat settlement structure" },
-      { "title": "IT Rules, 2021", "sub": "Grievance redressal & data handling" }
+      {
+        "title": "Consumer Protection Act, 2019",
+        "sub": "§37 mediation — Consumer Dispute"
+      },
+      {
+        "title": "Negotiable Instruments Act, 1881",
+        "sub": "§138 — Cheque Bounce"
+      },
+      {
+        "title": "Legal Services Authorities Act, 1987",
+        "sub": "Lok Adalat settlement structure"
+      },
+      {
+        "title": "IT Rules, 2021",
+        "sub": "Grievance redressal & data handling"
+      }
     ],
     "advisoryEyebrow": "Founding team",
     "advisoryTitle": "The rules AI drafts under are set by people, not the model.",
@@ -329,5 +409,48 @@
     "txtCitedStatutes": "STATUTORY PROVISIONS CONSIDERED",
     "txtOrder": "ORDER",
     "txtComplianceDeadline": "Compliance deadline:"
+  },
+  "matters": {
+    "navLabel": "All matters",
+    "title": "Every kind of legal matter, and how we can help",
+    "subtitle": "Some matters we can help you resolve. For others we explain the process and help you prepare. We never predict outcomes for matters involving liberty or fundamental rights.",
+    "search": "Search matters",
+    "noResults": "No matters match your search.",
+    "loading": "Loading…",
+    "loadError": "We couldn't load the list. Please try again.",
+    "sections": {
+      "resolve": "File a case with DigiNyaya",
+      "soon": "Coming soon",
+      "guides": "Guides: understand the process and prepare"
+    },
+    "families": {
+      "criminal": "Criminal matters",
+      "family": "Family matters",
+      "civil_other": "Other civil and commercial",
+      "tax": "Tax",
+      "service": "Government service",
+      "constitutional": "Writs and constitutional",
+      "ip": "Intellectual property"
+    },
+    "level": {
+      "L0_NAVIGATE": "Information only",
+      "L1_PREPARE": "Information and preparation",
+      "L2_RESOLVE": "AI-drafted, human countersigned",
+      "L3_DECIDE": "Fully resolved by DigiNyaya"
+    },
+    "fileCta": "File a case",
+    "readGuide": "Read the guide",
+    "roadmap": "Roadmap",
+    "guide": {
+      "back": "Back to all matters",
+      "forum": "Where this is usually handled",
+      "steps": "What to do first",
+      "documents": "What to collect",
+      "cannot": "What this tool cannot do",
+      "unreviewed": "This guide has not been reviewed by a lawyer yet.",
+      "notFound": "We couldn't find that guide.",
+      "loadError": "We couldn't load this guide. Please try again.",
+      "legalAid": "If you cannot afford a lawyer, ask your District Legal Services Authority about free legal aid."
+    }
   }
 }

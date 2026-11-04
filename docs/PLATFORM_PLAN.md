@@ -116,7 +116,8 @@ Until then, the type ships at L0 or L1 only.
 | 4 Nov | Matter registry with capability ceilings, policy enforced by tests (`app/matters`, `tests/test_matters.py`); 12 navigator guides; `GET /api/matters`, `GET /api/matters/{id}/guide` | Done |
 | 4 Nov | Durable job queue on the application database (`app/jobqueue.py`): at-least-once delivery, retries with backoff, lease recovery after a crash, per-kind worker claims; in-process workers drain it at startup. `DIGINYAYA_DURABLE_JOBS=0` restores the old thread pool. Alembic migration `a3c5e7f9b1d2` | Done |
 | next | Move workers out of the API process (`python -m app.worker`) and add a shared event bus (Redis or Postgres LISTEN/NOTIFY) | Planned |
-| next | Frontend: matter browser and guide pages (all 11 languages) | Planned |
+| 4 Nov | Frontend: public `/matters` browser (search, grouped by what you can file / roadmap / guides) and `/matters/:id` guide pages, header link, phone-width header fix, 11 vitest tests. UI strings are in `en.json`; the other 10 languages fall back to English until translated (needs the Sarvam key: `scripts/fill_missing_translations.py`). Guide bodies are served in English by the backend | Done (English) |
+| next | Translate the new UI strings and the guide content into the 10 other languages | Planned |
 
 ## 10. Decisions still needed
 1. Team size and timeline, and whether there is funding for cloud and LLM spend.

@@ -269,6 +269,16 @@ button { font-family: var(--font-body); cursor: pointer; border: none; backgroun
 .soon { position: absolute; top: 18px; right: 18px; font-size: 0.68rem; color: var(--text-faint);
   border: 1px solid var(--color-divider); padding: 3px 9px; }
 
+/* ---------- Matters ---------- */
+.matter-section { margin-bottom: var(--space-8); }
+.matter-heading { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 1.2rem; margin: var(--space-6) 0 var(--space-3); }
+.matter-family { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: var(--space-4) 0 var(--space-2); }
+.matter-card { cursor: default; display: flex; flex-direction: column; gap: 4px; }
+.matter-card .btn { align-self: flex-start; margin-top: var(--space-3); }
+.matter-notice { border-left: 3px solid var(--color-accent); background: var(--color-accent-100); color: var(--color-accent-800);
+  padding: var(--space-3) var(--space-4); margin: var(--space-4) 0; line-height: 1.55; font-size: 0.92rem; }
+.matter-list { padding-left: 1.2em; line-height: 1.7; }
+
 /* ---------- Stepper ---------- */
 .stepper { display: flex; align-items: center; margin-bottom: var(--space-6); flex-wrap: wrap; }
 .step-node { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-faint); }
@@ -442,4 +452,12 @@ button { font-family: var(--font-body); cursor: pointer; border: none; backgroun
   .side { position: static; }
   .hero-grid-responsive { grid-template-columns: 1fr !important; }
   .metrics-grid-responsive { grid-template-columns: 1fr !important; }
+}
+
+/* Phones: let the header wrap instead of pushing its buttons off-screen. */
+@media (max-width: 640px) {
+  .container { padding: 0 var(--space-4); }
+  .topbar-inner { height: auto; flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; }
+  .topbar-actions { gap: 8px !important; flex-wrap: wrap; }
+  .engine-badge, .brand .tagline { display: none; }
 }

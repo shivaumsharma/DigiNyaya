@@ -14,7 +14,7 @@ const HOME_NAV = [
 
 export default function App() {
   const { user, logout } = useAuth()
-  const { lang, setLang } = useLanguage()
+  const { lang, setLang, t } = useLanguage()
   const navigate = useNavigate()
   const location = useLocation()
   const isHome = location.pathname === '/'
@@ -57,7 +57,7 @@ export default function App() {
             </nav>
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {ai && (
               <span className={`engine-badge ${ai.available ? 'live' : 'scripted'}`} title={ai.engine}>
                 <Cpu width={14} height={14} />
@@ -76,8 +76,11 @@ export default function App() {
                 </option>
               ))}
             </select>
+            <Link to="/matters" className="btn btn-ghost">
+              {t('matters.navLabel')}
+            </Link>
             {user ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <Link to="/my-cases" className="btn btn-ghost">
                   My cases
                 </Link>

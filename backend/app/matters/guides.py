@@ -8,7 +8,7 @@ review is a precondition for raising any of these above L1 or for removing the d
 from __future__ import annotations
 
 DISCLAIMER = (
-    "General information only, not legal advice. It has not been reviewed by a lawyer. Time limits, courts and procedures "
+    "General information only, not legal advice. Time limits, courts and procedures "
     "depend on your facts, the amount and your location: confirm them with a lawyer or your District Legal Services "
     "Authority, which can arrange free legal aid for eligible people."
 )
