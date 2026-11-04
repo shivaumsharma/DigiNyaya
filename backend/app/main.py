@@ -440,6 +440,7 @@ def _localize_event(event: dict, source_language: str, gw) -> dict:
 @app.on_event("startup")
 def _startup():
     db.init_db()
+    jobs.ensure_workers()  # drain any work a previous process left in the durable queue
     init_auth_db()
     threading.Thread(target=llm.prewarm, daemon=True).start()
 

@@ -367,6 +367,7 @@ engine is active.
 | --- | --- |
 | `DIGINYAYA_STATUTE_GROUNDING=1` | Research also retrieves up to 3 statutory provisions for the dispute type; findings gain one deterministic sentence naming them and `cited_statutes` is added to the resolution (and shown in the UI when present). Any "Section N" the model mentions that was not retrieved is dropped. Never touches amounts or routing. **The statute summaries are unreviewed paraphrases — see [`docs/STATUTE_GROUNDING.md`](docs/STATUTE_GROUNDING.md) before turning this on for real users.** |
 | `DIGINYAYA_ENABLE_PREVIEW_TYPES=1` | Opens the tenancy / property / employment preview types for filing (see [`docs/CIVIL_EXPANSION.md`](docs/CIVIL_EXPANSION.md)). |
+| `DIGINYAYA_DURABLE_JOBS=0` | Background jobs are durable by default (rows in `job_queue`, claimed by worker threads, retried, recovered after a crash). `0` restores the old in-memory thread pool. `DIGINYAYA_JOB_WORKERS` sets the worker count. See [`docs/PLATFORM_PLAN.md`](docs/PLATFORM_PLAN.md). |
 | `DIGINYAYA_EVAL_NATIVE_TYPES=1` | Eval scripts only: score tenancy / employment / property cases under their native types instead of the approximations. Must not change any decision; it exists to prove that on real data. |
 
 ## Validating the evaluation

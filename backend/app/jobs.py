@@ -17,7 +17,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Iterator
 
-from . import db
+from . import db, jobqueue
 from .core import graph
 from .core.context import CaseContext
 from .core.events import EPHEMERAL, bus, make_event
@@ -41,6 +41,86 @@ logger = logging.getLogger("diginyaya.jobs")
 # just waits its turn instead of failing or being unbounded.
 _MAX_WORKERS = int(os.environ.get("DIGINYAYA_JOB_WORKERS", "4"))
 _executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="diginyaya-job")
+
+
+# Durable mode (default): jobs are rows in `job_queue` and in-process worker threads claim them, so queued or interrupted work
+# survives a restart (at-least-once; see app/jobqueue.py). DIGINYAYA_DURABLE_JOBS=0 restores the old in-memory thread pool.
+_DURABLE = os.environ.get("DIGINYAYA_DURABLE_JOBS", "1").strip().lower() not in {"0", "false", "no", "off"}
+_wake = threading.Event()
+_workers_started = False
+_workers_lock = threading.Lock()
+
+
+HANDLED_KINDS = ("pipeline", "resolution", "extraction", "discrepancy")
+
+
+def _handle(kind: str, payload: dict) -> None:
+    """Run one claimed job. Each _run_* releases its own in-process claim in its `finally`."""
+    if kind == "pipeline":
+        _adopt_claim(payload["case_id"], "pipeline")
+        _run_pipeline(payload["case_id"])
+    elif kind == "resolution":
+        _adopt_claim(payload["case_id"], "resolution")
+        _run_resolution(payload["case_id"], bool(payload["via_mediation"]))
+    elif kind == "extraction":
+        with _doc_lock:
+            _running_docs.setdefault(payload["document_id"], "extracting")
+        _run_extraction(payload["document_id"])
+    elif kind == "discrepancy":
+        with _doc_lock:
+            _running_discrepancy.setdefault(payload["case_id"], True)
+        _run_discrepancy_check(payload["case_id"])
+    else:
+        raise ValueError(f"unknown job kind {kind!r}")
+
+
+def _adopt_claim(case_id: str, phase: str) -> None:
+    """After a restart the in-process claim registry is empty: re-create the claim for a recovered job."""
+    with _lock:
+        _running.setdefault(case_id, phase)
+
+
+def _worker_loop(name: str) -> None:
+    while True:
+        try:
+            job = jobqueue.claim(name, kinds=HANDLED_KINDS)
+        except Exception:  # database briefly unavailable: wait and try again, never kill the worker
+            logger.exception("job claim failed")
+            _wake.wait(2.0)
+            continue
+        if job is None:
+            _wake.wait(1.0)
+            _wake.clear()
+            continue
+        try:
+            _handle(job["kind"], job["payload"])
+            jobqueue.complete(job["id"])
+        except Exception as exc:
+            outcome = jobqueue.fail(job["id"], repr(exc))
+            logger.exception("job %s (%s) failed -> %s", job["id"], job["kind"], outcome)
+
+
+def ensure_workers() -> None:
+    """Start the worker threads once. Called at app startup (to drain work left by a previous process) and on each enqueue."""
+    global _workers_started
+    if not _DURABLE:
+        return
+    with _workers_lock:
+        if _workers_started:
+            return
+        for i in range(_MAX_WORKERS):
+            threading.Thread(target=_worker_loop, args=(f"{os.getpid()}-w{i}",), daemon=True, name=f"diginyaya-worker-{i}").start()
+        _workers_started = True
+
+
+def _submit(kind: str, payload: dict, fn, *args) -> None:
+    """Persist the job and wake a worker (durable mode), or run it on the in-memory pool (legacy mode)."""
+    if _DURABLE:
+        jobqueue.enqueue(kind, payload)
+        ensure_workers()
+        _wake.set()
+    else:
+        _executor.submit(fn, *args)
 
 
 def _log_status(case_id: str, status: str, **extra) -> None:
@@ -316,7 +396,11 @@ def _run_extraction(document_id: str) -> None:
 def start_extraction(document_id: str) -> bool:
     if not _claim_doc(document_id):
         return False
-    _executor.submit(_run_extraction, document_id)
+    try:
+        _submit("extraction", {"document_id": document_id}, _run_extraction, document_id)
+    except Exception:
+        _release_doc(document_id)  # could not even enqueue: do not leave the document marked as running
+        raise
     return True
 
 
@@ -348,19 +432,31 @@ def _run_discrepancy_check(case_id: str) -> None:
 def start_discrepancy_check(case_id: str) -> bool:
     if not _claim_discrepancy(case_id):
         return False
-    _executor.submit(_run_discrepancy_check, case_id)
+    try:
+        _submit("discrepancy", {"case_id": case_id}, _run_discrepancy_check, case_id)
+    except Exception:
+        _release_discrepancy(case_id)
+        raise
     return True
 
 
 def start_pipeline(case_id: str) -> bool:
     if not _claim(case_id, "pipeline"):
         return False
-    _executor.submit(_run_pipeline, case_id)
+    try:
+        _submit("pipeline", {"case_id": case_id}, _run_pipeline, case_id)
+    except Exception:
+        _release(case_id)
+        raise
     return True
 
 
 def start_resolution(case_id: str, via_mediation: bool) -> bool:
     if not _claim(case_id, "resolution"):
         return False
-    _executor.submit(_run_resolution, case_id, via_mediation)
+    try:
+        _submit("resolution", {"case_id": case_id, "via_mediation": via_mediation}, _run_resolution, case_id, via_mediation)
+    except Exception:
+        _release(case_id)
+        raise
     return True

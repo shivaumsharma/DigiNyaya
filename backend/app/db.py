@@ -211,12 +211,31 @@ def _compute_event_hash(case_id: str, event_data: dict, ts: float, prev_hash: st
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+# Durable background-job queue (see app/jobqueue.py). A row survives a restart, so interrupted work is picked up again.
+job_queue = Table(
+    "job_queue",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("kind", String, nullable=False),
+    Column("payload", Text, nullable=False),
+    Column("status", String, nullable=False, index=True),   # queued | running | done | failed
+    Column("attempts", Integer, nullable=False, default=0),
+    Column("max_attempts", Integer, nullable=False, default=3),
+    Column("run_after", Float, nullable=False, default=0.0),
+    Column("locked_by", String),
+    Column("locked_until", Float),
+    Column("last_error", Text),
+    Column("created_at", Float, nullable=False),
+    Column("finished_at", Float),
+)
+
+
 def init_db() -> None:
     # create_all is idempotent (CREATE TABLE IF NOT EXISTS-equivalent per
     # dialect) -- schema evolution from here on happens via Alembic
     # migrations (see alembic/versions/), not by editing the Table defs
     # above and relying on this call to pick up the change.
-    metadata.create_all(engine, tables=[cases, events, documents, discrepancies])
+    metadata.create_all(engine, tables=[cases, events, documents, discrepancies, job_queue])
 
 
 # ----------------------------- cases ----------------------------- #
