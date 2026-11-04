@@ -43,6 +43,7 @@ from .core.logging import configure_app_logging
 from .core.versioning import ApiVersionRewriteMiddleware
 from .routers.documents import router as documents_router
 from .routers.reviews import router as reviews_router
+from .routers.matters import router as matters_router
 from .data.loader import get_dispute_type, list_dispute_types, load_precedents
 from .language.config import (
     SUPPORTED_LANGUAGES,
@@ -98,6 +99,7 @@ app.include_router(auth_router)
 app.include_router(auth_me_router)
 app.include_router(documents_router)
 app.include_router(reviews_router)
+app.include_router(matters_router)
 
 
 SAMPLE_CLAIMS = {

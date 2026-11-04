@@ -105,7 +105,19 @@ Until then, the type ships at L0 or L1 only.
 * **Data bias:** the corpus is almost all two states and mostly default decrees; expansion needs new sources per state and language.
 * **Accuracy claims:** current validated skill is modest (balanced accuracy 58.6% on contested cases); sell the process, not outcome prediction.
 
-## 8. Decisions needed
+## 8. Decisions taken (4 Nov 2026)
+* No funding: avoid paid infrastructure where possible (a database-backed job queue before SQS or Redis; free-tier LLM and cloud; measure cost per case first).
+* B2C first. A lawyer will be involved once there is something strong to present; until then every navigator guide is marked unreviewed.
+* No state or language is excluded: breadth ships as navigator (L0/L1) matters first; resolution (L2) is still gated per matter.
+
+## 9. Build log
+| Date | Step | Status |
+|---|---|---|
+| 4 Nov | Matter registry with capability ceilings, policy enforced by tests (`app/matters`, `tests/test_matters.py`); 12 navigator guides; `GET /api/matters`, `GET /api/matters/{id}/guide` | Done |
+| next | Durable job queue (database-backed) replacing the in-process thread pool | Planned |
+| next | Frontend: matter browser and guide pages (all 11 languages) | Planned |
+
+## 10. Decisions still needed
 1. Team size and timeline, and whether there is funding for cloud and LLM spend.
 2. B2B first or B2C first (see the founder notes), which changes Phase 1 and 3.
 3. Which states and languages are in the first production release.

@@ -1,0 +1,99 @@
+"""Navigator (L0/L1) content: general, process-level information for matters the AI does not decide.
+
+IMPORTANT: this is general orientation, written conservatively and NOT yet reviewed by a lawyer (`reviewed` is False for every
+guide). It never states limitation periods, fees, or outcomes, and never says whether a person is likely to win. Each guide
+tells the reader to confirm the forum and time limits with a lawyer or the District Legal Services Authority. A lawyer's
+review is a precondition for raising any of these above L1 or for removing the disclaimer.
+"""
+from __future__ import annotations
+
+DISCLAIMER = (
+    "General information only, not legal advice. It has not been reviewed by a lawyer. Time limits, courts and procedures "
+    "depend on your facts, the amount and your location: confirm them with a lawyer or your District Legal Services "
+    "Authority, which can arrange free legal aid for eligible people."
+)
+
+COMMON_DOCUMENTS = [
+    "Government ID and proof of address",
+    "Every document, message, photo, receipt or record connected to the matter, with dates",
+    "Names and contact details of the people involved and any witnesses",
+    "A copy of any notice, order, summons or complaint you have received or sent",
+]
+
+CANNOT_DO = [
+    "Decide who is right or wrong",
+    "Predict the outcome or the chance of success",
+    "Advise you on what to plead, admit or sign",
+    "Replace a lawyer where one is needed",
+]
+
+# family, level (0 or 1), forum text, steps. Wording is deliberately generic.
+GUIDES: list[dict] = [
+    {"id": "criminal_complaint", "label": "Criminal complaint or FIR", "family": "criminal", "level": 0,
+     "summary": "How a criminal complaint usually starts, and what to prepare.",
+     "forum": "Criminal matters usually begin with a report to the police or a complaint to a Magistrate. If anyone is in danger, contact the police or emergency services first.",
+     "steps": ["Write down what happened, with dates, places and names", "Keep any evidence safe (messages, photos, medical or other records)",
+               "Report to the police station, or ask a lawyer about a complaint to a Magistrate", "Ask for a copy of what you file and note the reference number",
+               "Speak to a lawyer or legal aid before making any statement about someone else's guilt"]},
+    {"id": "bail_and_custody", "label": "Arrest, bail and custody", "family": "criminal", "level": 0,
+     "summary": "What to understand if you or a family member has been arrested or is facing arrest.",
+     "forum": "Bail and custody are decided by courts. A lawyer is essential here; legal aid is available for those who cannot afford one.",
+     "steps": ["Contact a lawyer or the legal aid authority immediately", "Note the date, time and place of arrest and the police station",
+               "Collect identity and address documents and any papers the police gave", "Do not sign anything you do not understand"]},
+    {"id": "cyber_crime_complaint", "label": "Cyber crime or online fraud", "family": "criminal", "level": 1,
+     "summary": "Preparing the details and evidence for an online fraud or cyber crime report.",
+     "forum": "Online fraud and cyber crime can be reported to the police and through the national cybercrime reporting channel; act quickly, and tell your bank at once if money was taken.",
+     "steps": ["Contact your bank or payment provider immediately if money moved", "Save screenshots, transaction IDs, phone numbers, links and chat records",
+               "Do not delete the accounts or messages involved", "File the report and keep the acknowledgement number"]},
+    {"id": "family_matrimonial", "label": "Family and matrimonial matters", "family": "family", "level": 1,
+     "summary": "Preparing for divorce, maintenance, custody or similar family matters.",
+     "forum": "Family matters are usually heard by family courts or the civil courts, depending on the matter and location. Mediation is often encouraged. If there is violence or threat, contact the police or a helpline first.",
+     "steps": ["Collect marriage, birth and property documents", "Write a short timeline of events", "List income, expenses and assets for any maintenance question",
+               "Ask a lawyer or legal aid about mediation and the right forum"]},
+    {"id": "succession_inheritance", "label": "Inheritance and succession", "family": "civil_other", "level": 1,
+     "summary": "Preparing documents for inheritance, wills and succession questions.",
+     "forum": "Inheritance matters can involve civil courts and revenue authorities, depending on the property and the document (for example a will). A lawyer can confirm the right forum.",
+     "steps": ["Collect the death certificate, any will, and proof of relationship", "List the property and bank accounts involved, with document numbers",
+               "Note who the legal heirs are and whether anyone disputes the claim", "Ask a lawyer which certificate or proceeding is needed"]},
+    {"id": "motor_accident_claim", "label": "Motor accident claim", "family": "civil_other", "level": 1,
+     "summary": "Preparing documents for an accident injury or death claim.",
+     "forum": "Motor accident claims are heard by Motor Accident Claims Tribunals. A lawyer or legal aid can help with filing.",
+     "steps": ["Collect the police report or FIR, medical records and bills", "Keep the vehicle and insurance details of everyone involved",
+               "Keep proof of income and any loss of work", "Ask a lawyer about the tribunal and the time limit"]},
+    {"id": "labour_industrial", "label": "Labour and industrial disputes", "family": "civil_other", "level": 1,
+     "summary": "Preparing documents for workplace disputes beyond simple unpaid wages.",
+     "forum": "Workplace disputes may go to labour authorities, labour courts or tribunals depending on the claim. Simple unpaid-wage claims may also fit the employment dispute type.",
+     "steps": ["Collect the appointment letter, payslips, bank statements and attendance records", "Keep any termination notice or messages from the employer",
+               "Write a timeline of what happened", "Ask a lawyer or labour authority which route applies"]},
+    {"id": "tax_dispute", "label": "Tax notices and disputes", "family": "tax", "level": 0,
+     "summary": "How to read and respond to a tax notice.",
+     "forum": "Tax notices are handled by tax authorities, with appeals to higher authorities and tribunals. Notices carry deadlines: do not ignore them.",
+     "steps": ["Note the date, section and deadline on the notice", "Collect the returns, assessments and proofs it refers to",
+               "Speak to a tax professional or lawyer before replying"]},
+    {"id": "service_matter", "label": "Government service matters", "family": "service", "level": 0,
+     "summary": "Understanding disputes about government employment (promotion, transfer, dismissal, pension).",
+     "forum": "Service disputes may go to administrative tribunals or the High Court depending on the employer. A lawyer can confirm which applies.",
+     "steps": ["Collect the order or letter you are challenging and your service records", "Note the dates, because time limits are strict",
+               "Ask a lawyer about the right forum and any internal remedy to try first"]},
+    {"id": "constitutional_writ", "label": "Writ and constitutional matters", "family": "constitutional", "level": 0,
+     "summary": "Understanding when and where a writ petition is considered.",
+     "forum": "Writ petitions are heard by the High Courts and the Supreme Court. These matters need a lawyer.",
+     "steps": ["Identify the government action or inaction you are concerned about", "Collect the orders, letters and representations you made",
+               "Consult a lawyer: the choice of remedy and court is a legal decision"]},
+    {"id": "ip_dispute", "label": "Intellectual property", "family": "ip", "level": 0,
+     "summary": "Orientation for trademark, copyright, patent and design matters.",
+     "forum": "IP matters involve the relevant registry or office and, for disputes, the courts. Registration and deadlines matter.",
+     "steps": ["Collect proof of creation or first use, registrations and sales records", "Save evidence of the other party's use",
+               "Consult an IP lawyer before sending any notice"]},
+    {"id": "commercial_arbitration", "label": "Commercial and arbitration matters", "family": "civil_other", "level": 1,
+     "summary": "Preparing documents for business disputes and arbitration clauses.",
+     "forum": "Business contracts often name an arbitration or court forum. Check the contract's dispute clause first; a lawyer can confirm the route.",
+     "steps": ["Find the contract and its dispute-resolution clause", "Collect invoices, correspondence and delivery or payment records",
+               "Write a timeline of performance and breach", "Ask a lawyer whether arbitration or a court applies"]},
+]
+
+
+def render(g: dict) -> dict:
+    """The guide as served by the API, with the shared sections attached."""
+    return {"summary": g["summary"], "forum": g["forum"], "steps": g["steps"], "documents": COMMON_DOCUMENTS,
+            "this_tool_cannot": CANNOT_DO, "disclaimer": DISCLAIMER, "reviewed": False}
