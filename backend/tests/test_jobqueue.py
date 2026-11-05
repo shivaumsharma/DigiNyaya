@@ -159,3 +159,32 @@ class JobsIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StatusBeforeAnnouncementTests(unittest.TestCase):
+    """A client that sees the terminal event and reads the case must already find the final status (race found by the load test)."""
+
+    def test_case_status_is_updated_before_the_terminal_event_is_published(self):
+        from unittest import mock
+
+        _clear()
+        case_id = "DN-ORDER"
+        db.save_case({
+            "case_id": case_id, "owner_id": "u1", "dispute_type": "consumer_dispute", "claim_amount": 50000.0,
+            "claimant": {"name": "Asha"}, "respondent": {"name": "Ravi"},
+            "description": "Paid Rs. 50,000 for a phone that was never delivered; the seller refuses a refund.",
+            "evidence": [{"filename": "receipt.pdf", "kind": "document"}], "status": "ready",
+        })
+        seen: dict[str, str] = {}
+        real_publish = jobs.bus.publish
+
+        def spy(cid, ev):
+            if ev.get("type") in ("awaiting_decision", "escalated_terminal", "resolved"):
+                seen[ev["type"]] = db.get_case(cid)["status"]
+            return real_publish(cid, ev)
+
+        with mock.patch.object(jobs.bus, "publish", side_effect=spy):
+            jobs._run_pipeline(case_id)
+        self.assertTrue(seen, "the pipeline should have published a terminal event")
+        for kind, status_at_publish in seen.items():
+            self.assertNotEqual(status_at_publish, "processing", f"{kind} was published while the case still said processing")

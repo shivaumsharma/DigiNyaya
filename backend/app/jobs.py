@@ -60,8 +60,15 @@ _worker_threads: list[threading.Thread] = []
 HANDLED_KINDS = ("pipeline", "resolution", "extraction", "discrepancy")
 
 
+# Load-testing knob, default 0 (off): sleep this long before each pipeline/resolution job, to emulate time spent waiting on a
+# real LLM when the scripted engine is used. See scripts/load_test_platform.py and docs/LOAD_TEST.md.
+_SIMULATED_JOB_SECONDS = float(os.environ.get("DIGINYAYA_SIMULATED_JOB_SECONDS", "0") or 0)
+
+
 def _handle(kind: str, payload: dict) -> None:
     """Run one claimed job. Each _run_* releases its own in-process claim in its `finally`."""
+    if _SIMULATED_JOB_SECONDS and kind in ("pipeline", "resolution"):
+        time.sleep(_SIMULATED_JOB_SECONDS)
     if kind == "pipeline":
         _adopt_claim(payload["case_id"], "pipeline")
         _run_pipeline(payload["case_id"])
@@ -243,8 +250,13 @@ def _pump(case_id: str, events: Iterator[dict], *, on_event) -> None:
         if ev.get("type") not in EPHEMERAL:
             seq = db.append_event(case_id, ev)
             ev["seq"] = seq
-        bus.publish(case_id, ev)
-        on_event(ev)
+        try:
+            # State change FIRST, then announce: a client that sees a terminal event and immediately reads the case must
+            # find its final status. (Publishing first left a window where the stream had ended but the case still said
+            # "processing"; the load test showed it at 150 concurrent users.)
+            on_event(ev)
+        finally:
+            bus.publish(case_id, ev)
 
 
 def _run_pipeline(case_id: str) -> None:

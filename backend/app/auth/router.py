@@ -205,6 +205,9 @@ def _verify_and_consume_otp(db: Session, phone: str, code: str) -> bool:
 @router.post("/signup/email", response_model=TokenResponse)
 def signup_email(body: SignupEmailRequest, response: Response, db: Session = Depends(get_db)):
     email = normalize_email(body.email)
+    # Hash BEFORE touching the database: bcrypt takes ~0.3 s of CPU, and a session that has already run a query holds a pooled
+    # connection while it waits for that CPU. Found by the load test: bursts of signups exhausted the connection pool.
+    password_hash = hash_password(body.password)
     if db.query(User).filter(User.email == email).first():
         # Signup collisions are conventionally NOT enumeration-hidden (unlike
         # login/reset) -- the user needs to know to log in instead.
@@ -212,7 +215,7 @@ def signup_email(body: SignupEmailRequest, response: Response, db: Session = Dep
 
     user = User(
         email=email,
-        password_hash=hash_password(body.password),
+        password_hash=password_hash,
         full_name=body.full_name,
         preferred_language=body.preferred_language,
     )

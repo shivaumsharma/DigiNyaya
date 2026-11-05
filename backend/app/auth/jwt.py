@@ -23,6 +23,14 @@ JWT_ALGORITHM = "HS256"
 # secret) so rotating one never invalidates the other. Same dev fallback
 # convention: unset -> random per-process, tokens simply reset on restart.
 _SECRET = os.getenv("DIGINYAYA_JWT_SECRET") or secrets.token_hex(32)
+if not os.getenv("DIGINYAYA_JWT_SECRET"):
+    # Found by the multi-process load test: with a random key per process, a token issued by one API process is rejected (401)
+    # by another, and every restart logs everyone out. Any deployment with more than one API process MUST set this.
+    import logging
+
+    logging.getLogger("diginyaya.auth").warning(
+        "DIGINYAYA_JWT_SECRET is not set: access tokens are signed with a random key that exists only in this process. "
+        "Set it (the same value everywhere) before running more than one API process.")
 
 
 def create_access_token(user_id: str) -> str:

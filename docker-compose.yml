@@ -21,6 +21,7 @@ services:
     environment: &backend-env
       DIGINYAYA_DB: postgresql+psycopg://diginyaya:diginyaya@db:5432/diginyaya
       DIGINYAYA_EVENT_BUS: db
+      DIGINYAYA_JWT_SECRET: ${DIGINYAYA_JWT_SECRET:-local-dev-only-change-me}   # must be identical on every API process
       DIGINYAYA_JOB_WORKERS: "4"
       SARVAM_API_KEY: ${SARVAM_API_KEY:-}
     env_file:

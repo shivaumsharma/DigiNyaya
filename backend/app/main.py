@@ -28,6 +28,7 @@ except Exception:
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -38,7 +39,7 @@ from .auth.deps import current_user
 from .auth.orm_models import User
 from .auth.rate_limit import enforce_call_limit
 from .auth.router import me_router as auth_me_router, router as auth_router
-from .core.events import TERMINAL, bus, stream_from_queue
+from .core.events import TERMINAL, astream, bus
 from .core.logging import configure_app_logging
 from .core.versioning import ApiVersionRewriteMiddleware
 from .routers.documents import router as documents_router
@@ -808,9 +809,26 @@ def mediation_decision(case_id: str, decision: MediationDecision, user: User = D
     return {"status": "ok", "accepted": decision.accept, "started": started}
 
 
+async def _ready(value):
+    return value
+
+
+def _release_request_session(user: User) -> None:
+    """Close the SQLAlchemy session that loaded `user` (returns its connection to the pool). `user` is detached afterwards,
+    so read what you need from it first."""
+    from sqlalchemy.orm import object_session
+
+    sess = object_session(user)
+    if sess is not None:
+        sess.close()
+
+
 @app.get("/api/cases/{case_id}/events")
 def events(case_id: str, after: int = 0, lang: str | None = None, user: User = Depends(current_user)):
     case = _load_owned(case_id, user.id)
+    # The auth session behind `current_user` stays open until the response ends, and for a stream that can be minutes: each
+    # open stream would hold a pooled database connection (the load test exhausted the pool this way). Release it now.
+    _release_request_session(user)
     gw = get_language_gateway()
     source_language = _resolve_target_language(case, lang)
     should_localize = gw.enabled and not is_pipeline_language(source_language)
@@ -820,18 +838,20 @@ def events(case_id: str, after: int = 0, lang: str | None = None, user: User = D
             ev = _localize_event(ev, source_language, gw)
         return f"data: {json.dumps(ev)}\n\n"
 
-    def gen():
-        q = bus.subscribe(case_id)
+    async def gen():
+        # Async, so an open stream holds no worker thread while it waits; blocking work (database, translation) is hopped
+        # onto the thread pool for just that call.
+        q = await run_in_threadpool(bus.subscribe, case_id)
         try:
             delivered = after
-            for ev in db.get_events(case_id, after):
+            for ev in await run_in_threadpool(db.get_events, case_id, after):
                 delivered = ev["seq"]
-                yield sse(ev)
-            if not jobs.is_running(case_id):
+                yield await (run_in_threadpool(sse, ev) if should_localize else _ready(sse(ev)))
+            if not await run_in_threadpool(jobs.is_running, case_id):
                 # Nothing live; the client now has everything up to the current pause/terminal.
                 yield "event: end\ndata: {}\n\n"
                 return
-            for ev in stream_from_queue(q):
+            async for ev in astream(q):
                 t = ev.get("type")
                 if t == "heartbeat":
                     yield ": hb\n\n"
@@ -841,7 +861,7 @@ def events(case_id: str, after: int = 0, lang: str | None = None, user: User = D
                     continue  # already replayed from the durable log
                 if seq is not None:
                     delivered = seq
-                yield sse(ev)
+                yield await (run_in_threadpool(sse, ev) if should_localize else _ready(sse(ev)))
                 if t in TERMINAL:
                     break
             yield "event: end\ndata: {}\n\n"

@@ -41,7 +41,14 @@ _DATABASE_URL = resolve_db_url(_DB_PATH)
 # non-sqlite dialect (e.g. psycopg2) raises a TypeError at connect time.
 _connect_args = {"check_same_thread": False} if _DATABASE_URL.startswith("sqlite") else {}
 
-engine = create_engine(_DATABASE_URL, connect_args=_connect_args)
+_pool_kwargs: dict = {}
+if ":memory:" not in _DATABASE_URL and _DATABASE_URL != "sqlite://":
+    # Same sizing knobs as app/db.py (see the comment there): the default pool of 15 was exhausted under load.
+    _pool_kwargs = {"pool_size": int(os.getenv("DIGINYAYA_DB_POOL_SIZE", "10")),
+                    "max_overflow": int(os.getenv("DIGINYAYA_DB_MAX_OVERFLOW", "250" if _DATABASE_URL.startswith("sqlite") else "40")),
+                    "pool_pre_ping": not _DATABASE_URL.startswith("sqlite")}
+
+engine = create_engine(_DATABASE_URL, connect_args=_connect_args, **_pool_kwargs)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 

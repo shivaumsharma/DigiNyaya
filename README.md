@@ -370,6 +370,8 @@ engine is active.
 | `DIGINYAYA_DURABLE_JOBS=0` | Background jobs are durable by default (rows in `job_queue`, claimed by worker threads, retried, recovered after a crash). `0` restores the old in-memory thread pool. `DIGINYAYA_JOB_WORKERS` sets the worker count. See [`docs/PLATFORM_PLAN.md`](docs/PLATFORM_PLAN.md). |
 | `DIGINYAYA_RUN_WORKERS=0` | Do not run job workers inside this API process; run them separately with `python -m app.worker` (same `DIGINYAYA_DB`). Several API and worker processes can share one database. See [`docker-compose.yml`](docker-compose.yml). |
 | `DIGINYAYA_EVENT_BUS=memory` | Live events default to a database-backed bus (`db`) so workers and API servers can be separate processes. `memory` is the old in-process bus: only correct when one process does both. |
+| `DIGINYAYA_DB_POOL_SIZE` / `DIGINYAYA_DB_MAX_OVERFLOW` | Database connection pool (default 10, overflow 250 on SQLite and 40 on PostgreSQL, per engine). Keep (size + overflow) x 2 engines x processes below the database's `max_connections`. See [`docs/LOAD_TEST.md`](docs/LOAD_TEST.md). |
+| `DIGINYAYA_JWT_SECRET` | Signing key for access tokens. **Must be set, identically, on every API process**; without it each process uses its own random key (401s across processes, sessions lost on restart). |
 | `DIGINYAYA_EVAL_NATIVE_TYPES=1` | Eval scripts only: score tenancy / employment / property cases under their native types instead of the approximations. Must not change any decision; it exists to prove that on real data. |
 
 ## Validating the evaluation

@@ -81,15 +81,15 @@ class DbEventBusTests(unittest.TestCase):
         self.bus.publish("C2", {"type": "other-case"})
         self.bus.publish("C1", {"type": "a", "seq": 1})
         self.bus.publish("C1", {"type": "b", "seq": 2})
-        self.assertEqual([sub.get(1.0)["type"], sub.get(1.0)["type"]], ["a", "b"])
+        self.assertEqual([sub.get(timeout=1.0)["type"], sub.get(timeout=1.0)["type"]], ["a", "b"])
         with self.assertRaises(queue.Empty):
-            sub.get(0.2)
+            sub.get(timeout=0.2)
 
     def test_publish_from_another_thread_reaches_a_waiting_subscriber(self):
         sub = self.bus.subscribe("C3")
         threading.Timer(0.3, lambda: self.bus.publish("C3", {"type": "late"})).start()
         t0 = time.time()
-        self.assertEqual(sub.get(5.0)["type"], "late")
+        self.assertEqual(sub.get(timeout=5.0)["type"], "late")
         self.assertLess(time.time() - t0, 2.0)
 
     def test_stream_from_queue_works_with_a_db_subscription_and_stops_at_terminal(self):
@@ -114,13 +114,101 @@ class DbEventBusTests(unittest.TestCase):
         with db.engine.begin() as conn:
             conn.execute(db.event_stream.insert().values(case_id="C5", payload="not json", created_at=time.time()))
         self.bus.publish("C5", {"type": "ok"})
-        self.assertEqual(sub.get(1.0)["type"], "ok")
+        self.assertEqual(sub.get(timeout=1.0)["type"], "ok")
 
     def test_bus_selection_by_env(self):
         with mock.patch.dict(os.environ, {"DIGINYAYA_EVENT_BUS": "memory"}):
             self.assertIsInstance(events._make_bus(), events.EventBus)
         with mock.patch.dict(os.environ, {"DIGINYAYA_EVENT_BUS": "db"}):
             self.assertIsInstance(events._make_bus(), events.DbEventBus)
+
+
+class DispatcherTests(unittest.TestCase):
+    def setUp(self):
+        _reset()
+
+    def _bus_with_history_marked(self):
+        bus = events.DbEventBus()
+        bus.subscribe("warmup")          # starts the dispatcher and marks existing rows as history
+        time.sleep(0.2)
+        return bus
+
+    def test_a_late_committed_lower_id_is_still_delivered_exactly_once(self):
+        bus = self._bus_with_history_marked()
+        q = bus.subscribe("OO")
+        with db.engine.begin() as conn:
+            conn.execute(db.event_stream.insert().values(id=10_000, case_id="OO", payload='{"type":"second"}', created_at=time.time()))
+        self.assertEqual(q.get(timeout=2.0)["type"], "second")
+        with db.engine.begin() as conn:     # an earlier id that only became visible later (concurrent commit order)
+            conn.execute(db.event_stream.insert().values(id=9_999, case_id="OO", payload='{"type":"first"}', created_at=time.time()))
+        self.assertEqual(q.get(timeout=2.0)["type"], "first")
+        time.sleep(0.5)
+        self.assertTrue(q.empty(), "an event must not be delivered twice")
+
+    def test_many_streams_cost_one_query_per_poll(self):
+        from sqlalchemy import event
+
+        bus = events.DbEventBus()
+        qs = [bus.subscribe(f"case-{i % 20}") for i in range(200)]
+        time.sleep(0.3)
+        bus.publish("case-3", {"type": "x"})
+        selects = []
+
+        def count(conn, cursor, statement, *a):
+            if statement.lstrip().upper().startswith("SELECT") and "event_stream" in statement:
+                selects.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", count)
+        try:
+            n = bus.poll_once()
+        finally:
+            event.remove(db.engine, "before_cursor_execute", count)
+        self.assertEqual(len(selects), 1)
+        self.assertEqual(n, 1)
+        got = sum(1 for q in qs if not q.empty())
+        self.assertEqual(got, 10)            # the 10 subscribers of case-3 (200 / 20), nobody else
+
+    def test_dispatcher_stops_when_nobody_listens_and_restarts(self):
+        bus = events.DbEventBus()
+        q = bus.subscribe("R")
+        bus.unsubscribe("R", q)
+        deadline = time.time() + 3
+        while time.time() < deadline and bus._thread is not None:
+            time.sleep(0.05)
+        self.assertIsNone(bus._thread)
+        q2 = bus.subscribe("R")
+        time.sleep(0.2)
+        bus.publish("R", {"type": "again"})
+        self.assertEqual(q2.get(timeout=3.0)["type"], "again")
+
+
+class AsyncStreamTests(unittest.TestCase):
+    def test_astream_yields_events_heartbeats_and_stops_at_terminal(self):
+        import asyncio
+
+        async def run():
+            q: queue.Queue = queue.Queue()
+            q.put({"type": "token"})
+
+            async def later():
+                await asyncio.sleep(0.35)
+                q.put({"type": "resolved"})
+
+            asyncio.get_event_loop().create_task(later())
+            return [e["type"] async for e in events.astream(q, idle_timeout=10, heartbeat_every=0.1)]
+
+        got = asyncio.run(run())
+        self.assertEqual(got[0], "token")
+        self.assertEqual(got[-1], "resolved")
+        self.assertIn("heartbeat", got)
+
+    def test_astream_gives_up_when_idle(self):
+        import asyncio
+
+        async def run():
+            return [e async for e in events.astream(queue.Queue(), idle_timeout=0.3, heartbeat_every=5)]
+
+        self.assertEqual(asyncio.run(run()), [])
 
 
 class RealWorkerProcessTests(unittest.TestCase):
@@ -153,7 +241,7 @@ class RealWorkerProcessTests(unittest.TestCase):
                 deadline = time.time() + 90
                 while time.time() < deadline:
                     try:
-                        ev = sub.get(1.0)
+                        ev = sub.get(timeout=1.0)
                     except queue.Empty:
                         continue
                     seen.append(ev.get("type"))
@@ -173,6 +261,32 @@ class RealWorkerProcessTests(unittest.TestCase):
         self.assertIsNone(jobs.is_running(case_id))
         self.assertTrue(db.get_events(case_id), "the worker should have written the durable event log")
         self.assertEqual(proc.returncode in (0, -15), True)
+
+
+class RequestSessionTests(unittest.TestCase):
+    def test_release_closes_the_session_and_returns_its_connection(self):
+        from app.auth.db import SessionLocal, engine
+        from app.auth.orm_models import User
+        from app.main import _release_request_session
+
+        sess = SessionLocal()
+        try:
+            user = User(email="release-test@example.com", password_hash="x", full_name="R", preferred_language="en-IN")
+            sess.add(user)
+            sess.commit()
+            sess.query(User).filter(User.id == user.id).first()       # opens a transaction: holds a connection
+            before = engine.pool.checkedout()
+            self.assertGreaterEqual(before, 1)
+            uid = user.id
+            _release_request_session(user)
+            self.assertEqual(engine.pool.checkedout(), before - 1)
+            self.assertIsNone(__import__("sqlalchemy.orm", fromlist=["object_session"]).object_session(user))
+            sess2 = SessionLocal()
+            sess2.query(User).filter(User.id == uid).delete()
+            sess2.commit()
+            sess2.close()
+        finally:
+            sess.close()
 
 
 class WorkerSwitchTests(unittest.TestCase):

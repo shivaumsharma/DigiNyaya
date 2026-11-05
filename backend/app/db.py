@@ -76,6 +76,17 @@ if _is_sqlite_memory:
     # Only tests use ":memory:" (see tests/conftest.py's DIGINYAYA_DB=":memory:").
     _engine_kwargs["poolclass"] = StaticPool
 
+if not _is_sqlite_memory:
+    # Connection pool sizing. SQLAlchemy's default (5 + 10 overflow) was exhausted in the load test (500 errors and 30 s waits at
+    # 150 to 300 concurrent users). Override with DIGINYAYA_DB_POOL_SIZE / DIGINYAYA_DB_MAX_OVERFLOW; keep the total below the
+    # database's connection limit divided by the number of API and worker processes.
+    _engine_kwargs["pool_size"] = int(os.getenv("DIGINYAYA_DB_POOL_SIZE", "10"))
+    # A request keeps its pooled connection while it waits for a worker thread, so in-flight requests can far exceed the 40 pool
+    # threads. SQLite connections are cheap (default overflow 250, confirmed by the load test); for PostgreSQL keep
+    # (pool_size + overflow) x processes below max_connections.
+    _engine_kwargs["max_overflow"] = int(os.getenv("DIGINYAYA_DB_MAX_OVERFLOW", "250" if _is_sqlite else "40"))
+    _engine_kwargs["pool_pre_ping"] = not _is_sqlite
+
 engine = create_engine(_DATABASE_URL, **_engine_kwargs)
 
 
