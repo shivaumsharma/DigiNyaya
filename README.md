@@ -72,7 +72,7 @@ numbers; the LLM judge is non-deterministic (it flipped the winner on 50 of 679 
 outputs); LLM-extracted claim amounts match the real decree slightly more often than
 description-parsed ones (75.3% vs 70.0%), so treat that part of the gain as a soft upper bound.
 
-### Further findings (2026-11-05; open problems, not fixes)
+### Further findings (2026-11-05, updated 2026-11-06; mostly open problems)
 
 All figures come from stored result files in `backend/data_cache/`; the scripts are named in brackets.
 
@@ -80,7 +80,10 @@ All figures come from stored result files in `backend/data_cache/`; the scripts 
   LLM agents on a 2,000-case sample lowered winner accuracy from 75.0% to 61.6% (95% CI of the gap
   11.1 to 15.5 points). The cause is one analysis score ("does the claimant's statement prove the key
   fact") that is low for allegation-style narratives and was never calibrated
-  (`scripts/diagnose_llm_dismissal.py`). A calibration fix is in progress.
+  (`scripts/diagnose_llm_dismissal.py`). Removing that score's effect on claimant strength (fitted on
+  one half of 994 cases, checked on 298 unseen ones) brought the LLM agents to 71.8% against 71.1% for
+  the scripted engine (difference +0.7 points, 95% CI -3.0 to +4.4): parity, not an improvement, and
+  respondent-win recall fell from 48% to 38%.
 - **Leakage-free control** (`scripts/build_leakage_free_control.py`): 352 cases rebuilt from the text
   before the decision. On the 303 judged both ways, winner accuracy went 80.9% to 81.2% (95% CI -4.3
   to +5.3), so no inflation above about 5 points is detectable. A fine-tuned InLegalBERT baseline
