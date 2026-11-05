@@ -94,6 +94,26 @@ class _UsageTracker:
 
 _usage = _UsageTracker()
 
+# Per-THREAD outcome of every generate()/generate_json() call, so an eval can tell a case that really ran on the
+# LLM from one whose calls all failed and silently fell back to scripted output (the global usage totals above
+# cannot, and mix cases when workers run concurrently).
+_call_stats = threading.local()
+
+
+def _note_call(ok: bool) -> None:
+    _call_stats.ok = getattr(_call_stats, "ok", 0) + (1 if ok else 0)
+    _call_stats.failed = getattr(_call_stats, "failed", 0) + (0 if ok else 1)
+
+
+def get_call_stats() -> Dict[str, int]:
+    """LLM calls on this thread since reset_call_stats(): ok (usable result) and failed (None, breaker open, error)."""
+    return {"ok": getattr(_call_stats, "ok", 0), "failed": getattr(_call_stats, "failed", 0)}
+
+
+def reset_call_stats() -> None:
+    _call_stats.ok = 0
+    _call_stats.failed = 0
+
 
 def _record_usage() -> None:
     try:
@@ -142,7 +162,10 @@ def generate(
     Pass "low"/"medium"/"high" for call sites that genuinely want deeper
     reasoning at the cost of more tokens and latency.
     """
-    if _llm_disabled() or not _breaker.allow():
+    if _llm_disabled():
+        return None
+    if not _breaker.allow():
+        _note_call(False)
         return None
     try:
         result = get_provider().generate(
@@ -155,9 +178,11 @@ def generate(
         )
         _breaker.record_success()
         _record_usage()
+        _note_call(bool(result))
         return result
     except Exception:
         _breaker.record_failure()
+        _note_call(False)
         return None
 
 
@@ -181,7 +206,10 @@ def generate_json(
 
     See generate() above for why reasoning_effort defaults to None (disabled).
     """
-    if _llm_disabled() or not _breaker.allow():
+    if _llm_disabled():
+        return None
+    if not _breaker.allow():
+        _note_call(False)
         return None
     try:
         result = get_provider().generate_json(
@@ -195,9 +223,11 @@ def generate_json(
         )
         _breaker.record_success()
         _record_usage()
+        _note_call(bool(result))
         return result
     except Exception:
         _breaker.record_failure()
+        _note_call(False)
         return None
 
 

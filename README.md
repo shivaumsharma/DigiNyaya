@@ -30,8 +30,10 @@ actual current state of the code, not aspirational plans.
   **Speech-to-Text** (with speaker diarization), Tesseract as a local OCR fallback
 - Text-to-speech narration of mediation proposals and resolutions via **Sarvam
   Bulbul**, read aloud in the citizen's own filing language
-- Real-time UI and content translation across 11 Indian languages via **Sarvam
-  Mayura**
+- The interface is translated into 11 Indian languages via **Sarvam Mayura**. The
+  decision engine itself works in **English only**: text filed in another language is
+  translated to English first, and a round-trip test changed the winner in about 26% of
+  cases (see "Further findings"), so non-English filing is experimental.
 - A real account system: email+password signup/login (phone+OTP exists in code but is
   **disabled in production** until a real SMS provider is wired up), JWT access tokens
   with rotating refresh tokens
@@ -69,6 +71,42 @@ Caveats: the amount fix was designed after looking at this data, so these are no
 numbers; the LLM judge is non-deterministic (it flipped the winner on 50 of 679 identical AI
 outputs); LLM-extracted claim amounts match the real decree slightly more often than
 description-parsed ones (75.3% vs 70.0%), so treat that part of the gain as a soft upper bound.
+
+### Further findings (2026-11-05; open problems, not fixes)
+
+All figures come from stored result files in `backend/data_cache/`; the scripts are named in brackets.
+
+- **The evaluated engine is the rule-based ("scripted") pipeline, not the LLM agents.** Running the
+  LLM agents on a 2,000-case sample lowered winner accuracy from 75.0% to 61.6% (95% CI of the gap
+  11.1 to 15.5 points). The cause is one analysis score ("does the claimant's statement prove the key
+  fact") that is low for allegation-style narratives and was never calibrated
+  (`scripts/diagnose_llm_dismissal.py`). A calibration fix is in progress.
+- **Leakage-free control** (`scripts/build_leakage_free_control.py`): 352 cases rebuilt from the text
+  before the decision. On the 303 judged both ways, winner accuracy went 80.9% to 81.2% (95% CI -4.3
+  to +5.3), so no inflation above about 5 points is detectable. A fine-tuned InLegalBERT baseline
+  scores 86.8% (macro-F1 0.782) on the original held-out text but fell from 84.5% to 79.2% on the
+  same cases with rebuilt text (`scripts/finetune_inlegalbert.py`).
+- **The system is reliable only when it decides for the claimant.** Claimant-side decisions are wrong
+  10.3% of the time and can be certified without abstaining; respondent-side decisions (dismissals)
+  are wrong about 65% of the time and cannot be certified at any threshold, so they should always go
+  to a human (`scripts/risk_coverage.py`).
+- **Two gate triggers do not do what their names say** (`scripts/gate_audit.py`, text-labelled
+  outcomes on about 79% of cases). Of 2,418 "criminal matter" escalations, 2,056 fired only on the
+  word "forged" or "forgery" and only 25 mention police, an FIR, the IPC or cheating; they are civil
+  suits where someone says a document was forged. The 5,650 "agent disagreement" escalations
+  (23.7% of all cases) are 98.2% claimant wins, so the draft would have been right about 98% of the
+  time had it been released.
+- **State differences are mostly case mix.** The resolved-rate gap between Andhra Pradesh and
+  Telangana (59.9% vs 78.1%) shrinks to -1.7 points when both are re-weighted to one category mix;
+  property disputes remain 11 points less accurate in Andhra Pradesh (`scripts/state_category_analysis.py`).
+- **Multilingual filing is not reliable.** Translating cases into Hindi, Tamil, Telugu, Bengali and
+  Marathi and back changed the winner in about 26% of 600 round trips (accuracy 75.9% to 66.4%),
+  though most of that is unstable signal extraction that also flips 14% of winners on identical
+  English text (`scripts/multilingual_roundtrip.py`, `scripts/diagnose_multilingual.py`).
+- **Agreement between the rule-based pipeline and InLegalBERT is a useful signal.** When they agree
+  (about 72% of cases) accuracy is 93.7% on the held-out set and 91.8% on the leakage-free cases,
+  against 86.5% and 85.8% for always guessing the claimant on the same cases
+  (`scripts/hybrid_analysis.py`).
 
 ---
 

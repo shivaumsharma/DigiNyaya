@@ -31,6 +31,25 @@ _POSITION_LABELS = {
 }
 
 
+# The LLM's claimant_case_substance score (how well the claimant's OWN statement establishes the disputed fact) used
+# to REPLACE the evidence-count term in LLM mode. Measured on 1,993 real cases it made the LLM pipeline dismiss far
+# more than the scripted one (claimant wins 59% vs 79.5%; winner accuracy 61.6% vs 75.0%): the rubric scores
+# asserted-but-unproven claims 0.1-0.3, and the case descriptions are allegation-style narratives. Fitted on one
+# random half of 994 cases and tested on the other, a mean-preserving adjustment c + k * (substance - M) gave 77.5%
+# (k = 0) to 74.4% (k = 0.5) against 60.9% for the old formula, with no gain from using the score at all: it carries
+# some signal (AUC 0.645) but nothing beyond the scripted score. So the weight is 0 (scripted claimant strength in both
+# modes); the LLM still scores the respondent's defence. Raise the weight only with a held-out result that justifies it.
+_LLM_SUBSTANCE_WEIGHT = 0.0
+_LLM_SUBSTANCE_MEAN = 0.36
+
+
+def _adjust_claimant(c_score: float, substance: float | None, cap: float) -> float:
+    """Scripted claimant strength, optionally nudged by the LLM's substance score around its mean."""
+    if substance is None or _LLM_SUBSTANCE_WEIGHT == 0.0:
+        return c_score
+    return round(min(max(c_score + _LLM_SUBSTANCE_WEIGHT * (substance - _LLM_SUBSTANCE_MEAN), 0.1), cap), 2)
+
+
 def run(ctx: CaseContext) -> AgentResult:
     ing = ctx.ingestion
     research = ctx.research
@@ -182,8 +201,7 @@ def run(ctx: CaseContext) -> AgentResult:
     if respondent is None:
         # Uncontested: claimant's version stands unopposed.
         c_score = round(min(0.55 + min(ev, 3) * 0.13, 0.97), 2)
-        if llm_claimant_substance is not None:
-            c_score = round(min(0.3 + min(ev, 3) * 0.08 + llm_claimant_substance * 0.45, 0.97), 2)
+        c_score = _adjust_claimant(c_score, llm_claimant_substance, 0.97)
         r_score = 0.15
     elif respondent.get("accepts_liability"):
         # Respondent concedes -- claimant's case is essentially proven.
@@ -199,8 +217,7 @@ def run(ctx: CaseContext) -> AgentResult:
         # uncontested case above, not a generic firm denial. Real courts
         # almost always decree for the claimant by default here.
         c_score = round(min(0.55 + min(ev, 3) * 0.13, 0.97), 2)
-        if llm_claimant_substance is not None:
-            c_score = round(min(0.3 + min(ev, 3) * 0.08 + llm_claimant_substance * 0.45, 0.97), 2)
+        c_score = _adjust_claimant(c_score, llm_claimant_substance, 0.97)
         r_score = 0.15
     else:
         # Genuinely contested: claimant strength scales with evidence on
@@ -236,19 +253,12 @@ def run(ctx: CaseContext) -> AgentResult:
         # degrades to exactly the previously-tuned behavior, not an
         # untested one.
         c_score = round(min(0.2 + min(ev, 3) * 0.13, 0.85), 2)
-        if llm_claimant_substance is not None:
-            c_score = round(min(0.2 + min(ev, 3) * 0.065 + llm_claimant_substance * 0.4, 0.85), 2)
-        elif nlp.has_documentary_instrument(ctx.description):
-            # Scripted fallback (LLM unavailable) has no judged specificity
-            # signal at all -- evidence_count alone can't tell "one signed
-            # loan agreement" from "one unrelated photo". Purely additive and
-            # zero when no instrument is named, so a case without one scores
-            # EXACTLY as before -- no regression risk to already-calibrated
-            # categories. Targets small-claims/debt-recovery specifically:
-            # those cases typically rest on one strong instrument with a thin
-            # evidence *count*, which the count-only term can't reward. See
-            # nlp.has_documentary_instrument and [[diginyaya_real_judgment_eval]].
+        if nlp.has_documentary_instrument(ctx.description):
+            # One strong instrument (a signed note, an agreement) on a thin evidence COUNT is typical of small-claims
+            # debt recovery; the count-only term cannot reward it. Applied in BOTH modes since the 2026-11 calibration
+            # (see _adjust_claimant): before it, only the scripted fallback got this bonus.
             c_score = round(min(c_score + 0.15, 0.85), 2)
+        c_score = _adjust_claimant(c_score, llm_claimant_substance, 0.85)
         # Respondent's strength depends on TWO things, not just the
         # counter-offer: how much they concede via a counter-offer, AND how
         # substantive/specific the defense itself is (a dispositive ground
