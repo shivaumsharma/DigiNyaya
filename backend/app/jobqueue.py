@@ -15,6 +15,7 @@ import json
 import time
 
 from sqlalchemy import and_, or_, select, update
+from sqlalchemy.exc import IntegrityError
 
 from . import db
 
@@ -26,12 +27,28 @@ def _now() -> float:
     return time.time()
 
 
-def enqueue(kind: str, payload: dict, max_attempts: int = 3) -> int:
-    with db.engine.begin() as conn:
-        res = conn.execute(db.job_queue.insert().values(
-            kind=kind, payload=json.dumps(payload), status="queued", attempts=0, max_attempts=max_attempts,
-            run_after=0.0, created_at=_now()))
-        return int(res.inserted_primary_key[0])
+def enqueue(kind: str, payload: dict, max_attempts: int = 3, subject: str | None = None, dedupe_key: str | None = None) -> int | None:
+    """Add a job. With a `dedupe_key`, returns None instead of adding a second job while one with the same key is queued or
+    running (atomic, also across processes, because the key is UNIQUE while the job is active)."""
+    try:
+        with db.engine.begin() as conn:
+            res = conn.execute(db.job_queue.insert().values(
+                kind=kind, payload=json.dumps(payload), subject=subject, dedupe_key=dedupe_key, status="queued", attempts=0,
+                max_attempts=max_attempts, run_after=0.0, created_at=_now()))
+            return int(res.inserted_primary_key[0])
+    except IntegrityError:
+        if dedupe_key is None:
+            raise
+        return None
+
+
+def active_kind(subject: str, kinds: tuple[str, ...]) -> str | None:
+    """The kind of a queued or running job about `subject`, or None. This is how any process answers "is this case busy?"."""
+    t = db.job_queue
+    with db.engine.connect() as conn:
+        row = conn.execute(select(t.c.kind).where(and_(t.c.subject == subject, t.c.kind.in_(kinds), t.c.status.in_(("queued", "running"))))
+                           .order_by(t.c.id).limit(1)).first()
+    return row[0] if row else None
 
 
 def claim(worker_id: str, lease_seconds: float = LEASE_SECONDS, kinds: tuple[str, ...] | None = None) -> dict | None:
@@ -51,7 +68,7 @@ def claim(worker_id: str, lease_seconds: float = LEASE_SECONDS, kinds: tuple[str
             if row["attempts"] >= row["max_attempts"] and row["status"] == "running":
                 # lease expired after the last allowed attempt: give up rather than loop forever
                 conn.execute(update(t).where(and_(t.c.id == row["id"], t.c.status == "running", t.c.locked_until < now)).values(
-                    status="failed", finished_at=now, last_error="lease expired after the last attempt"))
+                    status="failed", finished_at=now, dedupe_key=None, last_error="lease expired after the last attempt"))
                 continue
             res = conn.execute(update(t).where(and_(t.c.id == row["id"], claimable)).values(
                 status="running", locked_by=worker_id, locked_until=now + lease_seconds, attempts=t.c.attempts + 1))
@@ -64,7 +81,7 @@ def claim(worker_id: str, lease_seconds: float = LEASE_SECONDS, kinds: tuple[str
 def complete(job_id: int) -> None:
     with db.engine.begin() as conn:
         conn.execute(update(db.job_queue).where(db.job_queue.c.id == job_id).values(
-            status="done", finished_at=_now(), locked_by=None, locked_until=None))
+            status="done", finished_at=_now(), locked_by=None, locked_until=None, dedupe_key=None))
 
 
 def fail(job_id: int, error: str) -> str:
@@ -80,7 +97,7 @@ def fail(job_id: int, error: str) -> str:
                 locked_until=None, last_error=error[:2000]))
             return "retry"
         conn.execute(update(t).where(t.c.id == job_id).values(
-            status="failed", finished_at=_now(), locked_by=None, locked_until=None, last_error=error[:2000]))
+            status="failed", finished_at=_now(), locked_by=None, locked_until=None, dedupe_key=None, last_error=error[:2000]))
         return "failed"
 
 

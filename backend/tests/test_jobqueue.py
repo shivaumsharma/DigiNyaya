@@ -104,13 +104,27 @@ class JobsIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             jobs._handle("nope", {})
 
-    def test_enqueue_failure_releases_the_in_process_claim(self):
+    def test_a_second_start_while_busy_is_rejected_then_allowed_after_completion(self):
+        from unittest import mock
+
+        with mock.patch.object(jobs, "HANDLED_KINDS", ()):   # keep the live workers from running it
+            self.assertTrue(jobs.start_pipeline("DN-DUP"))
+            self.assertFalse(jobs.start_pipeline("DN-DUP"))
+            self.assertFalse(jobs.start_resolution("DN-DUP", True))      # one phase per case at a time
+            self.assertEqual(jobs.is_running("DN-DUP"), "pipeline")
+            job = jobqueue.claim("t", kinds=("pipeline",))
+            jobqueue.complete(job["id"])
+            self.assertIsNone(jobs.is_running("DN-DUP"))
+            self.assertTrue(jobs.start_resolution("DN-DUP", True))
+            self.assertEqual(jobs.is_running("DN-DUP"), "resolution")
+
+    def test_enqueue_failure_propagates_and_leaves_nothing_marked_running(self):
         from unittest import mock
 
         with mock.patch.object(jobs.jobqueue, "enqueue", side_effect=RuntimeError("db down")):
             with self.assertRaises(RuntimeError):
                 jobs.start_pipeline("DN-ENQ-FAIL")
-        self.assertIsNone(jobs.is_running("DN-ENQ-FAIL"))     # a retry of the request is not blocked
+        self.assertIsNone(jobs.is_running("DN-ENQ-FAIL"))
 
     def test_work_left_by_a_dead_process_is_picked_up(self):
         """Simulates a crash: a running row with an expired lease for a document that was never extracted."""

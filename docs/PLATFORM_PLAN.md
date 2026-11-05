@@ -115,7 +115,10 @@ Until then, the type ships at L0 or L1 only.
 |---|---|---|
 | 4 Nov | Matter registry with capability ceilings, policy enforced by tests (`app/matters`, `tests/test_matters.py`); 12 navigator guides; `GET /api/matters`, `GET /api/matters/{id}/guide` | Done |
 | 4 Nov | Durable job queue on the application database (`app/jobqueue.py`): at-least-once delivery, retries with backoff, lease recovery after a crash, per-kind worker claims; in-process workers drain it at startup. `DIGINYAYA_DURABLE_JOBS=0` restores the old thread pool. Alembic migration `a3c5e7f9b1d2` | Done |
-| next | Move workers out of the API process (`python -m app.worker`) and add a shared event bus (Redis or Postgres LISTEN/NOTIFY) | Planned |
+| 5 Nov | Workers as their own process: `python -m app.worker` (graceful SIGTERM drain, queue stats log), API switch `DIGINYAYA_RUN_WORKERS=0` | Done |
+| 5 Nov | Cross-process job state: `job_queue.subject` and a UNIQUE `dedupe_key` give atomic "one phase per case" across every process; `jobs.is_running` and friends read the queue instead of in-process dicts | Done |
+| 5 Nov | Shared event bus: `DbEventBus` over an `event_stream` table (adaptive polling, 10-minute retention); `DIGINYAYA_EVENT_BUS=memory` keeps the old in-process bus. Alembic `b4d6f8a0c2e3`. `docker-compose.yml` runs Postgres + API + worker (not run in CI) | Done |
+| next | Replace polling with Postgres LISTEN/NOTIFY or Redis when concurrent SSE streams make the polling load matter; load test (`scripts/load_test.py`) to find the real limits | Planned |
 | 4 Nov | Frontend: public `/matters` browser (search, grouped by what you can file / roadmap / guides) and `/matters/:id` guide pages, header link, phone-width header fix, 11 vitest tests. UI strings are in `en.json`; the other 10 languages fall back to English until translated (needs the Sarvam key: `scripts/fill_missing_translations.py`). Guide bodies are served in English by the backend | Done (English) |
 | next | Translate the new UI strings and the guide content into the 10 other languages | Planned |
 

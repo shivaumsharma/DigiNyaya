@@ -31,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from . import db, jobs, llm
+from . import db, jobqueue, jobs, llm
 from .agents.preliminary_review import suggest_dispute_type
 from .auth.db import get_db, init_auth_db
 from .auth.deps import current_user
@@ -448,7 +448,12 @@ def _startup():
 # ----------------------------- public ----------------------------- #
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "DigiNyaya", "cases": db.case_count()}
+    out = {"status": "ok", "service": "DigiNyaya", "cases": db.case_count()}
+    try:
+        out["queue"] = jobqueue.stats()   # queued / running / done / failed, for monitoring and alerts
+    except Exception:
+        out["queue"] = None
+    return out
 
 
 @app.get("/api/ai-status")

@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Iterator
 
@@ -46,9 +47,14 @@ _executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="dig
 # Durable mode (default): jobs are rows in `job_queue` and in-process worker threads claim them, so queued or interrupted work
 # survives a restart (at-least-once; see app/jobqueue.py). DIGINYAYA_DURABLE_JOBS=0 restores the old in-memory thread pool.
 _DURABLE = os.environ.get("DIGINYAYA_DURABLE_JOBS", "1").strip().lower() not in {"0", "false", "no", "off"}
+# Embedded workers (default): the API process also runs the worker threads. Set DIGINYAYA_RUN_WORKERS=0 on API processes
+# when workers run in their own process (`python -m app.worker`).
+_RUN_WORKERS = os.environ.get("DIGINYAYA_RUN_WORKERS", "1").strip().lower() not in {"0", "false", "no", "off"}
 _wake = threading.Event()
+_stop = threading.Event()
 _workers_started = False
 _workers_lock = threading.Lock()
+_worker_threads: list[threading.Thread] = []
 
 
 HANDLED_KINDS = ("pipeline", "resolution", "extraction", "discrepancy")
@@ -81,7 +87,7 @@ def _adopt_claim(case_id: str, phase: str) -> None:
 
 
 def _worker_loop(name: str) -> None:
-    while True:
+    while not _stop.is_set():
         try:
             job = jobqueue.claim(name, kinds=HANDLED_KINDS)
         except Exception:  # database briefly unavailable: wait and try again, never kill the worker
@@ -103,24 +109,53 @@ def _worker_loop(name: str) -> None:
 def ensure_workers() -> None:
     """Start the worker threads once. Called at app startup (to drain work left by a previous process) and on each enqueue."""
     global _workers_started
-    if not _DURABLE:
+    if not _DURABLE or not _RUN_WORKERS:
         return
     with _workers_lock:
         if _workers_started:
             return
         for i in range(_MAX_WORKERS):
-            threading.Thread(target=_worker_loop, args=(f"{os.getpid()}-w{i}",), daemon=True, name=f"diginyaya-worker-{i}").start()
+            th = threading.Thread(target=_worker_loop, args=(f"{os.getpid()}-w{i}",), daemon=True, name=f"diginyaya-worker-{i}")
+            th.start()
+            _worker_threads.append(th)
         _workers_started = True
 
 
-def _submit(kind: str, payload: dict, fn, *args) -> None:
-    """Persist the job and wake a worker (durable mode), or run it on the in-memory pool (legacy mode)."""
-    if _DURABLE:
-        jobqueue.enqueue(kind, payload)
-        ensure_workers()
-        _wake.set()
-    else:
-        _executor.submit(fn, *args)
+def run_worker_forever(drain_seconds: float = 60.0) -> None:
+    """Entry point of a dedicated worker process: run the worker threads until SIGTERM / SIGINT, then stop claiming new
+    jobs and give in-flight ones up to `drain_seconds` to finish. A job still running when the process dies is picked
+    up by another worker after its lease expires (at-least-once delivery)."""
+    import signal
+
+    global _RUN_WORKERS
+    _RUN_WORKERS = True
+    signal.signal(signal.SIGTERM, lambda *_: _stop.set())
+    signal.signal(signal.SIGINT, lambda *_: _stop.set())
+    ensure_workers()
+    logger.info("worker process %s running %d worker thread(s)", os.getpid(), _MAX_WORKERS)
+    last_stats = 0.0
+    while not _stop.is_set():
+        _stop.wait(1.0)
+        if time.time() - last_stats > 60:
+            last_stats = time.time()
+            try:
+                logger.info("queue %s", jobqueue.stats())
+            except Exception:
+                logger.exception("could not read queue stats")
+    logger.info("stopping: waiting up to %.0fs for in-flight jobs", drain_seconds)
+    _wake.set()
+    deadline = time.time() + drain_seconds
+    for th in _worker_threads:
+        th.join(max(deadline - time.time(), 0.0))
+
+
+def _start_durable(kind: str, subject: str, dedupe_key: str, payload: dict) -> bool:
+    """Enqueue unless an identical job is already queued or running anywhere (any process). Wakes local workers."""
+    if jobqueue.enqueue(kind, payload, subject=subject, dedupe_key=dedupe_key) is None:
+        return False
+    ensure_workers()
+    _wake.set()
+    return True
 
 
 def _log_status(case_id: str, status: str, **extra) -> None:
@@ -143,6 +178,8 @@ _running_discrepancy: dict[str, bool] = {}  # case_id -> True while a check is r
 
 
 def is_document_extracting(document_id: str) -> bool:
+    if _DURABLE:
+        return jobqueue.active_kind(document_id, ("extraction",)) is not None
     with _doc_lock:
         return document_id in _running_docs
 
@@ -161,6 +198,8 @@ def _release_doc(document_id: str) -> None:
 
 
 def is_discrepancy_check_running(case_id: str) -> bool:
+    if _DURABLE:
+        return jobqueue.active_kind(case_id, ("discrepancy",)) is not None
     with _doc_lock:
         return _running_discrepancy.get(case_id, False)
 
@@ -179,6 +218,9 @@ def _release_discrepancy(case_id: str) -> None:
 
 
 def is_running(case_id: str) -> str | None:
+    """The phase ('pipeline' or 'resolution') currently queued or running for this case, in any process, else None."""
+    if _DURABLE:
+        return jobqueue.active_kind(case_id, ("pipeline", "resolution"))
     with _lock:
         return _running.get(case_id)
 
@@ -394,13 +436,11 @@ def _run_extraction(document_id: str) -> None:
 
 
 def start_extraction(document_id: str) -> bool:
+    if _DURABLE:
+        return _start_durable("extraction", document_id, f"extraction:{document_id}", {"document_id": document_id})
     if not _claim_doc(document_id):
         return False
-    try:
-        _submit("extraction", {"document_id": document_id}, _run_extraction, document_id)
-    except Exception:
-        _release_doc(document_id)  # could not even enqueue: do not leave the document marked as running
-        raise
+    _executor.submit(_run_extraction, document_id)
     return True
 
 
@@ -430,33 +470,28 @@ def _run_discrepancy_check(case_id: str) -> None:
 
 
 def start_discrepancy_check(case_id: str) -> bool:
+    if _DURABLE:
+        return _start_durable("discrepancy", case_id, f"discrepancy:{case_id}", {"case_id": case_id})
     if not _claim_discrepancy(case_id):
         return False
-    try:
-        _submit("discrepancy", {"case_id": case_id}, _run_discrepancy_check, case_id)
-    except Exception:
-        _release_discrepancy(case_id)
-        raise
+    _executor.submit(_run_discrepancy_check, case_id)
     return True
 
 
 def start_pipeline(case_id: str) -> bool:
+    # pipeline and resolution share one key: a case runs at most one phase at a time, across every process
+    if _DURABLE:
+        return _start_durable("pipeline", case_id, f"case-phase:{case_id}", {"case_id": case_id})
     if not _claim(case_id, "pipeline"):
         return False
-    try:
-        _submit("pipeline", {"case_id": case_id}, _run_pipeline, case_id)
-    except Exception:
-        _release(case_id)
-        raise
+    _executor.submit(_run_pipeline, case_id)
     return True
 
 
 def start_resolution(case_id: str, via_mediation: bool) -> bool:
+    if _DURABLE:
+        return _start_durable("resolution", case_id, f"case-phase:{case_id}", {"case_id": case_id, "via_mediation": via_mediation})
     if not _claim(case_id, "resolution"):
         return False
-    try:
-        _submit("resolution", {"case_id": case_id, "via_mediation": via_mediation}, _run_resolution, case_id, via_mediation)
-    except Exception:
-        _release(case_id)
-        raise
+    _executor.submit(_run_resolution, case_id, via_mediation)
     return True

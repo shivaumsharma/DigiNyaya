@@ -218,6 +218,10 @@ job_queue = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("kind", String, nullable=False),
     Column("payload", Text, nullable=False),
+    Column("subject", String, index=True),                  # what the job is about (case id or document id)
+    # While a job is queued or running its dedupe_key is set (UNIQUE), so a second identical request is rejected atomically
+    # even across processes; it is cleared when the job finishes. NULLs do not collide.
+    Column("dedupe_key", String, unique=True),
     Column("status", String, nullable=False, index=True),   # queued | running | done | failed
     Column("attempts", Integer, nullable=False, default=0),
     Column("max_attempts", Integer, nullable=False, default=3),
@@ -230,12 +234,42 @@ job_queue = Table(
 )
 
 
+# Short-lived live-event stream shared by every process (see app/core/events.py DbEventBus): the API's SSE subscribers read
+# what worker processes write. Rows are pruned after a few minutes; the durable record is the `events` table.
+event_stream = Table(
+    "event_stream",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("case_id", String, nullable=False, index=True),
+    Column("payload", Text, nullable=False),
+    Column("created_at", Float, nullable=False, index=True),
+)
+
+
+def _heal_job_queue() -> None:
+    """job_queue was added in a previous release without `subject` / `dedupe_key`. Add them to an existing development
+    table so a local database keeps working (production gets the same change from the Alembic migration)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "job_queue" not in insp.get_table_names():
+        return
+    have = {c["name"] for c in insp.get_columns("job_queue")}
+    with engine.begin() as conn:
+        if "subject" not in have:
+            conn.execute(text("ALTER TABLE job_queue ADD COLUMN subject VARCHAR"))
+        if "dedupe_key" not in have:
+            conn.execute(text("ALTER TABLE job_queue ADD COLUMN dedupe_key VARCHAR"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_job_queue_dedupe_key ON job_queue (dedupe_key)"))
+
+
 def init_db() -> None:
     # create_all is idempotent (CREATE TABLE IF NOT EXISTS-equivalent per
     # dialect) -- schema evolution from here on happens via Alembic
     # migrations (see alembic/versions/), not by editing the Table defs
     # above and relying on this call to pick up the change.
-    metadata.create_all(engine, tables=[cases, events, documents, discrepancies, job_queue])
+    _heal_job_queue()
+    metadata.create_all(engine, tables=[cases, events, documents, discrepancies, job_queue, event_stream])
 
 
 # ----------------------------- cases ----------------------------- #

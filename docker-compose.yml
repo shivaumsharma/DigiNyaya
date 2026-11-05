@@ -1,0 +1,53 @@
+# Local multi-process setup: PostgreSQL, the API (no embedded workers) and a separate worker process.
+# NOT run in CI. Try it with:  docker compose up --build   (API on http://localhost:8000)
+# Add your Sarvam key in a .env file next to this one (SARVAM_API_KEY=...), or leave it out to use the scripted engine.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: diginyaya
+      POSTGRES_PASSWORD: diginyaya
+      POSTGRES_DB: diginyaya
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diginyaya"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    environment: &backend-env
+      DIGINYAYA_DB: postgresql+psycopg://diginyaya:diginyaya@db:5432/diginyaya
+      DIGINYAYA_EVENT_BUS: db
+      DIGINYAYA_JOB_WORKERS: "4"
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+    env_file:
+      - path: .env
+        required: false
+    # The API only serves requests; jobs run in the worker service.
+    command: sh -c "python -m alembic upgrade head && DIGINYAYA_RUN_WORKERS=0 uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: ./backend
+    environment: *backend-env
+    env_file:
+      - path: .env
+        required: false
+    command: python -m app.worker
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    deploy:
+      replicas: 1   # raise to scale out; workers coordinate through the job_queue table
+
+volumes:
+  pgdata:
