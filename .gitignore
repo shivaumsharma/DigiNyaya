@@ -30,3 +30,6 @@ frontend/dist/
 .DS_Store
 .vscode/
 *.log
+
+# downloaded model weights (untrusted pickles, kept apart from code)
+models_untrusted/

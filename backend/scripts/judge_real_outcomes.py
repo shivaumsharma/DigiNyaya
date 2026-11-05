@@ -91,6 +91,7 @@ def run_and_capture(case: dict, *, live_llm: bool = False) -> dict | None:
     _llm_disabled_for) to capture full resolution details. Returns None if
     it escalated (nothing to compare -- no AI resolution was produced)."""
     ctx = _build_ctx(case)
+    llm.reset_call_stats()
     with _llm_disabled_for("1" if live_llm else "0"):
         list(graph.run_pipeline(ctx))
         if ctx.escalation is not None or ctx.mediation is None:
@@ -98,6 +99,7 @@ def run_and_capture(case: dict, *, live_llm: bool = False) -> dict | None:
         list(graph.run_resolution(ctx, via_mediation=True))
     if ctx.escalation is not None or ctx.resolution is None:
         return None
+    calls = llm.get_call_stats()
     res = ctx.resolution
     return {
         "relief_amount": res.relief_amount,
@@ -115,6 +117,11 @@ def run_and_capture(case: dict, *, live_llm: bool = False) -> dict | None:
         "order": res.order,
         "findings": res.findings,
         "compliance_days": res.compliance_days,
+        # Evidence of what the pipeline really ran on: `live_llm` below is only the SWITCH, and every agent
+        # silently falls back to scripted output when its LLM call returns nothing. Zero ok calls in a
+        # live-LLM run means that case was scripted.
+        "llm_calls_ok": calls["ok"],
+        "llm_calls_failed": calls["failed"],
     }
 
 
@@ -308,6 +315,11 @@ def main() -> int:
                      help="let analysis.py/mediation.py's own LLM reasoning run during the pipeline "
                           "re-run (real per-case Sarvam cost), instead of the default fast/free "
                           "scripted mode. The judge() call itself always uses the LLM either way.")
+    ap.add_argument("--resume", action="store_true",
+                     help="with --live-llm: skip cases that already have a real live verdict in the output file "
+                          "instead of re-running them. WITHOUT this, a live run re-runs every case from the top "
+                          "(live output is not a pure function of the code, so nothing is reusable) and the "
+                          "output file is rewritten with only this run's results, losing earlier progress.")
     ap.add_argument("--fresh", action="store_true",
                      help="ignore any cached verdicts in the existing output file and re-judge every "
                           "case from scratch (re-pays for all of them). Default is incremental: a "
@@ -397,11 +409,13 @@ def main() -> int:
     def process_one(i: int, case: dict) -> None:
         label = f"[{i + 1}/{len(cases)}] {case['case_id']} ({case['category']})..."
         cached = cache.get(case["case_id"])
-        if (
-            cached
-            and not args.live_llm
-            and cached.get("live_llm") is False
-            and cached.get("code_fingerprint") == current_fingerprint
+        if cached and (
+            (
+                not args.live_llm
+                and cached.get("live_llm") is False
+                and cached.get("code_fingerprint") == current_fingerprint
+            )
+            or (args.resume and args.live_llm and cached.get("live_llm") is True)
         ):
             print(f"{label} (unchanged, pipeline not re-run) {cached['verdict']} -- "
                   f"{(cached.get('reason') or '')[:80]}")
@@ -435,6 +449,7 @@ def main() -> int:
                 "verdict": "judge_failed", "reason": None,
                 "ai_relief": ai["relief_amount_display"], "ai_hash": ai_hash,
                 "code_fingerprint": current_fingerprint, "live_llm": args.live_llm,
+                "llm_calls_ok": ai.get("llm_calls_ok"), "llm_calls_failed": ai.get("llm_calls_failed"),
             }
         else:
             print(f"{label} {verdict['verdict']} -- {verdict.get('reason', '')[:80]}")
@@ -461,6 +476,8 @@ def main() -> int:
                 "ai_hash": ai_hash,
                 "code_fingerprint": current_fingerprint,
                 "live_llm": args.live_llm,
+                "llm_calls_ok": ai.get("llm_calls_ok"),
+                "llm_calls_failed": ai.get("llm_calls_failed"),
             }
         # Saved incrementally (under the same lock as the append) so a
         # mid-run crash/kill -- observed happening spontaneously in this

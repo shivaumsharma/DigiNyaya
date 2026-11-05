@@ -45,6 +45,11 @@ def exact_upper_bound(errors: int, n: int, delta: float = 0.05) -> float:
         return 1.0
     if errors >= n:
         return 1.0
+    try:  # identical quantity (Clopper-Pearson), orders of magnitude faster when scipy happens to be installed
+        from scipy.stats import beta as _beta
+        return float(_beta.ppf(1.0 - delta, errors + 1, n - errors))
+    except ImportError:
+        pass
     lo, hi = errors / n, 1.0
     for _ in range(60):
         mid = (lo + hi) / 2
