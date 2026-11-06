@@ -450,7 +450,9 @@
       "unreviewed": "This guide has not been reviewed by a lawyer yet.",
       "notFound": "We couldn't find that guide.",
       "loadError": "We couldn't load this guide. Please try again.",
-      "legalAid": "If you cannot afford a lawyer, ask your District Legal Services Authority about free legal aid."
+      "legalAid": "If you cannot afford a lawyer, ask your District Legal Services Authority about free legal aid.",
+      "englishOnly": "This guide is not available in your language yet, so it is shown in English.",
+      "machineTranslated": "This translation was generated automatically and has not been checked by a native speaker."
     }
   }
 }

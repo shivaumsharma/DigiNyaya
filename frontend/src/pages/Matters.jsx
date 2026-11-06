@@ -9,14 +9,14 @@ function LevelTag({ matter, t }) {
 }
 
 export default function Matters() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const [matters, setMatters] = useState(null)
   const [error, setError] = useState(false)
   const [query, setQuery] = useState('')
 
   useEffect(() => {
-    api.matters().then(setMatters).catch(() => setError(true))
-  }, [])
+    api.matters(lang).then(setMatters).catch(() => setError(true))
+  }, [lang])
 
   const groups = useMemo(() => groupMatters(matters || [], query), [matters, query])
   const empty = matters && !groups.resolve.length && !groups.soon.length && !groups.guides.length

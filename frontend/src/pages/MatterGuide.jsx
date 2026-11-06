@@ -5,7 +5,7 @@ import { useLanguage } from '../i18n/LanguageContext.jsx'
 
 export default function MatterGuide() {
   const { id } = useParams()
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   // The result is stored together with the id it was fetched for, so a stale result from a previous guide is never
   // shown and no state has to be reset synchronously inside the effect.
   const [result, setResult] = useState({ id: null, guide: null, error: null }) // error: 'notFound' | 'loadError'
@@ -13,13 +13,13 @@ export default function MatterGuide() {
   useEffect(() => {
     let cancelled = false
     api
-      .matterGuide(id)
+      .matterGuide(id, lang)
       .then((guide) => !cancelled && setResult({ id, guide, error: null }))
       .catch((err) => !cancelled && setResult({ id, guide: null, error: err instanceof ApiError && err.status === 404 ? 'notFound' : 'loadError' }))
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, lang])
 
   const current = result.id === id
   const guide = current ? result.guide : null
@@ -42,6 +42,10 @@ export default function MatterGuide() {
             {!guide.reviewed && <strong>{t('matters.guide.unreviewed')} </strong>}
             {guide.disclaimer}
           </div>
+          {lang !== 'en-IN' && guide.language === 'en' && <p className="matter-notice" role="note">{t('matters.guide.englishOnly')}</p>}
+          {guide.language && guide.language !== 'en' && guide.translation_reviewed === false && (
+            <p className="matter-notice" role="note">{t('matters.guide.machineTranslated')}</p>
+          )}
 
           <h2 className="matter-heading">{t('matters.guide.forum')}</h2>
           <p style={{ lineHeight: 1.6 }}>{guide.forum}</p>

@@ -94,6 +94,60 @@ GUIDES: list[dict] = [
 
 
 def render(g: dict) -> dict:
-    """The guide as served by the API, with the shared sections attached."""
+    """The guide as served by the API (English), with the shared sections attached."""
     return {"summary": g["summary"], "forum": g["forum"], "steps": g["steps"], "documents": COMMON_DOCUMENTS,
-            "this_tool_cannot": CANNOT_DO, "disclaimer": DISCLAIMER, "reviewed": False}
+            "this_tool_cannot": CANNOT_DO, "disclaimer": DISCLAIMER, "reviewed": False, "language": "en"}
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Translations. One file per language in app/matters/translations/<code>.json:
+#   {"shared": {"documents": [...], "this_tool_cannot": [...], "disclaimer": "..."},
+#    "guides": {"<guide id>": {"label": "...", "summary": "...", "forum": "...", "steps": [...]}}}
+# Same shape as the English source above, same list lengths. They are machine translations that no native speaker or lawyer has
+# reviewed; the API says so (`translation_reviewed: false`) and the UI shows it. A missing language or guide falls back to English.
+# ---------------------------------------------------------------------------------------------------------------------------
+import json
+from functools import lru_cache
+from pathlib import Path
+
+TRANSLATIONS_DIR = Path(__file__).resolve().parent / "translations"
+TRANSLATION_CODES = ("hi", "ta", "te", "kn", "ml", "mr", "bn", "gu", "pa", "od")
+
+
+def lang_code(lang: str | None) -> str:
+    """'hi-IN' -> 'hi'; anything unknown or English -> 'en'."""
+    code = (lang or "en").split("-")[0].strip().lower()
+    return code if code in TRANSLATION_CODES else "en"
+
+
+@lru_cache(maxsize=None)
+def load_translation(code: str) -> dict | None:
+    path = TRANSLATIONS_DIR / f"{code}.json"
+    if code == "en" or not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def source_guide(guide_id: str) -> dict | None:
+    return next((g for g in GUIDES if g["id"] == guide_id), None)
+
+
+def localize(guide_id: str, base: dict, lang: str | None) -> dict:
+    """The rendered English guide with translated text laid over it when a translation exists for (guide, language).
+    `language` says what was actually served; `translation_reviewed` is always False for now."""
+    code = lang_code(lang)
+    tr = load_translation(code)
+    entry = (tr or {}).get("guides", {}).get(guide_id)
+    if not entry:
+        return base
+    shared = tr.get("shared", {})
+    out = dict(base)
+    out.update({"label": entry["label"], "summary": entry["summary"], "forum": entry["forum"], "steps": entry["steps"],
+                "documents": shared.get("documents", base["documents"]), "this_tool_cannot": shared.get("this_tool_cannot", base["this_tool_cannot"]),
+                "disclaimer": shared.get("disclaimer", base["disclaimer"]), "language": code, "translation_reviewed": False})
+    return out
+
+
+def localized_label_summary(guide_id: str, lang: str | None) -> tuple[str, str] | None:
+    entry = ((load_translation(lang_code(lang)) or {}).get("guides", {})).get(guide_id)
+    return (entry["label"], entry["summary"]) if entry else None

@@ -115,8 +115,13 @@ def get_matter(matter_id: str) -> Matter | None:
     return next((m for m in list_matters() if m.id == matter_id), None)
 
 
-def to_public(m: Matter) -> dict:
-    """What the API exposes (no guide body in the list view)."""
-    return {"id": m.id, "label": m.label, "family": m.family, "level": int(m.level), "level_name": m.level.name,
-            "status": m.status, "description": m.description, "can_resolve": m.can_resolve(),
+def to_public(m: Matter, lang: str | None = None) -> dict:
+    """What the API exposes (no guide body in the list view). Navigator matters are translated when a translation exists."""
+    label, description = m.label, m.description
+    if m.guide is not None:
+        tr = guides.localized_label_summary(m.id, lang)
+        if tr:
+            label, description = tr
+    return {"id": m.id, "label": label, "family": m.family, "level": int(m.level), "level_name": m.level.name,
+            "status": m.status, "description": description, "can_resolve": m.can_resolve(),
             "has_guide": m.guide is not None, "gate_missing": m.missing_gate_checks() if m.level >= Level.L2_RESOLVE else []}

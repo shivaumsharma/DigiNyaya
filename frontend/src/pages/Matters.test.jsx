@@ -46,6 +46,7 @@ function renderAt(path) {
 }
 
 beforeEach(() => {
+  try { localStorage.removeItem('diginyaya_lang') } catch { /* ignore */ }
   api.matters.mockReset()
   api.matterGuide.mockReset()
 })
@@ -105,7 +106,7 @@ describe('MatterGuide page', () => {
     expect(screen.getByRole('note')).toHaveTextContent('not legal advice')
     expect(screen.getByText('Write down what happened')).toBeInTheDocument()
     expect(screen.getByText('Predict the outcome')).toBeInTheDocument()
-    expect(api.matterGuide).toHaveBeenCalledWith('criminal_complaint')
+    expect(api.matterGuide).toHaveBeenCalledWith('criminal_complaint', 'en-IN')
   })
 
   it('shows not-found for an unknown guide and a generic error otherwise', async () => {
@@ -118,5 +119,42 @@ describe('MatterGuide page', () => {
     api.matterGuide.mockRejectedValue(new ApiError('boom', 500))
     renderAt('/matters/tax_dispute')
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent("couldn't load"))
+  })
+})
+
+describe('language', () => {
+  const setLang = (code) => localStorage.setItem('diginyaya_lang', code)
+
+  it('requests the list and the guide in the chosen UI language', async () => {
+    setLang('hi-IN')
+    api.matters.mockResolvedValue(MATTERS)
+    renderAt('/matters')
+    await screen.findByText('Money Recovery')
+    expect(api.matters).toHaveBeenCalledWith('hi-IN')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('हर तरह का कानूनी मामला')
+  })
+
+  it('labels a machine translation as unchecked', async () => {
+    setLang('ta-IN')
+    api.matterGuide.mockResolvedValue({ ...GUIDE, language: 'ta', translation_reviewed: false })
+    renderAt('/matters/criminal_complaint')
+    await screen.findByRole('heading', { name: GUIDE.label })
+    expect(api.matterGuide).toHaveBeenCalledWith('criminal_complaint', 'ta-IN')
+    expect(screen.getByText(/தானாக உருவாக்கப்பட்டது/)).toBeInTheDocument()
+  })
+
+  it('says so when the guide falls back to English', async () => {
+    setLang('hi-IN')
+    api.matterGuide.mockResolvedValue({ ...GUIDE, language: 'en' })
+    renderAt('/matters/criminal_complaint')
+    await screen.findByRole('heading', { name: GUIDE.label })
+    expect(screen.getByText(/अंग्रेज़ी में दिखाई गई है/)).toBeInTheDocument()
+  })
+
+  it('shows no language notice for English', async () => {
+    api.matterGuide.mockResolvedValue({ ...GUIDE, language: 'en' })
+    renderAt('/matters/criminal_complaint')
+    await screen.findByRole('heading', { name: GUIDE.label })
+    expect(screen.getAllByRole('note')).toHaveLength(1)
   })
 })

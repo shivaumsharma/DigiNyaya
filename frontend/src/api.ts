@@ -117,8 +117,9 @@ export const api = {
   aiStatus: () => jsonFetch('/ai-status'),
   languages: () => jsonFetch('/languages'),
   disputeTypes: () => jsonFetch('/dispute-types'),
-  matters: () => jsonFetch('/matters'),
-  matterGuide: (id: string) => jsonFetch(`/matters/${encodeURIComponent(id)}/guide`),
+  matters: (lang?: string) => jsonFetch(`/matters${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
+  matterGuide: (id: string, lang?: string) =>
+    jsonFetch(`/matters/${encodeURIComponent(id)}/guide${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`),
   sampleClaim: (disputeType?: string) => jsonFetch(`/sample-claim${disputeType ? `?dispute_type=${encodeURIComponent(disputeType)}` : ''}`),
   precedents: () => jsonFetch('/precedents'),
   myCases: () => jsonFetch('/cases'),
