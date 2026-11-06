@@ -52,7 +52,7 @@ class TranslationFiles(unittest.TestCase):
         for code in guides.TRANSLATION_CODES:
             tr = guides.load_translation(code)
             self.assertIsNotNone(tr, code)
-            self.assertEqual(set(tr["guides"]), {g["id"] for g in guides.GUIDES}, code)
+            self.assertEqual(set(tr["guides"]), {g["id"] for g in guides.GUIDES} | set(guides.COMPANION_GUIDES), code)
 
     def test_structure_matches_english(self):
         for code in guides.TRANSLATION_CODES:
@@ -63,6 +63,11 @@ class TranslationFiles(unittest.TestCase):
                 e = tr["guides"][g["id"]]
                 self.assertEqual(set(e), {"label", "summary", "forum", "steps"}, (code, g["id"]))
                 self.assertEqual(len(e["steps"]), len(g["steps"]), (code, g["id"]))
+            for gid, g in guides.COMPANION_GUIDES.items():
+                e = tr["guides"][gid]
+                self.assertEqual(set(e), {"label", "summary", "forum", "steps", "documents"}, (code, gid))
+                self.assertEqual(len(e["steps"]), len(g["steps"]), (code, gid))
+                self.assertEqual(len(e["documents"]), len(g["documents"]), (code, gid))
 
     def test_no_empty_strings_and_mostly_in_the_right_script(self):
         for code in guides.TRANSLATION_CODES:
@@ -74,7 +79,7 @@ class TranslationFiles(unittest.TestCase):
         for code in guides.TRANSLATION_CODES:
             tr = guides.load_translation(code)
             self.assertNotEqual(tr["shared"]["disclaimer"], guides.DISCLAIMER, code)
-            for g in guides.GUIDES:
+            for g in [*guides.GUIDES, *({"id": k, **v} for k, v in guides.COMPANION_GUIDES.items())]:
                 self.assertNotEqual(tr["guides"][g["id"]]["forum"], g["forum"], (code, g["id"]))
 
 

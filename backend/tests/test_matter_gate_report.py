@@ -166,8 +166,14 @@ class TenancyApi(unittest.TestCase):
         # other pipeline types still have no guide
         self.assertEqual(self.client.get("/api/matters/cheque_bounce/guide").status_code, 404)
 
-    def test_untranslated_guide_falls_back_to_english(self):
+    def test_preparation_guides_are_translated_and_labelled_unreviewed(self):
         g = self.client.get("/api/matters/tenancy_dispute/guide?lang=hi-IN").json()
+        self.assertEqual(g["language"], "hi")
+        self.assertFalse(g["translation_reviewed"])
+        self.assertEqual(len(g["documents"]), 5)  # the guide's own documents, not the shared list
+
+    def test_unsupported_language_falls_back_to_english(self):
+        g = self.client.get("/api/matters/tenancy_dispute/guide?lang=fr-FR").json()
         self.assertEqual(g["language"], "en")
 
 

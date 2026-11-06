@@ -220,7 +220,8 @@ def localize(guide_id: str, base: dict, lang: str | None) -> dict:
     shared = tr.get("shared", {})
     out = dict(base)
     out.update({"label": entry["label"], "summary": entry["summary"], "forum": entry["forum"], "steps": entry["steps"],
-                "documents": shared.get("documents", base["documents"]), "this_tool_cannot": shared.get("this_tool_cannot", base["this_tool_cannot"]),
+                "documents": entry.get("documents", shared.get("documents", base["documents"])),
+                "this_tool_cannot": shared.get("this_tool_cannot", base["this_tool_cannot"]),
                 "disclaimer": shared.get("disclaimer", base["disclaimer"]), "language": code, "translation_reviewed": False})
     return out
 
