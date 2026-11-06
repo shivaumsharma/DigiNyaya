@@ -90,6 +90,8 @@ class DbEventBus:
     POLL_MIN = 0.05
     POLL_MAX = 0.25
     LOOKBACK_IDS = 500
+    NOTIFY_CHANNEL = "diginyaya_events"
+    NOTIFY_FALLBACK_SECONDS = 2.0   # with LISTEN, poll anyway this often in case a notification was missed
 
     def __init__(self) -> None:
         self._published = 0
@@ -128,6 +130,12 @@ class DbEventBus:
         now = time.time()
         with db.engine.begin() as conn:
             conn.execute(t.insert().values(case_id=case_id, payload=json.dumps(event, default=str), created_at=now))
+            if conn.dialect.name == "postgresql":
+                # Delivered to listeners when this transaction commits, so a dispatcher in ANOTHER process wakes at once
+                # instead of waiting for its next poll.
+                from sqlalchemy import text
+
+                conn.execute(text("SELECT pg_notify(:ch, :c)"), {"ch": self.NOTIFY_CHANNEL, "c": case_id})
         with self._lock:
             self._published += 1
             due = self._published % self.PRUNE_EVERY == 0
@@ -192,20 +200,58 @@ class DbEventBus:
             n += 1
         return n
 
+    def _open_listener(self):
+        """A dedicated autocommit connection that LISTENs for new events, or None when the database is not PostgreSQL (or the
+        connection cannot be made): the dispatcher then polls as before."""
+        from .. import db
+
+        if db.engine.dialect.name != "postgresql":
+            return None
+        try:
+            import psycopg
+
+            url = db.engine.url.render_as_string(hide_password=False).replace("postgresql+psycopg://", "postgresql://", 1)
+            conn = psycopg.connect(url, autocommit=True)
+            conn.execute(f"LISTEN {self.NOTIFY_CHANNEL}")
+            return conn
+        except Exception:  # noqa: BLE001 - listening is an optimisation; polling is the fallback
+            return None
+
     def _run(self) -> None:
-        interval = self.POLL_MIN
-        while True:
-            with self._lock:
-                if not self._subs:
-                    self._thread = None   # nobody listening: stop polling; the next subscribe restarts it
-                    return
-            try:
-                got = self.poll_once()
-            except Exception:  # database briefly unavailable: keep the dispatcher alive
-                got = 0
-                time.sleep(1.0)
-            interval = self.POLL_MIN if got else min(interval * 2, self.POLL_MAX)
-            time.sleep(interval)
+        listener = self._open_listener()
+        try:
+            interval = self.POLL_MIN
+            while True:
+                with self._lock:
+                    if not self._subs:
+                        self._thread = None   # nobody listening: stop; the next subscribe restarts it
+                        return
+                try:
+                    got = self.poll_once()
+                except Exception:  # database briefly unavailable: keep the dispatcher alive
+                    got = 0
+                    time.sleep(1.0)
+                if listener is not None:
+                    # Sleep until a notification arrives (or the fallback interval passes), then poll again. While events are
+                    # flowing the next notification is already queued, so this returns immediately.
+                    try:
+                        for _ in listener.notifies(timeout=self.NOTIFY_FALLBACK_SECONDS, stop_after=1):
+                            break
+                    except Exception:  # noqa: BLE001 - connection lost: fall back to plain polling
+                        try:
+                            listener.close()
+                        except Exception:  # noqa: BLE001
+                            pass
+                        listener = None
+                    continue
+                interval = self.POLL_MIN if got else min(interval * 2, self.POLL_MAX)
+                time.sleep(interval)
+        finally:
+            if listener is not None:
+                try:
+                    listener.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
 
 async def astream(q: "queue.Queue", *, idle_timeout: float = 120.0, heartbeat_every: float = 5.0):

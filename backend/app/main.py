@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 from . import db, jobqueue, jobs, llm
 from .agents.preliminary_review import suggest_dispute_type
 from .auth.db import get_db, init_auth_db
-from .auth.deps import current_user
+from .auth.deps import current_user_detached
 from .auth.orm_models import User
 from .auth.rate_limit import enforce_call_limit
 from .auth.router import me_router as auth_me_router, router as auth_router
@@ -503,7 +503,7 @@ _CREATE_CASE_LIMIT, _CREATE_CASE_WINDOW = 20, timedelta(hours=1)
 
 @app.post("/api/classify-dispute-type", response_model=Optional[DisputeTypeSuggestionOut])
 def classify_dispute_type(
-    payload: DisputeTypeSuggestionRequest, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+    payload: DisputeTypeSuggestionRequest, user: User = Depends(current_user_detached), auth_db: Session = Depends(get_db),
 ):
     """Advisory-only: called live while a claimant types their description
     on the filing form, to catch them being on the wrong category page
@@ -521,7 +521,7 @@ def precedents():
 
 @app.get("/api/languages", response_model=SupportedLanguagesResponse)
 def languages():
-    # Public (no Depends(current_user)), same as /api/dispute-types and
+    # Public (no Depends(current_user_detached)), same as /api/dispute-types and
     # /api/precedents: static reference data, not user-specific, and needed
     # pre-login so the login screen itself can render in the user's language.
     return SupportedLanguagesResponse(
@@ -546,7 +546,7 @@ def _tier_for(dispute_type: str) -> tuple[int, str]:
 
 
 @app.get("/api/cases", response_model=list[CaseSummaryOut])
-def list_my_cases(user: User = Depends(current_user)):
+def list_my_cases(user: User = Depends(current_user_detached)):
     """Cases the current user filed (owner_id == user.id) -- filed-by-me
     only, newest first. See CaseSummaryOut's docstring for why this can't
     yet also list cases filed against the user."""
@@ -566,7 +566,7 @@ def list_my_cases(user: User = Depends(current_user)):
 
 
 @app.get("/api/me/data-export")
-def export_my_data(user: User = Depends(current_user)):
+def export_my_data(user: User = Depends(current_user_detached)):
     """Self-service data export (DPDP Act 2023 access/portability principle)
     -- every case the user filed, in full, plus that case's documents
     (including extracted text -- it's their evidence) and event log.
@@ -605,7 +605,7 @@ def export_my_data(user: User = Depends(current_user)):
 
 
 @app.post("/api/cases")
-def create_case(submission: ClaimSubmission, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
+def create_case(submission: ClaimSubmission, user: User = Depends(current_user_detached), auth_db: Session = Depends(get_db)):
     enforce_call_limit(auth_db, user.id, "create_case", limit=_CREATE_CASE_LIMIT, window=_CREATE_CASE_WINDOW)
     chosen = get_dispute_type(submission.dispute_type.value)
     if chosen is not None and not chosen["active"]:
@@ -659,7 +659,7 @@ def _load_owned(case_id: str, owner_id: str) -> dict:
 
 
 @app.post("/api/cases/{case_id}/submit")
-def submit_case(case_id: str, confirmation: CaseSubmitConfirmation, user: User = Depends(current_user)):
+def submit_case(case_id: str, confirmation: CaseSubmitConfirmation, user: User = Depends(current_user_detached)):
     """The real "file & notify respondent" action -- separate from case
     creation so a claimant can attach evidence and get a preliminary review
     first (see /preliminary-review) without the 72-hour response window
@@ -697,7 +697,7 @@ def submit_case(case_id: str, confirmation: CaseSubmitConfirmation, user: User =
 
 
 @app.get("/api/cases/{case_id}")
-def get_case(case_id: str, lang: str | None = None, user: User = Depends(current_user)):
+def get_case(case_id: str, lang: str | None = None, user: User = Depends(current_user_detached)):
     case = _load_owned(case_id, user.id)
     return _localize_case_response(case, lang)
 
@@ -724,7 +724,7 @@ def _resolution_narration_text(resolution: dict) -> str:
 
 @app.get("/api/cases/{case_id}/mediation/audio")
 def mediation_audio(
-    case_id: str, lang: str | None = None, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+    case_id: str, lang: str | None = None, user: User = Depends(current_user_detached), auth_db: Session = Depends(get_db),
 ):
     """Read the mediation proposal aloud in the same language it's
     displayed in -- localizes via the same path as GET /api/cases/{id}
@@ -747,7 +747,7 @@ def mediation_audio(
 
 @app.get("/api/cases/{case_id}/resolution/audio")
 def resolution_audio(
-    case_id: str, lang: str | None = None, user: User = Depends(current_user), auth_db: Session = Depends(get_db),
+    case_id: str, lang: str | None = None, user: User = Depends(current_user_detached), auth_db: Session = Depends(get_db),
 ):
     """Read the resolution order aloud in the same language it's displayed
     in. Same rationale as mediation_audio above."""
@@ -767,7 +767,7 @@ def resolution_audio(
 
 
 @app.post("/api/cases/{case_id}/respond")
-def respond(case_id: str, submission: RespondentSubmission, user: User = Depends(current_user)):
+def respond(case_id: str, submission: RespondentSubmission, user: User = Depends(current_user_detached)):
     case = _load_owned(case_id, user.id)
     gw = get_language_gateway()
     sanitized_statement = sanitize_text(submission.statement)
@@ -782,14 +782,14 @@ def respond(case_id: str, submission: RespondentSubmission, user: User = Depends
 
 
 @app.post("/api/cases/{case_id}/skip-response")
-def skip_response(case_id: str, user: User = Depends(current_user)):
+def skip_response(case_id: str, user: User = Depends(current_user_detached)):
     _load_owned(case_id, user.id)
     db.update_case(case_id, respondent_submission=None, status="ready")
     return {"status": "ready", "case_id": case_id, "uncontested": True}
 
 
 @app.post("/api/cases/{case_id}/request-review")
-def request_review(case_id: str, user: User = Depends(current_user)):
+def request_review(case_id: str, user: User = Depends(current_user_detached)):
     """Manual human-review escalation -- distinct from app.core.safety_gate's
     AUTOMATIC escalation. Tier 1 (consumer_dispute) cases are otherwise never
     seen by a human at all: they resolve fully autonomously, with no
@@ -808,7 +808,7 @@ def request_review(case_id: str, user: User = Depends(current_user)):
 
 
 @app.post("/api/cases/{case_id}/run")
-def run_pipeline(case_id: str, user: User = Depends(current_user)):
+def run_pipeline(case_id: str, user: User = Depends(current_user_detached)):
     case = _load_owned(case_id, user.id)
     # Only launch the pipeline for a case that hasn't started it yet, so a page
     # refresh (which re-issues this call) never re-runs the agents.
@@ -823,7 +823,7 @@ def run_pipeline(case_id: str, user: User = Depends(current_user)):
 
 
 @app.post("/api/cases/{case_id}/mediation")
-def mediation_decision(case_id: str, decision: MediationDecision, user: User = Depends(current_user)):
+def mediation_decision(case_id: str, decision: MediationDecision, user: User = Depends(current_user_detached)):
     case = _load_owned(case_id, user.id)
     if "_ctx" not in case:
         raise HTTPException(status_code=409, detail="Run the resolution pipeline before deciding mediation")
@@ -851,7 +851,7 @@ def _release_request_session(user: User) -> None:
 
 
 @app.get("/api/cases/{case_id}/events")
-def events(case_id: str, after: int = 0, lang: str | None = None, user: User = Depends(current_user)):
+def events(case_id: str, after: int = 0, lang: str | None = None, user: User = Depends(current_user_detached)):
     case = _load_owned(case_id, user.id)
     # The auth session behind `current_user` stays open until the response ends, and for a stream that can be minutes: each
     # open stream would hold a pooled database connection (the load test exhausted the pool this way). Release it now.

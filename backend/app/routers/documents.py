@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from .. import db, jobs
 from ..agents.preliminary_review import run_preliminary_review
 from ..auth.db import get_db
-from ..auth.deps import current_user
+from ..auth.deps import current_user_detached
 from ..auth.orm_models import User
 from ..auth.rate_limit import enforce_call_limit
 from ..documents.validation import is_audio_mime_type, validate_upload
@@ -70,7 +70,7 @@ def _evidence_kind(mime_type: str) -> str:
 async def upload_documents(
     case_id: str,
     files: list[UploadFile] = File(...),
-    user: User = Depends(current_user),
+    user: User = Depends(current_user_detached),
 ):
     case = _load_owned(case_id, user.id)
     if not files:
@@ -124,13 +124,13 @@ async def upload_documents(
 
 
 @router.get("/documents", response_model=list[DocumentOut])
-def list_documents(case_id: str, user: User = Depends(current_user)):
+def list_documents(case_id: str, user: User = Depends(current_user_detached)):
     _load_owned(case_id, user.id)
     return db.list_documents(case_id)
 
 
 @router.get("/documents/{document_id}", response_model=DocumentDetailOut)
-def get_document(case_id: str, document_id: str, user: User = Depends(current_user)):
+def get_document(case_id: str, document_id: str, user: User = Depends(current_user_detached)):
     _load_owned(case_id, user.id)
     doc = db.get_document(document_id)
     if doc is None or doc["case_id"] != case_id:
@@ -139,7 +139,7 @@ def get_document(case_id: str, document_id: str, user: User = Depends(current_us
 
 
 @router.post("/preliminary-review", response_model=PreliminaryReviewOut)
-def preliminary_review(case_id: str, user: User = Depends(current_user), auth_db: Session = Depends(get_db)):
+def preliminary_review(case_id: str, user: User = Depends(current_user_detached), auth_db: Session = Depends(get_db)):
     """Advisory-only check on a draft case's evidence -- not the real
     adjudication (that's the 5-agent pipeline, which only runs after the
     respondent replies). Re-runnable any number of times before filing.
@@ -150,7 +150,7 @@ def preliminary_review(case_id: str, user: User = Depends(current_user), auth_db
 
 
 @router.post("/discrepancy-check")
-def trigger_discrepancy_check(case_id: str, user: User = Depends(current_user)):
+def trigger_discrepancy_check(case_id: str, user: User = Depends(current_user_detached)):
     _load_owned(case_id, user.id)
     docs = db.list_documents(case_id)
     if not docs:
@@ -160,6 +160,6 @@ def trigger_discrepancy_check(case_id: str, user: User = Depends(current_user)):
 
 
 @router.get("/discrepancies", response_model=list[DiscrepancyOut])
-def list_discrepancies(case_id: str, user: User = Depends(current_user)):
+def list_discrepancies(case_id: str, user: User = Depends(current_user_detached)):
     _load_owned(case_id, user.id)
     return db.list_discrepancies(case_id)

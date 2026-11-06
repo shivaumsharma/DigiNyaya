@@ -10,6 +10,7 @@ login has been retired -- see app/security/auth.py's module docstring.
 from __future__ import annotations
 
 import os
+import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -50,6 +51,9 @@ from .security import (
     verify_password,
 )
 from .sms import get_sms_provider
+
+# A valid bcrypt hash of a random password nobody knows, used to equalise timing for unknown accounts.
+_DUMMY_HASH = hash_password("timing-equaliser-" + secrets.token_hex(16))
 
 router = APIRouter(prefix="/auth", tags=["auth"], dependencies=[Depends(require_https)])
 # Spec lists `GET /me` bare, not under /auth -- a second router sharing the
@@ -274,7 +278,13 @@ def login_email(body: LoginEmailRequest, request: Request, response: Response, d
     enforce_login_rate_limit(db, email, ip)
 
     user = db.query(User).filter(User.email == email).first()
-    ok = user is not None and verify_password(body.password, user.password_hash)
+    stored_hash = user.password_hash if user is not None else None
+    # Release the connection before the CPU-bound bcrypt check (about 0.3 s): holding it through the hash is how a burst of
+    # logins exhausts the pool. The session reconnects by itself for the next query.
+    db.rollback()
+    # Always do one bcrypt comparison, even for an unknown email, so the response time does not reveal whether the account
+    # exists (same message was already used for both cases; this closes the timing channel too).
+    ok = verify_password(body.password, stored_hash or _DUMMY_HASH) and user is not None and stored_hash is not None
     record_login_attempt(db, email, ip, ok)
     if not ok:
         # Same message whether the account doesn't exist or the password is

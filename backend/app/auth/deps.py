@@ -95,6 +95,22 @@ def current_user(
     return user
 
 
+def current_user_detached(user: User = Depends(current_user)) -> User:
+    """Same identity as current_user, but the request's auth database session is closed straight away.
+
+    With plain current_user the session (and its pooled connection) stays open until the response ends. Under load, requests
+    queue for a worker thread while each holds a connection, and the pool (default 10 + 40) runs dry long before the CPU
+    does: the load test showed 40+ connections "idle in transaction" after the user lookup. The user row is already loaded, so
+    handlers can still read user.id, user.email and so on; they must not modify the user or lazy-load relationships (use
+    current_user for those)."""
+    from sqlalchemy.orm import object_session
+
+    sess = object_session(user)
+    if sess is not None:
+        sess.close()
+    return user
+
+
 def current_reviewer(user: User = Depends(current_user)) -> User:
     """Same identity as current_user, plus the is_reviewer gate for the
     human-review endpoints (app/routers/reviews.py). No general admin role

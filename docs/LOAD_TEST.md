@@ -44,12 +44,40 @@ The time matches the arithmetic: jobs / threads x seconds per job (60 / 4 x 10 =
 4. **Several API processes need a shared signing key.** Without `DIGINYAYA_JWT_SECRET` each process generates its own, so a
    token from one process was rejected (401) by another. The app now logs a warning when it is unset.
 
+## Re-run on 6 Nov: a fifth defect, and the limit
+Same machine class (4 cores), PostgreSQL 16 with `max_connections` 600, 2 API processes (`uvicorn --workers 2`) and 2 worker processes.
+The documented 300-user result did **not** reproduce here: both the code before and after the changes below completed only 121 to 212
+of 300 journeys with HTTP 500s. `pg_stat_activity` showed the cause: 40 to 48 connections "idle in transaction" after the user
+lookup. Every authenticated request kept its auth database session (and pooled connection) open until the response was sent, so
+requests queued for a worker thread while each held a connection, and the pool (10 + 40) ran dry.
+
+Fix: `current_user_detached` (app/auth/deps.py) closes that session right after the lookup; the case and document endpoints use it
+(the user row stays readable; code that modifies the user keeps `current_user`). Login also no longer holds a connection during
+bcrypt (and always does one bcrypt comparison, so response time does not reveal whether an email exists). Regression tests cover both
+(the pool test fails if the release is removed).
+
+| Setup | Users | Completed | Journey p50 / p95 | Errors |
+|---|---|---|---|---|
+| B (as above), before the fix | 300 | 121 to 212 of 300 | 15 to 77 s | HTTP 500 and timeouts |
+| B, after the fix | 150 | 150 of 150 | 9.2 s / 11.7 s | 0 |
+| B, after the fix | 300 | 300 of 300 | 17.6 s / 24.9 s | 0 (10.0 journeys/s) |
+| B, after the fix | 500 | 169 of 500 | 121 s / 123 s | signup HTTP 500 (213) and timeouts |
+
+So on this machine the ceiling is between 300 and 500 simultaneous sign-ups-plus-journeys. Sign-up is CPU bound (bcrypt) and the load
+generator shares the 4 cores, so this is a lower bound; the 500-user failure was not investigated further. The numbers in the earlier
+table above were measured in an earlier session on a different PostgreSQL configuration and are not directly comparable.
+
+## Event bus: LISTEN/NOTIFY
+On PostgreSQL the event bus now wakes on `NOTIFY` (sent in the same transaction as the insert) instead of polling every 50 to 250 ms;
+polling remains as a 2-second safety net and as the only mode on SQLite. `tests/test_event_bus_postgres.py` (needs
+`DIGINYAYA_TEST_PG_URL`) proves an event reaches the dispatcher in under 1.5 s with the poll interval set to 30 s, and fails if the
+NOTIFY is removed. Not measured: the reduction in database queries under load.
+
 ## Known gaps
-* Login still verifies the password while holding a connection (same pattern as signup was); not changed.
 * A stream ends after 120 s without events; a queued case can wait longer. Clients must reconnect with `?after=<last seq>`
-  (I did not check that the frontend does).
-* The database event bus is still polling (one query per poll per process). For many API processes or tens of thousands of
-  concurrent streams, move to PostgreSQL LISTEN/NOTIFY or Redis behind the same three methods.
+  (the Resolve page now reconnects automatically while the pipeline is running: exponential back-off, from the last event seen).
+* On SQLite the event bus still polls; on PostgreSQL it uses LISTEN/NOTIFY with a 2 s polling safety net. For tens of thousands of
+  concurrent streams across many hosts, Redis behind the same three methods would be the next step.
 * Signup is CPU-bound by design (bcrypt, about 0.3 s each, roughly 13 per second on 4 cores): scale API processes for signup bursts.
 
 ## Capacity model (fill in with measured LLM numbers)

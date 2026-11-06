@@ -6,6 +6,7 @@ import { AGENT_ICONS, Check, Clock, Handshake, Gavel, Shield } from '../icons.js
 import Stepper from '../components/Stepper.jsx'
 import ResolutionDoc from '../components/ResolutionDoc.jsx'
 import ListenButton from '../components/ListenButton.jsx'
+import { createReconnector } from '../streamReconnect.js'
 
 const AGENT_ORDER = ['orchestrator', 'ingestion', 'research', 'analysis', 'mediation', 'resolution']
 
@@ -21,7 +22,10 @@ export default function Resolve() {
   const [error, setError] = useState(null)
   const startedRef = useRef(false)
   const cursorRef = useRef(0)
-  const abortRef = useRef(null)
+  const phaseRef = useRef('loading')
+  const reconnectRef = useRef(null)
+
+  useEffect(() => { phaseRef.current = phase }, [phase])
 
   useEffect(() => {
     if (startedRef.current) return
@@ -43,17 +47,22 @@ export default function Resolve() {
         setError(e.message || 'Failed to load case')
       }
     })()
-    return () => abortRef.current && abortRef.current()
+    return () => { if (reconnectRef.current) reconnectRef.current.stop() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  // The server closes a stream after about 120 s without events and the network can drop, so while the pipeline is still
+  // running (loading, pipeline, resolving) the stream is reopened from the last seen event instead of showing an error.
   function openStream(after) {
-    if (abortRef.current) abortRef.current()
+    if (reconnectRef.current) reconnectRef.current.stop()
     const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : ''
-    abortRef.current = streamSSE(`/cases/${id}/events?after=${after}${langParam}`, {
-      onEvent: applyEvent,
-      onError: (e) => setError(e.message),
+    reconnectRef.current = createReconnector({
+      open: (cursor, handlers) => streamSSE(`/cases/${id}/events?after=${cursor}${langParam}`, handlers),
+      getCursor: () => cursorRef.current,
+      shouldContinue: () => ['loading', 'pipeline', 'resolving'].includes(phaseRef.current),
+      onGiveUp: () => setError(t('resolve.reconnect')),
     })
+    reconnectRef.current.start(after, applyEvent)
   }
 
   function applyEvent(ev) {
