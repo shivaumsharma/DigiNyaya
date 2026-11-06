@@ -111,6 +111,7 @@ NATIVE_CATEGORY_TO_DISPUTE_TYPE = {
     "tenancy_disputes": "tenancy_dispute",
     "employment_disputes": "employment_dispute",
     "property_neighbor_disputes": "property_dispute",
+    "partnership_business_disputes": "partnership_dispute",
 }
 if os.environ.get("DIGINYAYA_EVAL_NATIVE_TYPES", "").strip().lower() in {"1", "true", "yes", "on"}:
     CATEGORY_TO_DISPUTE_TYPE.update(NATIVE_CATEGORY_TO_DISPUTE_TYPE)

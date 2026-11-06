@@ -18,7 +18,7 @@ from app.data.loader import load_statutes, validate_statute  # noqa: E402
 from app.rag import statutes as sr  # noqa: E402
 
 REGISTERED = ("consumer_dispute", "money_recovery", "contract_breach", "cheque_bounce",
-              "tenancy_dispute", "property_dispute", "employment_dispute")
+              "tenancy_dispute", "property_dispute", "employment_dispute", "partnership_dispute")
 
 
 def _ctx(dispute_type="consumer_dispute", description=None, amount=5000.0) -> CaseContext:

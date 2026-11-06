@@ -165,6 +165,21 @@ _PREVIEW_TYPES = [
             "My full and final settlement was never paid after I resigned",
         ],
     },
+    {
+        "id": "partnership_dispute",
+        "label": "Partnership / Business Partner Dispute",
+        "icon": "users",
+        "tier": 2,
+        "tier_label": "Tier 2 — AI-Assisted Virtual Judge",
+        "active": False,
+        "preview": True,
+        "behaves_as": "contract_breach",
+        "description": "Disputes between business partners over accounts, profit shares, withdrawals or leaving the business.",
+        "examples": [
+            "My business partner has not shared the profits for two years",
+            "A partner withdrew money from the firm's account without agreement",
+        ],
+    },
 ]
 DISPUTE_TYPES.extend(_PREVIEW_TYPES)
 

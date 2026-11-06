@@ -235,7 +235,8 @@
     "title": "Obligation of parties to contracts",
     "summary": "Requires parties to perform, or offer to perform, their promises unless performance is dispensed with or excused by law.",
     "dispute_types": [
-      "contract_breach"
+      "contract_breach",
+      "partnership_dispute"
     ],
     "keywords": [
       "perform",
@@ -258,7 +259,8 @@
       "money_recovery",
       "tenancy_dispute",
       "employment_dispute",
-      "property_dispute"
+      "property_dispute",
+      "partnership_dispute"
     ],
     "keywords": [
       "breach",

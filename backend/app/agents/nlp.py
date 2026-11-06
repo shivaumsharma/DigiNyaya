@@ -91,6 +91,7 @@ DISPUTE_TYPE_PROMPT_LABELS: dict[str, str] = {
     "tenancy_dispute": "tenancy / rent dispute",
     "property_dispute": "property / neighbour dispute",
     "employment_dispute": "employment / unpaid wages dispute",
+    "partnership_dispute": "partnership / business-partner dispute",
 }
 
 

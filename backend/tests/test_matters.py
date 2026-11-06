@@ -64,7 +64,7 @@ class OverlayDoesNotChangeTheCivilTypes(unittest.TestCase):
     def test_dispute_type_list_is_unchanged_by_the_registry(self):
         self.assertEqual([d["id"] for d in list_dispute_types()],
                          ["consumer_dispute", "money_recovery", "contract_breach", "cheque_bounce",
-                          "tenancy_dispute", "property_dispute", "employment_dispute"])
+                          "tenancy_dispute", "property_dispute", "employment_dispute", "partnership_dispute"])
         self.assertNotIn("criminal_complaint", {d["id"] for d in DISPUTE_TYPES})
 
     def test_preview_types_stay_preview_until_enabled(self):

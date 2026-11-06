@@ -136,6 +136,11 @@ class CompanionGuides(unittest.TestCase):
 
         self.assertTrue(any("injunction" in k for k in OUT_OF_SCOPE_INDICATORS))
 
+    def test_partnership_guide_points_to_the_deed_and_forbids_moving_firm_money(self):
+        g = get_matter("partnership_dispute").guide
+        self.assertIn("deed", g["forum"].lower())
+        self.assertTrue(any("do not" in x.lower() and "firm" in x.lower() for x in g["steps"]))
+
     def test_employment_guide_does_not_claim_one_forum(self):
         g = get_matter("employment_dispute").guide
         self.assertIn("depends", g["forum"].lower())

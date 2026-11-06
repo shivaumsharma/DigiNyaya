@@ -266,6 +266,33 @@ SAMPLE_CLAIMS = {
             "counter_offer": 90000,
         },
     },
+    "partnership_dispute": {
+        "claim": {
+            "claimant_name": "Rohit Menon",
+            "respondent_name": "Anil Pillai",
+            "dispute_type": "partnership_dispute",
+            "claim_amount": 180000,
+            "description": (
+                "Anil Pillai and I run a printing business as partners under a written partnership deed "
+                "dated 01/06/2021 that shares profits equally. For the financial year 2022-23 the firm "
+                "earned a profit of Rs. 3,60,000 but he has not paid me my half share of Rs. 1,80,000 and "
+                "has not shown me the accounts despite two written requests. I am seeking my share of the profit."
+            ),
+            "evidence": [
+                {"filename": "partnership_deed.pdf", "kind": "agreement", "note": "Deed with the profit-sharing clause"},
+                {"filename": "bank_statement.pdf", "kind": "statement", "note": "Firm's bank statement for 2022-23"},
+                {"filename": "requests.png", "kind": "screenshot", "note": "Two written requests for accounts"},
+            ],
+        },
+        "response": {
+            "statement": (
+                "The profit was reinvested in a new machine as we discussed, so no share is due now. "
+                "I am willing to show the accounts and settle for part of the amount."
+            ),
+            "accepts_liability": False,
+            "counter_offer": 60000,
+        },
+    },
     "cheque_bounce": {
         "claim": {
             "claimant_name": "Vikram Desai",

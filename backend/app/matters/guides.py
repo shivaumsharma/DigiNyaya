@@ -145,6 +145,22 @@ COMPANION_GUIDES: dict[str, dict] = {
                       "Proof of any advance or payment made, and messages or notices exchanged with the other side",
                       "Government ID and proof of address"],
     },
+    "partnership_dispute": {
+        "summary": "A dispute with a business partner over accounts, profit shares, money taken out or leaving the business: what to gather, and what to avoid.",
+        "forum": "Partner disputes are usually heard by the civil courts, and the partnership deed often names arbitration or a particular court, so read it first. Whether the firm is registered, and whether you want to stay in the business or leave it, changes what you can ask for. A lawyer or your District Legal Services Authority can confirm the forum and the route.",
+        "steps": ["Find the partnership deed or any written agreement, and read what it says about profit shares, withdrawals, accounts and disputes",
+                  "Collect the firm's accounts, bank statements and tax records, and note what each partner put in and took out",
+                  "List the specific amounts you say are owed, with the dates and the records that show them",
+                  "Keep your messages and written requests for accounts or payment, and the replies",
+                  "Do not move money out of the firm's accounts or change records on your own: both can be used against you",
+                  "Ask a lawyer or legal aid whether the deed requires arbitration first, which forum applies and what the time limit is"],
+        "documents": ["The partnership deed or any written agreement between the partners",
+                      "The firm's registration papers, if it is registered",
+                      "The firm's accounts, bank statements and tax records for the period in dispute",
+                      "Records of money each partner put in or took out",
+                      "Messages, emails or letters about the dispute, sent or received",
+                      "Government ID and proof of address"],
+    },
 }
 
 

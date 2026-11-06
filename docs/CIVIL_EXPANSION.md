@@ -1,4 +1,4 @@
-# Civil expansion: tenancy, property and employment
+# Civil expansion: tenancy, property, employment and partnership
 
 ## Where this stands
 **Phase 1 is built: new identities, identical behaviour.** `tenancy_dispute`, `property_dispute` and
@@ -12,6 +12,8 @@ a type's alias makes it fail).
 
 **They are not open to users.** The types are listed as "roadmap" (inactive); filing one returns 422 server-side.
 Set `DIGINYAYA_ENABLE_PREVIEW_TYPES=1` to open them (e.g. in a staging environment).
+
+Partnership (`partnership_dispute`, behaves as `contract_breach`) was added the same way on 6 Nov; it cites only the existing contract provisions.
 
 ## What phase 1 does NOT do (be honest about this before anyone relies on it)
 - **No native precedents.** There are no real tenancy, property or employment precedents in the corpus, and none

@@ -28,6 +28,7 @@ _EXPECTED_EVIDENCE_BY_TYPE = {
     "cheque_bounce": "the dishonoured cheque, the bank's return memo, and the demand notice you sent",
     "tenancy_dispute": "the rent agreement or lease, rent receipts or bank transfers showing what was paid, and any notice sent to the other side",
     "property_dispute": "the title deed or sale agreement, a survey sketch or boundary record, tax receipts, and photographs of the disputed area",
+    "partnership_dispute": "the partnership deed or written agreement, the firm's accounts and bank statements, records of what each partner put in or took out, and messages about the dispute",
     "employment_dispute": "your appointment or offer letter, salary slips or bank statements, your resignation or termination letter, and messages about the dues",
 }
 

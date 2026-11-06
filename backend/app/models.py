@@ -19,6 +19,7 @@ class DisputeType(str, Enum):
     tenancy_dispute = "tenancy_dispute"
     property_dispute = "property_dispute"
     employment_dispute = "employment_dispute"
+    partnership_dispute = "partnership_dispute"
 
 
 class CaseStatus(str, Enum):

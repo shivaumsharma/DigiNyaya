@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, ".")
 
 DATA = Path(__file__).resolve().parent.parent / "data_cache"
-DEFAULT_CATEGORIES = ("tenancy_disputes", "employment_disputes", "property_neighbor_disputes")
+DEFAULT_CATEGORIES = ("tenancy_disputes", "employment_disputes", "property_neighbor_disputes", "partnership_business_disputes")
 
 
 def bucket(seed: int, case_id: str) -> float:

@@ -17,7 +17,7 @@ from app.data.loader import effective_type, get_dispute_type, list_dispute_types
 from app.main import SAMPLE_CLAIMS
 from app.models import ClaimSubmission, DisputeType
 
-NEW_TYPES = {"tenancy_dispute": "money_recovery", "property_dispute": "contract_breach", "employment_dispute": "money_recovery"}
+NEW_TYPES = {"tenancy_dispute": "money_recovery", "property_dispute": "contract_breach", "employment_dispute": "money_recovery", "partnership_dispute": "contract_breach"}
 ORIGINAL = ("consumer_dispute", "money_recovery", "contract_breach", "cheque_bounce")
 
 
@@ -118,6 +118,11 @@ SCENARIOS = {
         "I was terminated without notice and want to be reinstated with continuity of service and back wages.",
         "My employer has not paid my notice period pay of Rs. 50,000 after I resigned.",
     ],
+    "partnership_dispute": [
+        SAMPLE_CLAIMS["partnership_dispute"]["claim"]["description"],
+        "My partner has taken Rs. 1,50,000 out of the firm's account without agreement and I am seeking my share back.",
+        "My business partner refuses to show me the accounts of the partnership and I want the dues I am owed paid.",
+    ],
     "property_dispute": [
         SAMPLE_CLAIMS["property_dispute"]["claim"]["description"],
         "I paid an advance of Rs. 2,00,000 for a plot and the seller did not complete the sale deed. I am seeking possession of the plot.",
@@ -153,7 +158,7 @@ class TestEquivalenceWithTheAliasedType:
     def test_native_eval_mapping_matches_the_default_approximation(self):
         from scripts.run_real_judgment_eval import NATIVE_CATEGORY_TO_DISPUTE_TYPE
         expected = {"tenancy_disputes": "money_recovery", "employment_disputes": "money_recovery",
-                    "property_neighbor_disputes": "contract_breach"}
+                    "property_neighbor_disputes": "contract_breach", "partnership_business_disputes": "contract_breach"}
         assert set(NATIVE_CATEGORY_TO_DISPUTE_TYPE) == set(expected)
         for category, native in NATIVE_CATEGORY_TO_DISPUTE_TYPE.items():
             assert effective_type(native) == expected[category], category
