@@ -62,11 +62,12 @@ export default function Matters() {
           <h2 className="matter-heading">{t('matters.sections.soon')}</h2>
           <div className="dispute-grid">
             {groups.soon.map((m) => (
-              <div key={m.id} className="card elev-sm dispute-card matter-card disabled">
+              <div key={m.id} className={`card elev-sm dispute-card matter-card disabled${m.has_guide ? ' has-guide' : ''}`}>
                 <span className="soon">{t('matters.roadmap')}</span>
                 <LevelTag matter={m} t={t} />
                 <div className="card-title">{m.label}</div>
                 <p className="card-body">{m.description}</p>
+                {m.has_guide && <Link className="btn" to={`/matters/${m.id}`}>{t('matters.readGuide')}</Link>}
               </div>
             ))}
           </div>

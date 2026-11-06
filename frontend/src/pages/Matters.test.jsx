@@ -21,7 +21,7 @@ vi.mock('../api', () => {
 const MATTERS = [
   { id: 'consumer_dispute', label: 'Consumer Dispute', family: 'civil', level: 3, level_name: 'L3_DECIDE', status: 'live', description: 'Defective products.', can_resolve: true },
   { id: 'money_recovery', label: 'Money Recovery', family: 'civil', level: 2, level_name: 'L2_RESOLVE', status: 'live', description: 'Recovery of lent money.', can_resolve: true },
-  { id: 'tenancy_dispute', label: 'Tenancy Dispute', family: 'civil', level: 2, level_name: 'L2_RESOLVE', status: 'preview', description: 'Unpaid rent.', can_resolve: true },
+  { id: 'tenancy_dispute', label: 'Tenancy Dispute', family: 'civil', level: 2, level_name: 'L2_RESOLVE', status: 'preview', description: 'Unpaid rent.', can_resolve: true, has_guide: true },
   { id: 'criminal_complaint', label: 'Criminal complaint or FIR', family: 'criminal', level: 0, level_name: 'L0_NAVIGATE', status: 'navigator', description: 'How a complaint starts.', can_resolve: false },
   { id: 'tax_dispute', label: 'Tax notices', family: 'tax', level: 0, level_name: 'L0_NAVIGATE', status: 'navigator', description: 'Responding to a notice.', can_resolve: false },
 ]
@@ -78,8 +78,17 @@ describe('Matters page', () => {
     expect(await screen.findByText('Money Recovery')).toBeInTheDocument()
     const fileLinks = screen.getAllByRole('link', { name: 'File a case' })
     expect(fileLinks.map((a) => a.getAttribute('href'))).toEqual(['/file/consumer_dispute', '/file/money_recovery'])
-    expect(screen.getAllByRole('link', { name: 'Read the guide' }).map((a) => a.getAttribute('href'))).toEqual(['/matters/criminal_complaint', '/matters/tax_dispute'])
+    expect(screen.getAllByRole('link', { name: 'Read the guide' }).map((a) => a.getAttribute('href'))).toEqual(['/matters/tenancy_dispute', '/matters/criminal_complaint', '/matters/tax_dispute'])
     expect(screen.getByText('Roadmap')).toBeInTheDocument()
+  })
+
+  it('links a roadmap matter to its guide but never offers to file it', async () => {
+    api.matters.mockResolvedValue(MATTERS)
+    renderAt('/matters')
+    await screen.findByText('Tenancy Dispute')
+    const hrefs = screen.getAllByRole('link', { name: 'Read the guide' }).map((a) => a.getAttribute('href'))
+    expect(hrefs).toContain('/matters/tenancy_dispute')
+    expect(screen.getAllByRole('link', { name: 'File a case' }).map((a) => a.getAttribute('href'))).not.toContain('/file/tenancy_dispute')
   })
 
   it('filters with the search box and shows an empty message', async () => {

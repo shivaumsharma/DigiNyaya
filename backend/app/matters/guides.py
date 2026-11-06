@@ -93,9 +93,33 @@ GUIDES: list[dict] = [
 ]
 
 
+# Preparation guides for civil matters that also have a filing flow (or will). Keyed by the dispute-type id. They give a user
+# something useful while the type is still behind its evaluation gate, and stay valid after it passes. Same shape as GUIDES, plus
+# optional `documents` (type-specific, replaces the common list). Not in GUIDES: those become stand-alone navigator matters.
+# Tenancy law is mostly state law (rent control Acts differ by state and by kind of tenancy), so nothing here states a notice
+# period, limitation period or fee; it only says to confirm them.
+COMPANION_GUIDES: dict[str, dict] = {
+    "tenancy_dispute": {
+        "summary": "Unpaid rent, a deposit that has not been returned, or a notice to leave: what to gather, and what to avoid.",
+        "forum": "Claims for unpaid rent or a deposit are usually civil claims. Eviction and rent-control disputes may go to a special authority or court under your state's rent law, which differs by state and by the kind of tenancy. A lawyer or your District Legal Services Authority can confirm which applies.",
+        "steps": ["Find the rent agreement or lease and read what it says about rent, the deposit, notice, and how the tenancy can end",
+                  "List every payment with its date, amount and how it was paid, and keep the receipts or bank records",
+                  "Keep every notice and message between landlord and tenant; if you send a notice, send it in writing and keep proof it was delivered",
+                  "Note the dates the tenancy began, the rent fell due, and the property was vacated or handed back, and keep dated photos of its condition",
+                  "Do not lock out a tenant, remove their belongings or cut off water or electricity, and do not stop paying rent without advice: these can create legal trouble for you",
+                  "Ask a lawyer or legal aid whether a notice must come first, which forum applies and what the time limit is"],
+        "documents": ["The rent agreement or lease, with any renewal, registration or stamp papers",
+                      "Rent receipts and bank or UPI records of every payment, including any deposit",
+                      "Photos or an inventory of the property's condition at move-in and move-out",
+                      "A copy of any notice, demand or message about rent, repairs or leaving, sent or received",
+                      "Government ID and proof of address for both sides, where you have them"],
+    },
+}
+
+
 def render(g: dict) -> dict:
     """The guide as served by the API (English), with the shared sections attached."""
-    return {"summary": g["summary"], "forum": g["forum"], "steps": g["steps"], "documents": COMMON_DOCUMENTS,
+    return {"summary": g["summary"], "forum": g["forum"], "steps": g["steps"], "documents": g.get("documents", COMMON_DOCUMENTS),
             "this_tool_cannot": CANNOT_DO, "disclaimer": DISCLAIMER, "reviewed": False, "language": "en"}
 
 

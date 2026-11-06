@@ -94,6 +94,7 @@ def _civil_matters() -> list[Matter]:
             id=dt["id"], label=dt["label"], family="civil", level=level, description=dt["description"],
             status="preview" if dt.get("preview") and not dt.get("active") else "live",
             pipeline_type=dt["id"],
+            guide=guides.render(guides.COMPANION_GUIDES[dt["id"]]) if dt["id"] in guides.COMPANION_GUIDES else None,
             # Recorded, so the gate is visible: the original four were evaluated on 23,841 real judgments, with a frozen
             # test set and a leakage-free control; the judge is NOT yet validated against humans and no lawyer has reviewed.
             gate_passed=("real_cases_with_endings", "frozen_contested_test_set", "balanced_accuracy_with_ci")

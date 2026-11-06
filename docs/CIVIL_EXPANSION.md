@@ -30,6 +30,11 @@ Set `DIGINYAYA_ENABLE_PREVIEW_TYPES=1` to open them (e.g. in a staging environme
 - The frontend needs no change: it renders types from `/api/dispute-types`. Labels are English-only until the UI
   strings are translated.
 
+## Where a type stands against the gate
+`python -m scripts.matter_gate_report --matter tenancy_dispute` (from `backend/`) reports, for one type, how many real cases have
+a recorded ending and how many were contested, how many cases are in the frozen test set, how many native precedents exist, and
+which of the six gate checks (docs/PLATFORM_PLAN.md section 5) remain open. It only measures; it never passes a check for you.
+
 ## Check it on real data
 ```
 DIGINYAYA_EVAL_NATIVE_TYPES=1 python -m scripts.run_real_judgment_eval ...    # scores the 3 categories as native types
