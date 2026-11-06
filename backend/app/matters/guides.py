@@ -114,6 +114,22 @@ COMPANION_GUIDES: dict[str, dict] = {
                       "A copy of any notice, demand or message about rent, repairs or leaving, sent or received",
                       "Government ID and proof of address for both sides, where you have them"],
     },
+    "employment_dispute": {
+        "summary": "Unpaid salary, notice pay or a final settlement that was never paid: what to gather, and where other workplace problems belong.",
+        "forum": "Which forum hears a pay claim depends on who you are, what you claim and your state: some go to labour authorities or labour courts, others to the civil courts. Wrongful dismissal, harassment and similar workplace disputes are different and may need a labour authority or tribunal (see the guide on labour and industrial disputes). A lawyer, a labour office or your District Legal Services Authority can confirm the route.",
+        "steps": ["Find your appointment or offer letter and any policy or contract that sets your pay, notice period and final settlement",
+                  "List what you are owed month by month: the amount due, the date it fell due, and what was actually paid",
+                  "Keep salary slips and bank statements, and any resignation, termination or relieving letter, with their dates",
+                  "Save messages and emails in which the employer acknowledged the dues or promised to pay",
+                  "If you send a written demand, keep a copy and proof of delivery, and do not exaggerate the amount",
+                  "Ask a lawyer, a labour office or legal aid which route applies to you and what the time limit is before you file"],
+        "documents": ["Your appointment or offer letter, and any contract or policy on pay and notice",
+                      "Salary slips and bank statements showing what was paid",
+                      "Your resignation, termination or relieving letter, and the date you left",
+                      "Messages, emails or letters about the unpaid amount, sent or received",
+                      "Your attendance records or any proof of the period you worked",
+                      "Government ID and proof of address"],
+    },
 }
 
 

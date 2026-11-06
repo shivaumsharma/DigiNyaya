@@ -85,15 +85,50 @@ class TenancyModule(unittest.TestCase):
         self.assertEqual(m.gate_passed, ())
         self.assertFalse(m.guide["reviewed"])
 
-    def test_tenancy_guide_gives_no_legal_numbers_and_warns_against_self_help(self):
+    def test_tenancy_guide_warns_against_self_help_and_says_state_law_varies(self):
+        g = get_matter("tenancy_dispute").guide
+        self.assertIn("lock out", " ".join(g["steps"]).lower())
+        self.assertIn("state", g["forum"].lower())
+
+
+class CompanionGuides(unittest.TestCase):
+    """Rules every companion guide must keep until a lawyer has reviewed it."""
+
+    def test_every_companion_guide_attaches_to_a_pipeline_type_and_stays_unreviewed(self):
+        from app.matters import guides
+
+        for tid in guides.COMPANION_GUIDES:
+            m = get_matter(tid)
+            self.assertIsNotNone(m, tid)
+            self.assertIsNotNone(m.pipeline_type, tid)
+            self.assertIsNotNone(m.guide, tid)
+            self.assertFalse(m.guide["reviewed"], tid)
+            self.assertEqual(len(m.guide["documents"]) >= 4, True, tid)
+
+    def test_no_legal_numbers_or_named_statutes(self):
         import re
 
-        g = get_matter("tenancy_dispute").guide
-        text = " ".join([g["forum"], *g["steps"], *g["documents"]]).lower()
-        self.assertIsNone(re.search(r"\b\d+\s*(days?|months?|years?)\b", text))
-        self.assertIsNone(re.search(r"(rs\.?|₹)\s*\d", text))
-        self.assertIn("lock out", text)
-        self.assertIn("state", g["forum"].lower())
+        from app.matters import guides
+
+        for tid in guides.COMPANION_GUIDES:
+            g = get_matter(tid).guide
+            text = " ".join([g["summary"], g["forum"], *g["steps"], *g["documents"]]).lower()
+            self.assertIsNone(re.search(r"\b\d+\s*(days?|months?|years?)\b", text), tid)
+            self.assertIsNone(re.search(r"(rs\.?|₹)\s*\d", text), tid)
+            self.assertIsNone(re.search(r"\bsection\s+\d|\bact,?\s+\d{4}|\bcode\b", text), tid)
+
+    def test_each_guide_sends_the_reader_to_confirm_forum_and_time_limit(self):
+        from app.matters import guides
+
+        for tid in guides.COMPANION_GUIDES:
+            g = get_matter(tid).guide
+            self.assertTrue(any("time limit" in x.lower() for x in g["steps"]), tid)
+            self.assertTrue(any(k in g["forum"].lower() for k in ("lawyer", "legal services")), tid)
+
+    def test_employment_guide_does_not_claim_one_forum(self):
+        g = get_matter("employment_dispute").guide
+        self.assertIn("depends", g["forum"].lower())
+        self.assertIn("labour and industrial", g["forum"].lower())
 
 
 class TenancyApi(unittest.TestCase):
