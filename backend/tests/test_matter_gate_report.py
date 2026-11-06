@@ -125,6 +125,17 @@ class CompanionGuides(unittest.TestCase):
             self.assertTrue(any("time limit" in x.lower() for x in g["steps"]), tid)
             self.assertTrue(any(k in g["forum"].lower() for k in ("lawyer", "legal services")), tid)
 
+    def test_property_guide_says_urgent_injunctions_go_to_a_human_and_warns_against_self_help(self):
+        g = get_matter("property_dispute").guide
+        self.assertIn("injunction", g["forum"].lower())
+        self.assertIn("human", g["forum"].lower())
+        self.assertTrue(any("do not" in x.lower() and "enter" in x.lower() for x in g["steps"]))
+
+    def test_property_guide_matches_what_the_safety_gate_really_does(self):
+        from app.core.safety_gate import OUT_OF_SCOPE_INDICATORS
+
+        self.assertTrue(any("injunction" in k for k in OUT_OF_SCOPE_INDICATORS))
+
     def test_employment_guide_does_not_claim_one_forum(self):
         g = get_matter("employment_dispute").guide
         self.assertIn("depends", g["forum"].lower())

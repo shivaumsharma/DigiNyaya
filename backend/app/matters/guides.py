@@ -130,6 +130,21 @@ COMPANION_GUIDES: dict[str, dict] = {
                       "Your attendance records or any proof of the period you worked",
                       "Government ID and proof of address"],
     },
+    "property_dispute": {
+        "summary": "A boundary, encroachment, possession or unfinished-sale dispute over land or a building: what to gather, and what to avoid.",
+        "forum": "Property disputes are usually heard by the civil courts, and some by revenue officers or special authorities depending on the land and your state. A request to stop someone urgently (an injunction or stay) is a court application that this tool does not handle: it sends such cases to a human. A lawyer or your District Legal Services Authority can confirm the forum.",
+        "steps": ["Collect the title deed, sale agreement or other papers that show who owns or holds the property",
+                  "Get the survey sketch, boundary or revenue records and the latest tax receipts for the land",
+                  "Take dated photographs and notes of the disputed area, and of any construction or damage as it happens",
+                  "Keep every message, notice and agreement with the other side, and any advance paid with proof of payment",
+                  "Do not break down a wall, enter or take over the disputed land, or threaten anyone: this can turn a civil dispute into a criminal one",
+                  "Ask a lawyer or legal aid early about urgent protection, the right forum and the time limit, because delay can cost you rights"],
+        "documents": ["The title deed, sale deed or sale agreement, and any earlier chain of ownership papers",
+                      "Survey sketch, boundary or revenue records (for example a record of rights) and property tax receipts",
+                      "Dated photographs or video of the disputed area",
+                      "Proof of any advance or payment made, and messages or notices exchanged with the other side",
+                      "Government ID and proof of address"],
+    },
 }
 
 
